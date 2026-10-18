@@ -2,7 +2,7 @@
 
 Status: **Canonical Operating Manual**
 
-Repository: `FrostGraphix/beverly`
+Repository: `acob-lighting-technology-limited/beverly`
 
 Target Node Engine: `Node 22.x`
 
