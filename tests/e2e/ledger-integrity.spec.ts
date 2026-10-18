@@ -90,9 +90,9 @@ test.describe('Feature flags (§19.5)', () => {
     });
 });
 
-test.describe('Rate limits (§13.4)', () => {
+test.describe('Public signup validation', () => {
     test('public signup endpoint exists', async ({ request }) => {
-        const res = await request.post(`${API_BASE}/api/v1/public/customer/signup`, {
+        const res = await request.post(`${API_BASE}/api/v1/customer/auth/signup`, {
             data: {},
             headers: { 'Content-Type': 'application/json' },
         });
