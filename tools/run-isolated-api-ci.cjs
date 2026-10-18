@@ -43,8 +43,8 @@ async function main() {
   const database = new Client({ connectionString: dbUrl.toString() });
   try {
     await database.connect();
-    await database.query('insert into public.users(auth_user_id,user_id,user_name,email,role_key) values($1,$1,$2,$3,$4)',
-      [user.id, 'Synthetic CI Staff', email, 'custom-ci-flags']);
+    await database.query('insert into public.users(auth_user_id,user_id,user_name,email,role_key) values($1,$2,$3,$4,$5)',
+      [user.id, user.id, 'Synthetic CI Staff', email, 'custom-ci-flags']);
   } finally { await database.end(); }
   const session = await authRequest(authBase, status.ANON_KEY, 'token?grant_type=password', { email, password });
   assert(session.access_token && session.expires_in <= 600, 'Expected a short-lived local staff session');
