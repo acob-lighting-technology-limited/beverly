@@ -1,7 +1,7 @@
 # Beverly Production Stack Audit and Operations Playbook
 
 **Audit date:** 2026-07-26  
-**Repository:** `FrostGraphix/beverly`  
+**Repository:** `acob-lighting-technology-limited/beverly`
 **Branch reviewed:** `fix/test-timeouts`, then `codex/admin-vendor-balance-transfer`
 **Scope:** repository, deployment configuration, database migrations, security controls, CI state, tests, and operational documentation  
 **Audit type:** repository, Vercel, GitHub, and Supabase evidence review. Production health endpoints, project settings, environment identities, branch protection, migration state, feature flags, and controlled database behavior were directly verified on 2026-08-12. DNS, certificate internals, backup entitlements, restore execution, external paging destinations, and unrestricted traffic telemetry remain unverified.

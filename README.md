@@ -1,5 +1,9 @@
 # Beverly CRM
 
+Canonical repository: [ACOB Lighting Technology Limited / Beverly](https://github.com/acob-lighting-technology-limited/beverly)
+
+This project is owned and maintained in the `acob-lighting-technology-limited` GitHub organization. All branches, issues, pull requests, releases, and automation must use this repository as the source of truth.
+
 Status: release blocked.
 
 Read first:

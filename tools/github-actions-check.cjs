@@ -2,7 +2,7 @@
 
 const { execFileSync } = require("node:child_process");
 
-const repo = process.env.GITHUB_REPOSITORY || "FrostGraphix/beverly";
+const repo = process.env.GITHUB_REPOSITORY || "acob-lighting-technology-limited/beverly";
 const workflow = process.env.GITHUB_WORKFLOW_FILE || "ci.yml";
 
 function git(args) {
