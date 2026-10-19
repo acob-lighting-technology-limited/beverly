@@ -33,7 +33,7 @@ function startServer() {
 async function completeVendorForm(page) {
   await page.getByPlaceholder("Acob Lighting Ltd").fill("Browser Test Vendor Limited");
   await page.locator(".msel-input").click();
-  await page.getByRole("option", { name: /TUNGA/ }).click();
+  await page.locator(".msel-row").filter({ hasText: "TUNGA" }).getByRole("checkbox").check();
   await page.getByRole("button", { name: /Continue/ }).click();
 
   await page.getByPlaceholder("Amaka Obi").fill("Ada Browser");
