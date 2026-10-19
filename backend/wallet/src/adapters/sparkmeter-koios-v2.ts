@@ -52,12 +52,20 @@ export async function fetchSparkMeterTelemetryPage(input: SparkMeterTelemetryReq
             body: JSON.stringify(body),
         });
         if (response.ok) return normalizeSparkMeterTelemetryPage(await response.json());
+        await response.body?.cancel();
         if (attempt === 2 || (response.status !== 429 && response.status < 500)) {
             throw new Error(`SparkMeter telemetry request failed: HTTP ${response.status}`);
         }
         const retryHeader = response.headers.get('Retry-After');
-        const retryAfter = retryHeader === null ? NaN : Number(retryHeader);
-        await wait(Number.isFinite(retryAfter) ? Math.min(5_000, Math.max(0, retryAfter * 1_000)) : 250 * (2 ** attempt));
+        const retryDate = new Date(retryHeader ?? '');
+        const retryAfter = retryHeader === null ? NaN
+            : /^\d+$/.test(retryHeader) ? Number(retryHeader)
+                : retryDate.toUTCString() === retryHeader ? (retryDate.getTime() - Date.now()) / 1_000 : NaN;
+        // Never shorten provider delays; unsupported formats require operator replay.
+        if (retryHeader !== null && (!Number.isFinite(retryAfter) || retryAfter > 5)) {
+            throw new Error('SparkMeter telemetry Retry-After requires operator replay');
+        }
+        await wait(Number.isFinite(retryAfter) ? Math.max(0, retryAfter * 1_000) : 250 * (2 ** attempt));
     }
     throw new Error('SparkMeter telemetry retry budget exhausted');
 }
