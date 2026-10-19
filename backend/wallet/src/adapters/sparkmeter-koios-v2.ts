@@ -46,11 +46,19 @@ export async function fetchSparkMeterTelemetryPage(input: SparkMeterTelemetryReq
     const fetchFn = input.fetchFn ?? fetch;
     const wait = input.wait ?? sleep;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-        const response = await fetchFn(url.toString(), {
-            method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-API-KEY': parsed.apiKey, 'X-API-SECRET': parsed.apiSecret },
-            body: JSON.stringify(body),
-        });
+        let response: Response;
+        try {
+            response = await fetchFn(url.toString(), {
+                method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-API-KEY': parsed.apiKey, 'X-API-SECRET': parsed.apiSecret },
+                body: JSON.stringify(body),
+            });
+        } catch (error) {
+            if (error instanceof Error && error.name === 'TimeoutError') {
+                throw new Error('telemetry_upstream_timeout');
+            }
+            throw error;
+        }
         if (response.ok) return normalizeSparkMeterTelemetryPage(await response.json());
         await response.body?.cancel();
         if (attempt === 2 || (response.status !== 429 && response.status < 500)) {
