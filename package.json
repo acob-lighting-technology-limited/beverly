@@ -138,14 +138,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FrostGraphix/beverly.git"
+    "url": "git+https://github.com/acob-lighting-technology-limited/beverly.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/FrostGraphix/beverly/issues"
+    "url": "https://github.com/acob-lighting-technology-limited/beverly/issues"
   },
-  "homepage": "https://github.com/FrostGraphix/beverly#readme"
+  "homepage": "https://github.com/acob-lighting-technology-limited/beverly#readme"
 }

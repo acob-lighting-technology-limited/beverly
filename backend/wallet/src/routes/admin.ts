@@ -16,6 +16,7 @@ import { approveFundingRequest, rejectFundingRequest, listPendingFunding, reconc
 import { getBalance, captureHold, releaseHold } from '../services/ledger.js';
 import { setOwnerWalletStatus, setWalletStatus, WalletStateError } from '../services/wallets.js';
 import { auditFromRequest, logAction } from '../services/audit.js';
+import { deleteStaffAccount, StaffDeletionError } from '../services/staff-account-deletion.js';
 import { resolveAssessment } from '../services/fraud-engine.js';
 import { listStationDirectory, invalidateStationsCache, TokenEngineError, generateCreditToken, lookupMeter } from '../services/token-engine.js';
 import { resendRemoteSendOrder } from '../services/vending.js';
@@ -459,7 +460,6 @@ const OPEN_ADMIN_ROUTES = new Set([
     'GET /push/config',
     'POST /push/subscription',
     'DELETE /push/subscription',
-    'POST /push/test',
 ]);
 
 const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
@@ -474,6 +474,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'PATCH /access/users/:userId/suspension': 'wallet.access.manage',
     'POST /access/users/:userId/reset-password': 'wallet.access.manage',
     'POST /access/users/:userId/revoke-sessions': 'wallet.access.manage',
+    'DELETE /access/users/:userId': 'wallet.access.manage',
     'GET /stations': 'wallet.vending.monitor',
     'POST /stations/refresh': 'wallet.vending.monitor',
     'GET /vendor-applications': 'wallet.vendors.review',
@@ -1041,35 +1042,6 @@ const route: FastifyPluginAsync = async (fastify) => {
         return { ok: true };
     });
 
-    fastify.post('/push/test', async (req, reply) => {
-        const { portal } = z.object({ portal: z.enum(['admin', 'crm']) }).parse(req.body ?? {});
-        if (!pushConfig().available) {
-            return reply.code(503).send({ error: 'push_unavailable', message: 'Push notifications are not configured.' });
-        }
-        const now = new Date().toISOString();
-        await insertAnnouncementNotifications([{
-            customer_id: null,
-            recipient_type: 'staff',
-            recipient_id: req.actor!.userId,
-            type: 'push_test',
-            title: 'Beverly notifications enabled',
-            body: 'This device can receive operational updates.',
-            metadata: { path: '/notifications', portal },
-            read: false,
-            created_at: now,
-        }]);
-        const delivery = await sendWebPush('staff', req.actor!.userId, {
-            title: 'Beverly notifications enabled',
-            body: 'This device can receive operational updates.',
-            url: portal === 'admin' ? './notifications' : './',
-            tag: `beverly-${portal}-push-test`,
-        }, portal);
-        if (!delivery.sent) {
-            return reply.code(409).send({ error: 'push_subscription_missing', message: 'No active subscription exists for this device.' });
-        }
-        return { ok: true, delivery };
-    });
-
     fastify.post('/logout', async (req) => {
         try {
             await revokePortalSession(req.portalSessionKey).catch((err) => {
@@ -1198,24 +1170,48 @@ const route: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.get('/access', async () => {
-        const [roleResult, permissionResult, initialStaffResult, authUsers] = await Promise.all([
+        const [roleResult, permissionResult, initialStaffResult] = await Promise.all([
             adminClient.from('roles').select('*').order('role_key', { ascending: true }),
             adminClient.from('permissions').select('*').order('role_key', { ascending: true }),
             adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, station_ids, created_at, updated_at').order('updated_at', { ascending: false }).limit(300),
-            adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
         ]);
         const staffResult = missingColumn(initialStaffResult.error, 'station_ids')
             ? await adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, created_at, updated_at').order('updated_at', { ascending: false }).limit(300)
             : initialStaffResult;
         const roles = roleResult.data;
         const permissions = permissionResult.data;
+        const staff = (staffResult.data ?? []).map((row: any) => ({
+            ...row,
+            auth_user_id: row.auth_user_id ?? row.user_id ?? null,
+            last_sign_in_at: null,
+            confirmed_at: null,
+            suspended: false,
+        }));
+        return {
+            catalog: PERMISSION_CATALOG,
+            roles: roles ?? [],
+            permissions: permissions ?? [],
+            staff,
+            defaults: DEFAULT_ROLE_PERMISSIONS,
+        };
+    });
+
+    fastify.get('/access/staff-status', async () => {
+        const [initialStaffResult, authUsers] = await Promise.all([
+            adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, station_ids, created_at, updated_at').order('updated_at', { ascending: false }).limit(300),
+            adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+        ]);
+        const staffResult = missingColumn(initialStaffResult.error, 'station_ids')
+            ? await adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, created_at, updated_at').order('updated_at', { ascending: false }).limit(300)
+            : initialStaffResult;
         const staffRows = staffResult.data;
         const authById = new Map((authUsers.data?.users ?? []).map((user) => [user.id, user]));
+        const authByEmail = new Map((authUsers.data?.users ?? []).filter((user) => user.email).map((user) => [user.email!.trim().toLowerCase(), user]));
         const staff = (staffRows ?? []).map((row: any) => {
-            const authUser = authById.get(row.auth_user_id ?? row.user_id);
+            const authUser = authById.get(row.auth_user_id ?? row.user_id) ?? authByEmail.get(String(row.email ?? '').trim().toLowerCase());
             return {
                 ...row,
-                auth_user_id: row.auth_user_id ?? row.user_id ?? null,
+                auth_user_id: authUser?.id ?? row.auth_user_id ?? row.user_id ?? null,
                 email: row.email ?? authUser?.email ?? null,
                 user_name: row.user_name ?? authUser?.user_metadata?.full_name ?? authUser?.email ?? 'Staff user',
                 last_sign_in_at: authUser?.last_sign_in_at ?? null,
@@ -1224,13 +1220,7 @@ const route: FastifyPluginAsync = async (fastify) => {
                 auth_role: authUser?.user_metadata?.role_key ?? authUser?.app_metadata?.role_key ?? authUser?.user_metadata?.role ?? null,
             };
         });
-        return {
-            catalog: PERMISSION_CATALOG,
-            roles: roles ?? [],
-            permissions: permissions ?? [],
-            staff,
-            defaults: DEFAULT_ROLE_PERMISSIONS,
-        };
+        return { staff };
     });
 
     fastify.put('/access/roles/:roleKey/permissions', async (req, reply) => {
@@ -1639,6 +1629,32 @@ const route: FastifyPluginAsync = async (fastify) => {
             action: 'access.user.sessions_revoked', targetType: 'staff_user', targetId: userId,
         });
         return { ok: true, userId };
+    });
+
+    fastify.delete('/access/users/:userId', async (req, reply) => {
+        if (!requireAccessManager(req, reply)) return undefined;
+        const userId = z.string().uuid().parse((req.params as { userId: string }).userId);
+        z.object({ confirmation: z.literal('DELETE') }).parse(req.body);
+        try {
+            const requestAudit = auditFromRequest(req);
+            const result = await deleteStaffAccount({
+                targetUserId: userId,
+                actorUserId: req.actor!.userId,
+                actorRole: req.actor!.role,
+                auditContext: {
+                    ip: requestAudit.ip,
+                    userAgent: requestAudit.userAgent,
+                    correlationId: requestAudit.correlationId,
+                },
+            });
+            return { ok: true, ...result };
+        } catch (error) {
+            if (error instanceof StaffDeletionError) {
+                const status = error.code === 'staff_not_found' ? 404 : error.code === 'self_deletion_denied' ? 400 : error.code === 'audit_unavailable' ? 503 : 409;
+                return reply.code(status).send({ error: error.code, message: error.message });
+            }
+            throw error;
+        }
     });
 
     // ── stations directory (live from energy backend, 5-min cache) ──
