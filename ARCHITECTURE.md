@@ -124,6 +124,7 @@ Keep write safety strict.
 - Wallet Admin must not route to unprovisioned custom domains.
 - Wallet Admin developer console routes live under `/dev/*`.
 - Wallet Admin developer console requires `dev.console`.
+- `apps/admin/src/views/DevOemConsole.vue` presents the server's adapter catalog, authorized installation inventory, and installation-scoped telemetry. Inventory and telemetry use separate bounded cursor pages; selection generations reject stale asynchronous responses. Unknown energy semantics remain labeled and provider credit is not converted into billing. Catalog metadata is not live activation evidence. Unsupported registration and credential editing return explicit errors; this screen never simulates persistence or supplies provider credentials, endpoints, or tenant identifiers.
 
 ## Data Policy
 

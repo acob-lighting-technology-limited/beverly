@@ -25,3 +25,43 @@ describe('GET /dev/oem', () => {
         expect(response.body).not.toContain('Acobminigrid@gmail.com');
     });
 });
+
+describe('POST /dev/oem/:slug/credentials', () => {
+    it('rejects credentials when durable storage is unavailable', async () => {
+        const app = Fastify();
+        await app.register(adminDevRoutes);
+
+        const response = await app.inject({
+            method: 'POST',
+            url: '/dev/oem/sparkmeter/credentials',
+            payload: {
+                authStrategy: 'api_key_header',
+                baseUrl: 'https://www.sparkmeter.cloud',
+                bearerToken: 'synthetic-test-value',
+            },
+        });
+        await app.close();
+
+        expect(response.statusCode).toBe(501);
+        expect(response.json()).toMatchObject({
+            ok: false,
+            saved: false,
+        });
+        expect(response.body).not.toContain('synthetic-test-value');
+    });
+});
+
+describe('POST /dev/oem', () => {
+    it('rejects registration when durable provisioning is unavailable', async () => {
+        const app = Fastify();
+        await app.register(adminDevRoutes);
+        const response = await app.inject({
+            method: 'POST', url: '/dev/oem',
+            payload: { displayName: 'Synthetic Provider', slug: 'synthetic-provider' },
+        });
+        await app.close();
+        expect(response.statusCode).toBe(501);
+        expect(response.json()).toMatchObject({ ok: false });
+        expect(response.json()).not.toHaveProperty('oem');
+    });
+});

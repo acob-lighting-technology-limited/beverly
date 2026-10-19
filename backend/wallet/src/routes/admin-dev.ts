@@ -307,46 +307,19 @@ const adminDevRoutes: FastifyPluginAsync = async (fastify) => {
         ],
     }));
 
-    fastify.post('/dev/oem', async (req) => {
-        const body = z.object({
-            displayName: z.string().trim().min(2).max(100),
-            slug: z.string().trim().min(2).max(50).optional(),
-            vendingStrategy: z.enum(['sts_token', 'direct_credit']).default('sts_token'),
-            status: z.enum(['active', 'draft', 'deprecated']).default('draft'),
-        }).parse(req.body);
-
-        const slug = body.slug || body.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return {
-            ok: true,
-            oem: {
-                id: `oem_${Date.now()}`,
-                slug,
-                displayName: body.displayName,
-                status: body.status,
-                vendingStrategy: body.vendingStrategy,
-                capabilities: { remote_meter_tasks: true, vending: true },
-            },
-        };
+    fastify.post('/dev/oem', async (_req, reply) => {
+        return reply.code(501).send({
+            ok: false,
+            message: 'OEM registration is unavailable. Use the reviewed installation provisioning workflow.',
+        });
     });
 
-    fastify.post('/dev/oem/:slug/credentials', async (req) => {
-        const body = z.object({
-            authStrategy: z.enum(['bearer_static', 'bearer_login', 'api_key_header', 'oauth2_client_credentials']),
-            baseUrl: z.string().trim().min(1),
-            bearerToken: z.string().optional(),
-            apiKeyHeaderName: z.string().optional(),
-            username: z.string().optional(),
-            password: z.string().optional(),
-            tokenEndpointPath: z.string().optional(),
-        }).parse(req.body);
-
-        return {
-            ok: true,
-            saved: true,
-            authStrategy: body.authStrategy,
-            baseUrl: body.baseUrl,
-            message: 'OEM API Credentials encrypted & saved successfully.',
-        };
+    fastify.post('/dev/oem/:slug/credentials', async (_req, reply) => {
+        return reply.code(501).send({
+            ok: false,
+            saved: false,
+            message: 'OEM credential editing is unavailable. Provision installation credentials through the secured operator workflow.',
+        });
     });
 };
 

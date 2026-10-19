@@ -128,7 +128,6 @@ assert.match(bootstrap, /DEV_CONSOLE_PASSWORD/);
 assert.match(bootstrap, /route_hash', 'dev\.console'/);
 assert.match(pkg.scripts["dev-console:user"], /ensure-dev-console-user\.mjs/);
 assert.match(pkg.scripts["test:wallet"], /admin-dev-console-contract\.test\.cjs/);
-assert.match(oemConsoleView, /oem\.slug === 'sparkmeter'[\s\S]*?bearerToken: ''/);
 assert.match(oemConsoleView, /\/api\/v1\/oem\/installations/);
 assert.match(oemConsoleView, /\/reconciliation/);
 assert.match(oemConsoleView, /\/meters\?limit=/);

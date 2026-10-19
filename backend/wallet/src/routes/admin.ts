@@ -653,6 +653,9 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'GET /dev/schema': 'dev.console',
     'GET /dev/role-matrix': 'dev.console',
     'GET /dev/deploy-log': 'dev.console',
+    'GET /dev/oem': 'dev.console',
+    'POST /dev/oem': 'dev.console',
+    'POST /dev/oem/:slug/credentials': 'dev.console',
 };
 function adminRouteKey(req: FastifyRequest): string {
     const routeUrl = (req.routeOptions?.url ?? req.url.split('?')[0] ?? '').replace(/^\/api\/v1\/admin/, '') || '/';
