@@ -18,7 +18,9 @@ test('canonical route policy replaces regex financial classification', () => {
     assert.match(policy, /\/api\/v1\/vendor\/auth\/reset-verify/);
     assert.match(policy, /\/api\/v1\/vendor\/auth\/reset-confirm/);
     assert.match(policy, /\/api\/v1\/admin\/funding\/:id\/approve/);
-    assert.match(policy, /\/api\/v1\/admin\/access\/users\/:userId\/station/);
+    assert.match(policy, /\/api\/v1\/admin\/access\/users\/:userId'/);
+    assert.match(policy, /\/api\/v1\/admin\/auth\/password-login/);
+    assert.match(policy, /\/api\/v1\/admin\/account-setup/);
     assert.match(policy, /\/api\/v1\/admin\/customer-meters\/:id\/approve/);
     assert.match(policy, /\/api\/v1\/admin\/customer-meters\/:id\/reject/);
     assert.match(policy, /\/api\/v1\/admin\/customer-meters\/:id\/unlink/);

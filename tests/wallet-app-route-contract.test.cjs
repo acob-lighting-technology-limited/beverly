@@ -48,11 +48,11 @@ function main() {
     "fastify.delete('/access/roles/:roleKey'",
     "fastify.put('/access/roles/:roleKey/permissions'",
     "fastify.post('/access/users'",
-    "fastify.patch('/access/users/:userId/role'",
-    "fastify.patch('/access/users/:userId/station'",
+    "fastify.patch('/access/users/:userId'",
     "fastify.patch('/access/users/:userId/suspension'",
     "fastify.post('/access/users/:userId/reset-password'",
     "fastify.post('/access/users/:userId/revoke-sessions'",
+    "fastify.delete('/access/users/:userId'",
     "access.role.created",
     "access.role.updated",
     "access.role.deleted",
@@ -121,8 +121,13 @@ function main() {
     "enforceResourceStation(req, reply)",
     "station_required",
     "overlaps('operating_stations', stationIds)",
-    "stationIds: z.array",
     "scopeStations(query, assignedStations)",
+  ]);
+
+  assertMarkers("backend/wallet/src/services/staff-provisioning.ts", [
+    "updateStaffSchema",
+    "stationIds: z.array",
+    "allStations: z.boolean",
   ]);
 
   assertMarkers("backend/wallet/src/routes/staff-mfa.ts", [
