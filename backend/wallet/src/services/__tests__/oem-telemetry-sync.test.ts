@@ -166,6 +166,13 @@ describe('OEM telemetry synchronization', () => {
         })).rejects.toThrow('OEM telemetry synchronization failed');
     });
 
+    it('surfaces a safe upstream timeout classification', async () => {
+        await expect(runSparkMeterTelemetrySync([target], {
+            fetchPage: vi.fn().mockRejectedValue(new Error('telemetry_upstream_timeout')),
+            persistPage: vi.fn(),
+        })).rejects.toThrow('telemetry_upstream_timeout');
+    });
+
     it('rejects repeated cursors', async () => {
         const fetchPage = vi.fn().mockResolvedValue({ readings: [], quarantine: [], nextCursor: 'same', hasMore: true });
         await expect(runSparkMeterTelemetrySync([target], {

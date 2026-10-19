@@ -111,4 +111,16 @@ describe('SparkMeter Koios v2 telemetry client', () => {
             filters: { sites: ['11111111-1111-4111-8111-111111111111'], date_range: { from: '2026-10-01', to: '2026-10-07' } },
         });
     });
+
+    it('classifies an upstream timeout without retrying automatically', async () => {
+        const fetchFn = vi.fn().mockRejectedValue(new DOMException('request expired', 'TimeoutError'));
+        await expect(fetchSparkMeterTelemetryPage({
+            baseUrl: 'https://www.sparkmeter.cloud', approvedHostnames: ['www.sparkmeter.cloud'],
+            organizationId: 'org', apiKey: 'key', apiSecret: 'secret',
+            sites: ['11111111-1111-4111-8111-111111111111'], mode: 'historical',
+            dateFrom: '2026-10-18', dateTo: '2026-10-18', fetchFn,
+            validateEndpoint: vi.fn().mockResolvedValue('https://www.sparkmeter.cloud/'),
+        })).rejects.toThrow('telemetry_upstream_timeout');
+        expect(fetchFn).toHaveBeenCalledOnce();
+    });
 });

@@ -77,7 +77,8 @@ export async function runSparkMeterTelemetrySync(
         }
     }
     if (summary.failures.length) {
-        throw Object.assign(new Error('OEM telemetry synchronization failed'), { failures: summary.failures });
+        const reasons = [...new Set(summary.failures.map((failure) => failure.reason))].join(',');
+        throw Object.assign(new Error(`OEM telemetry synchronization failed: ${reasons}`), { failures: summary.failures });
     }
     return summary;
 }
