@@ -17,6 +17,7 @@ const routes: RouteRecordRaw[] = [
     { path: '/login', name: 'login', component: () => import('../views/Login.vue'), meta: { guest: true } },
     { path: '/forgot-password', name: 'forgot-password', component: () => import('../views/ForgotPassword.vue'), meta: { guest: true } },
     { path: '/reset-password', name: 'reset-password', component: () => import('../views/ResetPassword.vue'), meta: { guest: true } },
+    { path: '/setup-account', name: 'setup-account', component: () => import('../views/AccountSetup.vue'), meta: { guest: true } },
     { path: '/password-change', name: 'password-change', component: () => import('../views/PasswordChange.vue'), meta: { auth: true, allowReset: true } },
     { path: '/', name: 'dashboard', component: () => import('../views/Dashboard.vue'), meta: { auth: true, permission: 'wallet.dashboard.view' } },
     { path: '/applications', name: 'applications', component: () => import('../views/Applications.vue'), meta: { auth: true, permission: 'wallet.vendors.review' } },
@@ -83,12 +84,12 @@ router.beforeEach(async (to) => {
     const auth = useStaffAuthStore();
     if (!auth.hydrated) await auth.hydrate();
     if (to.meta.auth && !auth.isAuthenticated) return { name: 'login', query: { redirect: to.fullPath } };
-    if (auth.isAuthenticated && auth.user?.password_reset_required && to.name !== 'password-change' && !to.meta.allowReset) {
+    if (auth.isAuthenticated && auth.user?.password_reset_required && to.name !== 'password-change' && to.name !== 'setup-account' && !to.meta.allowReset) {
         return { name: 'password-change', query: { redirect: to.fullPath } };
     }
     // An authenticated staff session may still need its app-level MFA grant.
     // Keep the login route reachable for the challenge screen.
-    if (to.meta.guest && auth.isAuthenticated && to.query.reason !== 'mfa_required') return { name: 'dashboard' };
+    if (to.meta.guest && to.name !== 'setup-account' && auth.isAuthenticated && to.query.reason !== 'mfa_required') return { name: 'dashboard' };
     if (to.meta.auth) {
         // Hydration already validates the first route. Later refreshes happen
         // behind navigation, while every API request remains server-authorized.
