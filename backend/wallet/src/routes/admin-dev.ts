@@ -281,19 +281,19 @@ const adminDevRoutes: FastifyPluginAsync = async (fastify) => {
                 id: 'oem_sparkmeter',
                 slug: 'sparkmeter',
                 displayName: 'SparkMeter (Koios)',
-                status: 'active',
-                vendingStrategy: 'sts_token',
-                capabilities: { remote_meter_tasks: true, vending: true, tariff_management: true, customer_dissociation: true, relay_control: true },
+                status: 'draft',
+                vendingStrategy: 'unsupported',
+                capabilities: {
+                    inventory_reads_observed: true,
+                    write_operations_certified: false,
+                    production_activation_authorized: false,
+                    vending: false,
+                    customer_dissociation: false,
+                    relay_control: false,
+                },
                 metadata: {
-                    organizationId: 'c4c3e809-5487-43cf-be64-2826dbbb4f6d',
-                    projectRemoteId: '655ace31-6683-4521-b8ed-fcb7b32b287c',
-                    activeServiceAreaId: 'a6230885-e9d5-4882-9b31-58d889cf3f51',
-                    portfolioUrl: 'https://www.sparkmeter.cloud/portfolio/64bfd8cd-d361-4368-98c9-c0ea3730559d/',
                     baseUrl: 'https://www.sparkmeter.cloud',
-                    authStrategy: 'api_key_header',
-                    apiKeyHeaderName: 'X-Sparkmeter-Key',
-                    apiKey: 'FrsRkX0kFJlClx30TuY7P6iUkrRr4m34oHG55cdG1QE',
-                    userLoginEmail: 'Acobminigrid@gmail.com',
+                    certificationState: 'draft',
                 },
             },
             {
@@ -307,46 +307,19 @@ const adminDevRoutes: FastifyPluginAsync = async (fastify) => {
         ],
     }));
 
-    fastify.post('/dev/oem', async (req) => {
-        const body = z.object({
-            displayName: z.string().trim().min(2).max(100),
-            slug: z.string().trim().min(2).max(50).optional(),
-            vendingStrategy: z.enum(['sts_token', 'direct_credit']).default('sts_token'),
-            status: z.enum(['active', 'draft', 'deprecated']).default('draft'),
-        }).parse(req.body);
-
-        const slug = body.slug || body.displayName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return {
-            ok: true,
-            oem: {
-                id: `oem_${Date.now()}`,
-                slug,
-                displayName: body.displayName,
-                status: body.status,
-                vendingStrategy: body.vendingStrategy,
-                capabilities: { remote_meter_tasks: true, vending: true },
-            },
-        };
+    fastify.post('/dev/oem', async (_req, reply) => {
+        return reply.code(501).send({
+            ok: false,
+            message: 'OEM registration is unavailable. Use the reviewed installation provisioning workflow.',
+        });
     });
 
-    fastify.post('/dev/oem/:slug/credentials', async (req) => {
-        const body = z.object({
-            authStrategy: z.enum(['bearer_static', 'bearer_login', 'api_key_header', 'oauth2_client_credentials']),
-            baseUrl: z.string().trim().min(1),
-            bearerToken: z.string().optional(),
-            apiKeyHeaderName: z.string().optional(),
-            username: z.string().optional(),
-            password: z.string().optional(),
-            tokenEndpointPath: z.string().optional(),
-        }).parse(req.body);
-
-        return {
-            ok: true,
-            saved: true,
-            authStrategy: body.authStrategy,
-            baseUrl: body.baseUrl,
-            message: 'OEM API Credentials encrypted & saved successfully.',
-        };
+    fastify.post('/dev/oem/:slug/credentials', async (_req, reply) => {
+        return reply.code(501).send({
+            ok: false,
+            saved: false,
+            message: 'OEM credential editing is unavailable. Provision installation credentials through the secured operator workflow.',
+        });
     });
 };
 
