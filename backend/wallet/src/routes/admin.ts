@@ -2592,6 +2592,9 @@ const route: FastifyPluginAsync = async (fastify) => {
             tier0DailyLimitMinor: z.number().int().positive(),
             tier1DailyLimitMinor: z.number().int().positive(),
             tier2DailyLimitMinor: z.number().int().positive().nullable(),
+            tier0MeterLimit: z.number().int().positive(),
+            tier1MeterLimit: z.number().int().positive(),
+            tier2MeterLimit: z.number().int().positive(),
             expectedVersion: z.number().int().positive(),
             reason: z.string().trim().min(4).max(500),
         }).safeParse(req.body);

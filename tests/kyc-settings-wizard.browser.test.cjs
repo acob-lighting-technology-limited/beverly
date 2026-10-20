@@ -42,6 +42,7 @@ function startServer() {
     allowed_mime_types: ["image/jpeg", "application/pdf"],
     customer: { tier1: requirement(), tier2: requirement() }, vendor: { tier2: requirement() },
   };
+  let savedAvailability;
   let savedPolicy;
   await context.route("**/api/v1/admin/**", async (route) => {
     const request = route.request();
@@ -49,10 +50,14 @@ function startServer() {
     const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     if (pathname.endsWith("/me")) return json({ user: { id: "staff-1", email: "dev@example.test", full_name: "Developer", role: "developer" }, permissions: ["wallet.kyc.view", "wallet.kyc.settings.manage"] });
     if (pathname.endsWith("/kyc/settings/history")) return json({ history: [] });
-    if (pathname.endsWith("/kyc/settings")) return json({ policy: { tier0DailyLimitMinor: 20000000, tier1DailyLimitMinor: 70000000, tier2DailyLimitMinor: null, version: 1, updatedAt: "2026-10-12T12:00:00.000Z" } });
+    if (pathname.endsWith("/kyc/settings") && request.method() === "PUT") {
+      savedPolicy = request.postDataJSON();
+      return json({ policy: { ...savedPolicy, version: 2, updatedAt: "2026-10-12T12:00:00.000Z" } });
+    }
+    if (pathname.endsWith("/kyc/settings")) return json({ policy: { tier0DailyLimitMinor: 20000000, tier1DailyLimitMinor: 70000000, tier2DailyLimitMinor: null, tier0MeterLimit: 3, tier1MeterLimit: 5, tier2MeterLimit: 10, version: 1, updatedAt: "2026-10-12T12:00:00.000Z" } });
     if (pathname.endsWith("/kyc-policy") && request.method() === "PUT") {
-      savedPolicy = request.postDataJSON().policy;
-      return json({ policy: savedPolicy });
+      savedAvailability = request.postDataJSON().policy;
+      return json({ policy: savedAvailability });
     }
     if (pathname.endsWith("/kyc-policy")) return json({ policy: availability });
     return json({});
@@ -74,8 +79,17 @@ function startServer() {
   await page.getByRole("button", { name: "Save KYC requirements" }).click();
   await page.getByText("KYC requirements updated for customers and vendors.").waitFor();
 
-  assert.equal(savedPolicy.customer_scope, "all");
-  assert.equal(savedPolicy.vendor_scope, "new");
+  assert.equal(savedAvailability.customer_scope, "all");
+  assert.equal(savedAvailability.vendor_scope, "new");
+  await page.getByLabel("Tier 0 meter allowance").fill("4");
+  await page.getByLabel("Tier 1 meter allowance").fill("6");
+  await page.getByLabel("Tier 2 meter allowance").fill("12");
+  await page.getByLabel("Why are you changing this policy?").fill("Approved meter allowance update");
+  await page.getByRole("button", { name: "Save KYC policy" }).click();
+  await page.getByText("KYC limits and meter allowances updated. New meter links now use the policy.").waitFor();
+  assert.equal(savedPolicy.tier0MeterLimit, 4);
+  assert.equal(savedPolicy.tier1MeterLimit, 6);
+  assert.equal(savedPolicy.tier2MeterLimit, 12);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, "mobile wizard must not overflow");
   assert.deepEqual(consoleErrors, []);
 
