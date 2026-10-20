@@ -32,6 +32,9 @@ function main() {
   const fullRls = readMigration("20260702150000_full_rls_permissions.sql") + vendorTransfers;
   const staffMultiStation = readMigration("20260714150000_staff_multi_station_scope.sql");
   const liveWriteActivation = readMigration("20260703100000_enable_live_writes.sql");
+  const recoveredStaffOrphan = readMigration("20261013183000_remove_deleted_alexander_staff_orphan.sql");
+  const recoveredMeterHistory = readMigration("20261016160000_customer_meter_unlink_history_fk.sql");
+  const meterAllowance = readMigration("20261020110000_enforce_customer_meter_tier_allowance.sql");
 
   const requiredTables = [
     "roles",
@@ -177,6 +180,10 @@ function main() {
     );
   }
   assert(liveWriteActivation.includes("enabled = excluded.enabled"), "live-write activation must update existing flags");
+  assert(recoveredStaffOrphan.includes("o.alexander@acoblighting.com"), "missing recovered staff orphan migration source");
+  assert(recoveredMeterHistory.includes("customer_meter_id, customer_id"), "missing recovered meter unlink history migration source");
+  assert(meterAllowance.includes("pg_advisory_xact_lock"), "meter allowance must serialize concurrent links");
+  assert(meterAllowance.includes("customer_meter_limit_reached"), "meter allowance must reject over-cap links");
   for (const helper of [
     "private.current_staff_role",
     "private.has_permission",

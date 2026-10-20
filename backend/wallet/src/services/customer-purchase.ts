@@ -861,7 +861,15 @@ export async function linkMeter(customerId: string, customerUserId: string, mete
         }).eq('id', existing.id).eq('status', 'rejected')
         : adminClient.from('customer_meters').insert(linkValues);
     const { data, error } = await linkMutation.select('*').maybeSingle();
-    if (error) throw new CustomerPurchaseError(error.message, 'link_failed');
+    if (error) {
+        if (error.message.includes('customer_meter_limit_reached')) {
+            throw new CustomerPurchaseError(`Maximum ${meterCap} meters per account at your verification level.`, 'meter_limit');
+        }
+        if (error.message.includes('customer_meter_policy_unavailable')) {
+            throw new CustomerPurchaseError('Meter limits are unavailable. Please try again shortly.', 'meter_limit_unavailable');
+        }
+        throw new CustomerPurchaseError(error.message, 'link_failed');
+    }
     if (!data) throw new CustomerPurchaseError('This meter link is already awaiting review.', 'already_pending');
 
     await logAction({
