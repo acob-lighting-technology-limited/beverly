@@ -21,5 +21,8 @@ assert.match(customerDetail, /filteredWalletEntries/, 'Wallet table needs filter
 assert.match(customerDetail, /filteredPurchases/, 'Purchase table needs filters');
 assert.match(customerDetail, /filteredFunding/, 'Funding table needs filters');
 assert.match(customerDetail, /normalizedFundingChannel/, 'Funding channel rendering must support bank transfers');
+assert.match(customerDetail, /customers\/\$\{id\}\/wallet\?limit=200/, 'Wallet filters must cover the supported detail window');
+assert.match(customerDetail, /customers\/\$\{id\}\/purchases\?limit=200/, 'Purchase filters must cover the supported detail window');
+assert.match(customerDetail, /customers\/\$\{id\}\/funding\?limit=200/, 'Funding filters must cover the supported detail window');
 
 console.log('admin filter pipeline contract passed');
