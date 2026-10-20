@@ -61,14 +61,26 @@ Never repair production history blindly.
 Reconcile remote-only versions:
 
 ```powershell
-npx supabase migration fetch --linked
-git status --short
+git log --all -- supabase/migrations
+git show <commit>:supabase/migrations/<version>_<name>.sql
 ```
 
-Keep only missing remote migrations.
-Restore any overwritten local migrations.
-Review every fetched SQL file.
+Restore only exact reviewed sources.
+Never create placeholder SQL.
+Verify production schema effects.
+Record history only afterwards.
 Then rerun the three checks.
+
+For a local-only version:
+
+```powershell
+# Rehearse the exact SQL inside ROLLBACK first.
+npx supabase db query --linked "begin; <reviewed SQL>; rollback;"
+
+# Apply only after rehearsal.
+npx supabase db query --linked --file supabase/migrations/<version>_<name>.sql
+npx supabase migration repair --linked --status applied <version>
+```
 
 Apply only from reviewed CI:
 
