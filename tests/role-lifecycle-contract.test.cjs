@@ -10,6 +10,7 @@ const routes = read("backend/wallet/src/routes/admin.ts");
 const view = read("apps/admin/src/views/RolesPermissions.vue");
 const adminVite = read("apps/admin/vite.config.ts");
 const migration = read("supabase/migrations/20260924133000_atomic_role_lifecycle.sql");
+const customRoleFix = read("supabase/migrations/20261020120000_fix_custom_role_creation.sql");
 const permissionRoute = routes.slice(
   routes.indexOf("fastify.put('/access/roles/:roleKey/permissions'"),
   routes.indexOf("fastify.post('/access/roles'"),
@@ -42,6 +43,8 @@ assert.match(migration, /for update/, "Deletion must lock the role before checki
 assert.match(migration, /p_role_key not like 'custom-%'/, "Database functions must protect system roles");
 assert.match(migration, /'dev\.console' = any/, "Database functions must protect developer access");
 assert.match(migration, /p_role_key like 'custom-%'[\s\S]*'dev\.console' = any/, "Permission replacement must preserve custom-role restrictions");
+assert.match(customRoleFix, /insert into public\.roles \(role_key, role_name, label, description\)/, "Custom roles must not write non-enum keys into roles.name");
+assert.doesNotMatch(customRoleFix, /\(name, role_key/, "Custom roles must leave the legacy enum-backed name null");
 assert.match(migration, /grant execute .* to service_role/g, "Only backend services may mutate roles");
 
 assert.match(view, /title: 'Delete custom role'/, "Deletion must require confirmation");
