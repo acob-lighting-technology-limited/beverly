@@ -58,18 +58,18 @@ async function switchTab(t: Tab) {
     tab.value = t;
     if (t === 'wallet' && !wallet.value) {
         tabLoading.value = true;
-        try { wallet.value = await api.get<any>(`/api/v1/admin/customers/${id}/wallet`); }
+        try { wallet.value = await api.get<any>(`/api/v1/admin/customers/${id}/wallet?limit=200`); }
         catch { wallet.value = { entries: [] }; }
         finally { tabLoading.value = false; }
     }
     if (t === 'purchases' && !purchases.value.length) {
         tabLoading.value = true;
-        try { purchases.value = (await api.get<any>(`/api/v1/admin/customers/${id}/purchases`)).purchases; }
+        try { purchases.value = (await api.get<any>(`/api/v1/admin/customers/${id}/purchases?limit=200`)).purchases; }
         finally { tabLoading.value = false; }
     }
     if (t === 'funding' && !funding.value.length) {
         tabLoading.value = true;
-        try { funding.value = (await api.get<any>(`/api/v1/admin/customers/${id}/funding`)).funding; }
+        try { funding.value = (await api.get<any>(`/api/v1/admin/customers/${id}/funding?limit=200`)).funding; }
         finally { tabLoading.value = false; }
     }
 }
