@@ -20,6 +20,11 @@ assert.match(vendor, /allow-daily-csv-archive/, 'vendor transactions must expose
 assert.match(admin, /vendors\/:id\/reconciliation/, 'vendor money view needs a ledger reconciliation route');
 assert.match(admin, /ledgerDifference/, 'reconciliation must compare ledger net to live balance');
 assert.match(wallets, /dailyCapMinor: dailyCapMinor\.value/, 'empty caps must be persisted as null');
+assert.match(wallets, /Daily cap \(₦\)/, 'wallet cap labels must render naira correctly');
+assert.match(wallets, /step="0\.01"/, 'wallet caps must accept supported cent precision');
+assert.match(wallets, /limit-reason-input/, 'wallet limit reason must fill the dialog');
 assert.match(admin, /Monthly cap cannot be lower/, 'backend must reject inconsistent cap pairs');
+assert.match(admin, /purchase_debits_minor/, 'vendor bridge must separate purchase debits');
+assert.match(admin, /other_debits_minor/, 'vendor bridge must expose other debits');
 
 console.log('financial integrity and export contract passed');

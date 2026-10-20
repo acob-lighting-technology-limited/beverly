@@ -259,7 +259,7 @@ async function loadAllHistory(path: string, key: string) {
         first ??= page;
         rows.push(...(page[key] ?? []));
         cursor = page.nextCursor ?? null;
-        if (cursor && seen.has(cursor)) break;
+        if (cursor && seen.has(cursor)) throw new Error('History pagination repeated a page.');
         if (cursor) seen.add(cursor);
     } while (cursor);
     return { ...(first ?? {}), [key]: rows, nextCursor: null };
@@ -322,7 +322,7 @@ async function switchTab(t: Tab) {
     if (t === 'wallet' && !wallet.value) {
         tabLoading.value = true;
         try { wallet.value = await loadAllHistory(`/api/v1/admin/vendors/${id}/wallet`, 'entries'); }
-        catch { wallet.value = { entries: [] }; }
+        catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load wallet history.' }; }
         finally { tabLoading.value = false; }
     }
     if (t === 'transactions' && !transactions.value.length) {
@@ -331,7 +331,7 @@ async function switchTab(t: Tab) {
             const r = await loadAllHistory(`/api/v1/admin/vendors/${id}/transactions`, 'transactions');
             transactions.value = r.transactions ?? r.purchases ?? [];
         }
-        catch { transactions.value = []; }
+        catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load transactions.' }; }
         finally { tabLoading.value = false; }
     }
     if (t === 'funding' && !funding.value.length) {
@@ -340,7 +340,7 @@ async function switchTab(t: Tab) {
             const r = await loadAllHistory(`/api/v1/admin/vendors/${id}/funding`, 'funding');
             funding.value = r.funding ?? r.items ?? [];
         }
-        catch { funding.value = []; }
+        catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load funding history.' }; }
         finally { tabLoading.value = false; }
     }
     if (t === 'staff' && !staff.value.length) {
@@ -622,11 +622,13 @@ onMounted(loadDetail);
       <div v-if="tab === 'overview'" class="bw-card">
         <div v-if="reconciliation" :class="['integrity-panel', reconciliation.status]">
           <div><span>Ledger check</span><strong>{{ reconciliation.status === 'balanced' ? 'Records agree' : reconciliation.status === 'unavailable' ? 'Unavailable' : 'Review needed' }}</strong></div>
-          <div><span>Credits</span><strong>{{ reconciliation.credits_minor == null ? '—' : naira(reconciliation.credits_minor) }}</strong></div>
-          <div><span>Debits</span><strong>{{ reconciliation.debits_minor == null ? '—' : naira(reconciliation.debits_minor) }}</strong></div>
+          <div><span>Funding in</span><strong>{{ reconciliation.funding_credits_minor == null ? '—' : naira(reconciliation.funding_credits_minor) }}</strong></div>
+          <div><span>Other in</span><strong>{{ reconciliation.other_credits_minor == null ? '—' : naira(reconciliation.other_credits_minor) }}</strong></div>
+          <div><span>Purchase out</span><strong>{{ reconciliation.purchase_debits_minor == null ? '—' : naira(reconciliation.purchase_debits_minor) }}</strong></div>
+          <div><span>Other out</span><strong>{{ reconciliation.other_debits_minor == null ? '—' : naira(reconciliation.other_debits_minor) }}</strong></div>
           <div><span>Live balance</span><strong>{{ reconciliation.live_balance_minor == null ? '—' : naira(reconciliation.live_balance_minor) }}</strong></div>
           <p v-if="reconciliation.status !== 'balanced'">{{ reconciliation.message }}</p>
-          <p v-else>Internal ledger and settled purchases agree. Gateway reconciliation remains separate.</p>
+          <p v-else>Funding and other credits, less purchases and other debits, equal this wallet balance. Gateway reconciliation remains separate.</p>
         </div>
         <div class="overview-heading">
           <h2>Vendor details</h2>
@@ -1133,6 +1135,7 @@ onMounted(loadDetail);
 .integrity-panel { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3); margin-bottom:var(--s-4); padding:var(--s-3); border:1px solid var(--border); border-radius:var(--r-md); background:var(--surface-2); }
 .integrity-panel > div { display:grid; gap:4px; }.integrity-panel span { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }.integrity-panel strong { font-family:var(--font-mono); }
 .integrity-panel.balanced { border-color:oklch(from var(--brand) l c h / .35); }.integrity-panel.attention { border-color:oklch(from var(--danger) l c h / .55); }.integrity-panel p { grid-column:1/-1; margin:0; color:var(--danger); font-size:var(--t-sm); }
+.integrity-panel.balanced p { color:var(--text-muted); }
 @media (max-width:700px) { .integrity-panel { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .vendor-table-toolbar + .bw-card { border-top-left-radius:0; border-top-right-radius:0; }
 .vendor-filter-fields { display:flex; align-items:end; gap:var(--s-2); flex:1; flex-wrap:wrap; }

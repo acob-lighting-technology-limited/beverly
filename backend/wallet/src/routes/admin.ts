@@ -56,6 +56,7 @@ import { decideKycReview, getKycReviewDocumentUrl, KycReviewError, listKycReview
 import { getKycTierPolicy, KycTierPolicyError, updateKycTierPolicy } from '../services/kyc-tier-policy.js';
 import { replaceStaffPassword, StaffPasswordChangeError } from '../services/staff-password-change.js';
 import { provisionStaff, sendStaffPasswordSetup, updateStaff, StaffProvisioningError } from '../services/staff-provisioning.js';
+import { applyPurchasePageCursor, purchasePageCursor } from './purchase-pagination.js';
 function csvEscape(v: unknown): string {
     if (v === null || v === undefined) return '';
     const s = typeof v === 'string' ? v : JSON.stringify(v);
@@ -758,14 +759,30 @@ function missingColumn(error: { message?: string } | null, column: string) {
 }
 
 async function stationOwnerIds(stationIds: string[]): Promise<{ vendors: Set<string>; customers: Set<string> }> {
-    const [{ data: vendors }, { data: meters }] = await Promise.all([
-        adminClient.from('vendor_organizations').select('id').overlaps('operating_stations', stationIds),
-        adminClient.from('customer_meters').select('customer_id').in('station_id', stationIds),
+    const pageSize = 1_000;
+    const vendors = new Set<string>();
+    const customers = new Set<string>();
+    await Promise.all([
+        (async () => {
+            for (let offset = 0; ; offset += pageSize) {
+                const { data, error } = await adminClient.from('vendor_organizations').select('id')
+                    .overlaps('operating_stations', stationIds).order('id').range(offset, offset + pageSize - 1);
+                if (error) throw error;
+                for (const row of data ?? []) vendors.add(row.id);
+                if ((data?.length ?? 0) < pageSize) break;
+            }
+        })(),
+        (async () => {
+            for (let offset = 0; ; offset += pageSize) {
+                const { data, error } = await adminClient.from('customer_meters').select('id, customer_id')
+                    .in('station_id', stationIds).order('id').range(offset, offset + pageSize - 1);
+                if (error) throw error;
+                for (const row of data ?? []) customers.add(row.customer_id);
+                if ((data?.length ?? 0) < pageSize) break;
+            }
+        })(),
     ]);
-    return {
-        vendors: new Set((vendors ?? []).map((row: any) => row.id)),
-        customers: new Set((meters ?? []).map((row: any) => row.customer_id)),
-    };
+    return { vendors, customers };
 }
 
 async function enforceResourceStation(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
@@ -2017,11 +2034,13 @@ const route: FastifyPluginAsync = async (fastify) => {
         let query = adminClient.from('purchase_orders').select('*')
             .eq('actor_type', 'vendor').eq('actor_id', id)
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .limit(Math.min(Number(limit ?? 50), 200));
-        if (cursor) query = query.lt('created_at', cursor);
-        const { data } = await query;
+        query = applyPurchasePageCursor(query, cursor);
+        const { data, error } = await query;
+        if (error) throw error;
         const rows = await enrichPurchaseRows(data ?? []);
-        const nextCursor = rows.length === Math.min(Number(limit ?? 50), 200) ? rows[rows.length - 1].created_at : null;
+        const nextCursor = rows.length === Math.min(Number(limit ?? 50), 200) ? purchasePageCursor(rows[rows.length - 1]) : null;
         return { transactions: rows, nextCursor };
     });
 
@@ -2055,11 +2074,16 @@ const route: FastifyPluginAsync = async (fastify) => {
         }
         const credits = ledgerRows.filter((row) => row.direction === 'credit').reduce((sum, row) => sum + Number(row.amount_minor ?? 0), 0);
         const debits = ledgerRows.filter((row) => row.direction === 'debit').reduce((sum, row) => sum + Number(row.amount_minor ?? 0), 0);
+        const fundingCredits = ledgerRows.filter((row) => row.direction === 'credit' && ['funding_credit', 'payment_credit'].includes(row.entry_type))
+            .reduce((sum, row) => sum + Number(row.amount_minor ?? 0), 0);
         const purchaseDebits = new Map<string, number>();
+        const unlinkedPurchaseDebits = ledgerRows.filter((row) => row.direction === 'debit' && row.entry_type === 'purchase_debit'
+            && (row.reference_type !== 'purchase_order' || !row.reference_id));
         for (const row of ledgerRows) {
-            if (row.entry_type !== 'purchase_debit' || row.reference_type !== 'purchase_order' || !row.reference_id) continue;
+            if (row.direction !== 'debit' || row.entry_type !== 'purchase_debit' || row.reference_type !== 'purchase_order' || !row.reference_id) continue;
             purchaseDebits.set(String(row.reference_id), (purchaseDebits.get(String(row.reference_id)) ?? 0) + Number(row.amount_minor ?? 0));
         }
+        const purchaseDebitMinor = [...purchaseDebits.values()].reduce((sum, amount) => sum + amount, 0);
         const settledPurchases = purchases.filter((row) => ['delivered', 'completed'].includes(String(row.status)));
         const unmatchedPurchases = settledPurchases.filter((row) => purchaseDebits.get(String(row.id)) !== Number(row.amount_minor ?? 0));
         const purchaseIds = new Set(purchases.map((row) => String(row.id)));
@@ -2068,16 +2092,22 @@ const route: FastifyPluginAsync = async (fastify) => {
         const balance = await getBalance((wallet as any).id);
         const complete = ledgerRows.length < cap && purchases.length < cap;
         const ledgerDifference = credits - debits - balance.ledgerBalanceMinor;
-        const balanced = complete && ledgerDifference === 0 && !unmatchedPurchases.length && !orphanPurchaseDebits.length && !unsettledPurchaseDebits.length;
+        const balanced = complete && ledgerDifference === 0 && !unmatchedPurchases.length && !orphanPurchaseDebits.length
+            && !unsettledPurchaseDebits.length && !unlinkedPurchaseDebits.length;
         return {
             status: balanced ? 'balanced' : 'attention',
-            message: !complete ? 'Audit limit reached. Narrow the vendor history before confirming a balance.'
+            message: !complete ? 'Audit limit reached. Full-history review is required before confirming a balance.'
                 : ledgerDifference !== 0 ? 'Ledger entries do not equal the current balance.'
-                    : unmatchedPurchases.length || orphanPurchaseDebits.length || unsettledPurchaseDebits.length ? 'Purchase records need operational review.'
+                    : unmatchedPurchases.length || orphanPurchaseDebits.length || unsettledPurchaseDebits.length || unlinkedPurchaseDebits.length
+                        ? 'Purchase records need operational review.'
                         : 'Ledger credits, debits, and settled purchases agree.',
             complete,
             credits_minor: credits,
             debits_minor: debits,
+            funding_credits_minor: fundingCredits,
+            other_credits_minor: credits - fundingCredits,
+            purchase_debits_minor: purchaseDebitMinor,
+            other_debits_minor: debits - purchaseDebitMinor,
             live_balance_minor: balance.ledgerBalanceMinor,
             active_holds_minor: balance.activeHoldsMinor,
             ledger_difference_minor: ledgerDifference,
@@ -2085,6 +2115,7 @@ const route: FastifyPluginAsync = async (fastify) => {
             unmatched_purchase_minor: unmatchedPurchases.reduce((sum, row) => sum + Number(row.amount_minor ?? 0), 0),
             orphan_purchase_debit_count: orphanPurchaseDebits.length,
             unsettled_purchase_debit_count: unsettledPurchaseDebits.length,
+            unlinked_purchase_debit_count: unlinkedPurchaseDebits.length,
         };
     });
 
@@ -2894,11 +2925,13 @@ const route: FastifyPluginAsync = async (fastify) => {
         let query = adminClient.from('purchase_orders').select('*')
             .eq('customer_id', id)
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .limit(Math.min(Number(limit ?? 50), 200));
-        if (cursor) query = query.lt('created_at', cursor);
-        const { data } = await query;
+        query = applyPurchasePageCursor(query, cursor);
+        const { data, error } = await query;
+        if (error) throw error;
         const rows = data ?? [];
-        const nextCursor = rows.length === Math.min(Number(limit ?? 50), 200) ? rows[rows.length - 1].created_at : null;
+        const nextCursor = rows.length === Math.min(Number(limit ?? 50), 200) ? purchasePageCursor(rows[rows.length - 1]) : null;
         return { purchases: rows, nextCursor };
     });
 
@@ -3064,6 +3097,7 @@ const route: FastifyPluginAsync = async (fastify) => {
 
         let query = adminClient.from('purchase_orders').select('*')
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .limit(Math.min(Number(limit ?? 100), 500));
         if (status)    query = query.eq('status', status);
         const assignedStations = staffStations(req);
@@ -3074,7 +3108,7 @@ const route: FastifyPluginAsync = async (fastify) => {
         if (meterType) query = query.eq('meter_type', meterType);
         if (since)     query = query.gte('created_at', since);
         if (until)     query = query.lte('created_at', until);
-        if (cursor)    query = query.lt('created_at', cursor);
+        query = applyPurchasePageCursor(query, cursor);
         if (q) {
             const safeQ = cleanSearchTerm(q);
             if (safeQ) {
@@ -3084,10 +3118,10 @@ const route: FastifyPluginAsync = async (fastify) => {
             }
         }
         const { data, error } = await query;
-        if (error) return { purchases: [], error: error.message };
+        if (error) throw error;
         const rows = await enrichPurchaseRows(data ?? []);
         const nextCursor = rows.length === Math.min(Number(limit ?? 100), 500)
-            ? rows[rows.length - 1].created_at : null;
+            ? purchasePageCursor(rows[rows.length - 1]) : null;
         return { purchases: rows, nextCursor };
     });
 
