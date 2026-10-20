@@ -1646,7 +1646,8 @@ const route: FastifyPluginAsync = async (fastify) => {
             .order('created_at', { ascending: false })
             .limit(200);
         if (status) query = query.eq('status', status);
-        if (q) query = query.ilike('legal_name', `%${q}%`);
+        const safeQ = cleanSearchTerm(q);
+        if (safeQ) query = query.or(`legal_name.ilike.%${safeQ}%,trading_name.ilike.%${safeQ}%,contact_email.ilike.%${safeQ}%,contact_phone.ilike.%${safeQ}%`);
         if (stationId) query = query.eq('station_id', stationId);
         const assignedStations = staffStations(req);
         if (assignedStations) query = query.overlaps('operating_stations', assignedStations);
@@ -1654,7 +1655,7 @@ const route: FastifyPluginAsync = async (fastify) => {
         if (error && String(error.message || '').includes('deleted_at')) {
             let fallback = adminClient.from('vendor_organizations').select('*').order('created_at', { ascending: false }).limit(200);
             if (status) fallback = fallback.eq('status', status);
-            if (q) fallback = fallback.ilike('legal_name', `%${q}%`);
+            if (safeQ) fallback = fallback.or(`legal_name.ilike.%${safeQ}%,trading_name.ilike.%${safeQ}%,contact_email.ilike.%${safeQ}%,contact_phone.ilike.%${safeQ}%`);
             if (stationId) fallback = fallback.eq('station_id', stationId);
             if (assignedStations) fallback = fallback.overlaps('operating_stations', assignedStations);
             const retry = await fallback;
@@ -2078,14 +2079,27 @@ const route: FastifyPluginAsync = async (fastify) => {
 
     // ── funding history (all statuses, filterable) ──
     fastify.get('/funding/history', async (req) => {
-        const { status, channel, from, to, limit, cursor } = req.query as {
+        const { status, channel, from, to, q, limit, cursor } = req.query as {
             status?: string; channel?: string; from?: string; to?: string;
-            limit?: string; cursor?: string;
+            q?: string; limit?: string; cursor?: string;
         };
         const assignedStations = staffStations(req);
         const scopedOwners = assignedStations ? await stationOwnerIds(assignedStations) : null;
         if (scopedOwners && !scopedOwners.vendors.size && !scopedOwners.customers.size) return { funding: [], nextCursor: null, summary: null };
         const pageSize = Math.min(Number(limit ?? 50), 200);
+        const safeQ = cleanSearchTerm(q);
+        const ownerFilters: string[] = [];
+        if (safeQ) {
+            const [customerSearch, vendorSearch] = await Promise.all([
+                adminClient.from('customers').select('id').or(`full_name.ilike.%${safeQ}%,email.ilike.%${safeQ}%,phone.ilike.%${safeQ}%`).limit(200),
+                adminClient.from('vendor_organizations').select('id').or(`legal_name.ilike.%${safeQ}%,trading_name.ilike.%${safeQ}%,contact_email.ilike.%${safeQ}%,contact_phone.ilike.%${safeQ}%`).limit(200),
+            ]);
+            const customerIds = (customerSearch.data ?? []).map((row: any) => row.id).filter(Boolean);
+            const vendorIds = (vendorSearch.data ?? []).map((row: any) => row.id).filter(Boolean);
+            ownerFilters.push(`funding_reference.ilike.%${safeQ}%`, `submitted_by.ilike.%${safeQ}%`);
+            if (customerIds.length) ownerFilters.push(`customer_id.in.(${customerIds.join(',')})`);
+            if (vendorIds.length) ownerFilters.push(`vendor_organization_id.in.(${vendorIds.join(',')})`);
+        }
         let query = adminClient
             .from('funding_requests')
             .select('*, vendor_organizations(legal_name, trading_name, contact_email, contact_phone), customers(full_name, email, phone)')
@@ -2096,6 +2110,7 @@ const route: FastifyPluginAsync = async (fastify) => {
         if (channel && channel !== 'all') query = query.eq('channel', channel);
         if (from)   query = query.gte('created_at', new Date(from).toISOString());
         if (to)     query = query.lte('created_at', new Date(new Date(to).setHours(23, 59, 59, 999)).toISOString());
+        if (ownerFilters.length) query = query.or(ownerFilters.join(','));
         if (cursor) query = query.lt('created_at', cursor);
         const { data } = await query;
         const scopedRows = scopedOwners ? (data ?? []).filter((row: any) => row.owner_type === 'customer'
@@ -2137,6 +2152,7 @@ const route: FastifyPluginAsync = async (fastify) => {
             if (from)    aggQ = aggQ.gte('created_at', new Date(from).toISOString());
             if (to)      aggQ = aggQ.lte('created_at', new Date(new Date(to).setHours(23, 59, 59, 999)).toISOString());
             if (channel && channel !== 'all') aggQ = aggQ.eq('channel', channel);
+            if (ownerFilters.length) aggQ = aggQ.or(ownerFilters.join(','));
             const { data: agg } = await aggQ.limit(10_000);
             const rows2 = (scopedOwners ? (agg ?? []).filter((row: any) => row.owner_type === 'customer'
                 ? scopedOwners.customers.has(row.customer_id)
@@ -2747,12 +2763,14 @@ const route: FastifyPluginAsync = async (fastify) => {
         const { getBalance } = await import('../services/ledger.js');
         const balance = wallet ? await getBalance((wallet as any).id).catch(() => null) : null;
 
-        const [meters, purchaseAgg, fundingAgg] = await Promise.all([
+        const [meters, purchaseAgg, paymentFundingAgg, bankFundingAgg] = await Promise.all([
             adminClient.from('customer_meters').select('id, station_id').eq('customer_id', id),
             adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' }).eq('customer_id', id),
             adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
                 .eq('actor_type', 'customer').eq('actor_id', id).eq('purpose', 'wallet_funding')
                 .in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)),
+            adminClient.from('funding_requests').select('amount_minor', { count: 'exact' })
+                .eq('customer_id', id).eq('channel', 'bank_transfer').eq('status', 'approved'),
         ]);
         const sum = (arr: any[] | null | undefined) => (arr ?? []).reduce((s, r) => s + Number(r.amount_minor ?? 0), 0);
 
@@ -2771,8 +2789,8 @@ const route: FastifyPluginAsync = async (fastify) => {
                 meterCount:        meters.data?.length ?? 0,
                 purchaseCount:     purchaseAgg.count ?? 0,
                 purchaseValueMinor: sum(purchaseAgg.data),
-                fundingCount:      fundingAgg.count ?? 0,
-                fundingValueMinor: sum(fundingAgg.data),
+                fundingCount:      (paymentFundingAgg.count ?? 0) + (bankFundingAgg.count ?? 0),
+                fundingValueMinor: sum(paymentFundingAgg.data) + sum(bankFundingAgg.data),
             },
         };
     });
@@ -2813,18 +2831,37 @@ const route: FastifyPluginAsync = async (fastify) => {
         return { purchases: rows, nextCursor };
     });
 
-    // Customer funding history (Paystack top-ups via payment_transactions).
+    // Customer funding history combines gateway payments and bank proofs.
     fastify.get('/customers/:id/funding', async (req) => {
         const id = (req.params as { id: string }).id;
         const { limit, cursor } = req.query as { limit?: string; cursor?: string };
-        let query = adminClient.from('payment_transactions').select('*')
+        const pageSize = Math.min(Number(limit ?? 50), 200);
+        let paymentQuery = adminClient.from('payment_transactions').select('*')
             .eq('actor_type', 'customer').eq('actor_id', id).eq('purpose', 'wallet_funding')
             .order('created_at', { ascending: false })
-            .limit(Math.min(Number(limit ?? 50), 200));
-        if (cursor) query = query.lt('created_at', cursor);
-        const { data } = await query;
-        const rows = data ?? [];
-        const nextCursor = rows.length === Math.min(Number(limit ?? 50), 200) ? rows[rows.length - 1].created_at : null;
+            .limit(pageSize);
+        let bankQuery = adminClient.from('funding_requests').select('*')
+            .eq('customer_id', id).eq('channel', 'bank_transfer')
+            .order('created_at', { ascending: false })
+            .limit(pageSize);
+        if (cursor) {
+            paymentQuery = paymentQuery.lt('created_at', cursor);
+            bankQuery = bankQuery.lt('created_at', cursor);
+        }
+        const [{ data: payments, error: paymentError }, { data: bankFunding, error: bankError }] = await Promise.all([paymentQuery, bankQuery]);
+        if (paymentError) throw paymentError;
+        if (bankError) throw bankError;
+        const rows = [
+            ...(payments ?? []).map((row: any) => ({ ...row, record_source: 'gateway_payment', gateway: row.gateway ?? 'paystack' })),
+            ...(bankFunding ?? []).map((row: any) => ({
+                ...row,
+                id: `funding:${row.id}`,
+                record_source: 'bank_transfer',
+                gateway: 'bank_transfer',
+                gateway_reference: row.funding_reference,
+            })),
+        ].sort((a: any, b: any) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, pageSize);
+        const nextCursor = rows.length === pageSize ? rows[rows.length - 1].created_at : null;
         return { funding: rows, nextCursor };
     });
 
