@@ -163,7 +163,14 @@ describe('OEM telemetry synchronization', () => {
         await expect(runSparkMeterTelemetrySync([target], {
             fetchPage: vi.fn().mockRejectedValue(new Error('transport unavailable')),
             persistPage: vi.fn(),
-        })).rejects.toThrow('OEM telemetry synchronization failed');
+        })).rejects.toThrow('telemetry_fetch_failed');
+    });
+
+    it('identifies a failed database persist', async () => {
+        await expect(runSparkMeterTelemetrySync([target], {
+            fetchPage: vi.fn().mockResolvedValue({ readings: [], quarantine: [], nextCursor: null, hasMore: false }),
+            persistPage: vi.fn().mockRejectedValue(new Error('database unavailable')),
+        })).rejects.toThrow('telemetry_persist_failed');
     });
 
     it('surfaces a safe upstream timeout classification', async () => {

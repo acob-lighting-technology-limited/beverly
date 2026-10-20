@@ -123,4 +123,15 @@ describe('SparkMeter Koios v2 telemetry client', () => {
         })).rejects.toThrow('telemetry_upstream_timeout');
         expect(fetchFn).toHaveBeenCalledOnce();
     });
+
+    it('hides transport details after network failure', async () => {
+        const fetchFn = vi.fn().mockRejectedValue(new TypeError('private upstream address'));
+        await expect(fetchSparkMeterTelemetryPage({
+            baseUrl: 'https://www.sparkmeter.cloud', approvedHostnames: ['www.sparkmeter.cloud'],
+            organizationId: 'org', apiKey: 'key', apiSecret: 'secret',
+            sites: ['11111111-1111-4111-8111-111111111111'], mode: 'live', fetchFn,
+            validateEndpoint: vi.fn().mockResolvedValue('https://www.sparkmeter.cloud/'),
+        })).rejects.toThrow('telemetry_upstream_network_error');
+        expect(fetchFn).toHaveBeenCalledOnce();
+    });
 });

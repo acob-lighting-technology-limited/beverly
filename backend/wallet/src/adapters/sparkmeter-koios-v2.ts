@@ -57,7 +57,7 @@ export async function fetchSparkMeterTelemetryPage(input: SparkMeterTelemetryReq
             if (error instanceof Error && error.name === 'TimeoutError') {
                 throw new Error('telemetry_upstream_timeout');
             }
-            throw error;
+            throw new Error('telemetry_upstream_network_error');
         }
         if (response.ok) return normalizeSparkMeterTelemetryPage(await response.json());
         await response.body?.cancel();
