@@ -38,6 +38,12 @@ const wallet = ref<any>(null);
 const purchases = ref<any[]>([]);
 const funding = ref<any[]>([]);
 const tabLoading = ref(false);
+const walletQuery = ref('');
+const walletDirection = ref<'all' | 'credit' | 'debit'>('all');
+const purchaseQuery = ref('');
+const purchaseStatus = ref('all');
+const fundingQuery = ref('');
+const fundingChannel = ref<'all' | 'paystack' | 'bank_transfer'>('all');
 
 async function loadDetail() {
     loading.value = true;
@@ -111,9 +117,27 @@ function purchaseBadge(s: string) {
     return ({ delivered: 'success', completed: 'success', token_issued: 'success', failed: 'danger', refunded: 'info' } as Record<string, string>)[s] ?? 'neutral';
 }
 function fundingBadge(s: string) {
-    return ({ success: 'success', initiated: 'warn', pending: 'warn', failed: 'danger', abandoned: 'neutral' } as Record<string, string>)[s] ?? 'neutral';
+    return ({ success: 'success', succeeded: 'success', approved: 'success', initiated: 'warn', pending: 'warn', proof_uploaded: 'warn', under_review: 'warn', failed: 'danger', rejected: 'danger', abandoned: 'neutral' } as Record<string, string>)[s] ?? 'neutral';
 }
 function dirSign(d: string) { return d === 'credit' ? '+' : '−'; }
+function normalizedFundingChannel(row: any) { return row.gateway ?? row.channel ?? '—'; }
+function normalizedFundingReference(row: any) { return row.gateway_reference ?? row.funding_reference ?? '—'; }
+const filteredWalletEntries = computed(() => (wallet.value?.entries ?? []).filter((entry: any) => {
+  const query = walletQuery.value.trim().toLowerCase();
+  return (!query || [entry.entry_type, entry.reference_id, entry.description].filter(Boolean).join(' ').toLowerCase().includes(query))
+    && (walletDirection.value === 'all' || entry.direction === walletDirection.value);
+}));
+const filteredPurchases = computed(() => purchases.value.filter((purchase: any) => {
+  const query = purchaseQuery.value.trim().toLowerCase();
+  return (!query || [purchase.meter_id, purchase.station_id, purchase.id].filter(Boolean).join(' ').toLowerCase().includes(query))
+    && (purchaseStatus.value === 'all' || purchase.status === purchaseStatus.value);
+}));
+const filteredFunding = computed(() => funding.value.filter((row: any) => {
+  const query = fundingQuery.value.trim().toLowerCase();
+  const channel = normalizedFundingChannel(row);
+  return (!query || [normalizedFundingReference(row), channel, row.status].join(' ').toLowerCase().includes(query))
+    && (fundingChannel.value === 'all' || channel === fundingChannel.value);
+}));
 
 const overviewFields = computed(() => detail.value ? [
     { label: 'Customer ID', value: detail.value.customer.id, mono: true },
@@ -289,14 +313,20 @@ onMounted(loadDetail);
             </div>
             <router-link :to="`/wallets`" class="bw-btn sm" style="text-decoration: none">All wallets →</router-link>
           </div>
+          <div class="detail-filter-row">
+            <input v-model="walletQuery" class="bw-input" placeholder="Search wallet entries" aria-label="Search wallet entries" />
+            <select v-model="walletDirection" class="bw-select" aria-label="Filter wallet direction">
+              <option value="all">All movements</option><option value="credit">Credits</option><option value="debit">Debits</option>
+            </select>
+          </div>
           <ul class="ledger-list">
-            <li v-for="e in wallet.entries" :key="e.id" class="ledger-row">
+            <li v-for="e in filteredWalletEntries" :key="e.id" class="ledger-row">
               <span class="bw-mono ledger-when">{{ shortDate(e.created_at) }}</span>
               <span class="bw-mono ledger-type">{{ e.entry_type.replace(/_/g, ' ') }}</span>
               <span class="bw-money ledger-amt" :class="e.direction">{{ dirSign(e.direction) }}{{ naira(e.amount_minor) }}</span>
               <span class="bw-money bw-muted ledger-bal">{{ naira(e.balance_after_minor) }}</span>
             </li>
-            <li v-if="!wallet.entries.length" class="bw-muted empty">No movements yet.</li>
+            <li v-if="!filteredWalletEntries.length" class="bw-muted empty">No wallet entries match these filters.</li>
           </ul>
         </template>
         <div v-else class="empty bw-muted">No wallet provisioned for this customer.</div>
@@ -305,11 +335,18 @@ onMounted(loadDetail);
       <!-- Purchases -->
       <div v-else-if="tab === 'purchases'" class="bw-card flush">
         <div v-if="tabLoading" class="empty bw-muted">Loading…</div>
-        <div v-else class="bw-t-wrap">
+        <div v-else>
+          <div class="detail-filter-row">
+            <input v-model="purchaseQuery" class="bw-input" placeholder="Meter, station, or order" aria-label="Search purchases" />
+            <select v-model="purchaseStatus" class="bw-select" aria-label="Filter purchase status">
+              <option value="all">All statuses</option><option value="delivered">Delivered</option><option value="completed">Completed</option><option value="token_issued">Token issued</option><option value="failed">Failed</option><option value="refunded">Refunded</option>
+            </select>
+          </div>
+        <div class="bw-t-wrap">
           <table class="bw-table">
             <thead><tr><th>When</th><th>Meter</th><th>Station</th><th style="text-align:right">Paid</th><th style="text-align:right">Energy</th><th style="text-align:right">VAT</th><th>Status</th></tr></thead>
             <tbody>
-              <tr v-for="p in purchases" :key="p.id">
+              <tr v-for="p in filteredPurchases" :key="p.id">
                 <td class="bw-mono bw-muted" style="font-size: var(--t-xs)">{{ shortDate(p.created_at) }}</td>
                 <td class="bw-mono">{{ p.meter_id }}</td>
                 <td class="bw-mono bw-muted">{{ p.station_id || '—' }}</td>
@@ -318,30 +355,39 @@ onMounted(loadDetail);
                 <td class="bw-money" style="text-align: right">{{ naira(p.vat_amount_minor ?? 0) }}</td>
                 <td><span :class="['bw-badge', purchaseBadge(p.status)]">{{ p.status }}</span></td>
               </tr>
-              <tr v-if="!purchases.length"><td colspan="7" class="bw-muted empty">No purchases.</td></tr>
+              <tr v-if="!filteredPurchases.length"><td colspan="7" class="bw-muted empty">No purchases match these filters.</td></tr>
             </tbody>
           </table>
         </div>
+      </div>
       </div>
 
       <!-- Funding -->
       <div v-else-if="tab === 'funding'" class="bw-card flush">
         <div v-if="tabLoading" class="empty bw-muted">Loading…</div>
-        <div v-else class="bw-t-wrap">
+        <div v-else>
+          <div class="detail-filter-row">
+            <input v-model="fundingQuery" class="bw-input" placeholder="Reference or status" aria-label="Search funding" />
+            <select v-model="fundingChannel" class="bw-select" aria-label="Filter funding channel">
+              <option value="all">All channels</option><option value="paystack">Paystack</option><option value="bank_transfer">Bank transfer</option>
+            </select>
+          </div>
+        <div class="bw-t-wrap">
           <table class="bw-table">
             <thead><tr><th>When</th><th>Reference</th><th>Gateway</th><th style="text-align:right">Amount</th><th>Status</th></tr></thead>
             <tbody>
-              <tr v-for="f in funding" :key="f.id">
+              <tr v-for="f in filteredFunding" :key="f.id">
                 <td class="bw-mono bw-muted" style="font-size: var(--t-xs)">{{ shortDate(f.created_at) }}</td>
-                <td class="bw-mono" style="font-size: var(--t-xs)">{{ f.gateway_reference }}</td>
-                <td><span class="bw-badge neutral">{{ f.gateway }}</span></td>
+                <td class="bw-mono" style="font-size: var(--t-xs)">{{ normalizedFundingReference(f) }}</td>
+                <td><span class="bw-badge neutral">{{ normalizedFundingChannel(f) }}</span></td>
                 <td class="bw-money" style="text-align: right">{{ naira(f.amount_minor) }}</td>
                 <td><span :class="['bw-badge', fundingBadge(f.status)]">{{ f.status }}</span></td>
               </tr>
-              <tr v-if="!funding.length"><td colspan="5" class="bw-muted empty">No funding history.</td></tr>
+              <tr v-if="!filteredFunding.length"><td colspan="5" class="bw-muted empty">No funding records match these filters.</td></tr>
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </template>
 
@@ -414,6 +460,9 @@ onMounted(loadDetail);
 .ov-dl--table .ov-item dd { margin-top: 0; }
 
 .wallet-head { display: flex; justify-content: space-between; align-items: start; padding: var(--s-4); border-bottom: 1px solid var(--border); }
+.detail-filter-row { display: flex; gap: var(--s-2); padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); }
+.detail-filter-row .bw-input { min-width: 0; flex: 1; }
+.detail-filter-row .bw-select { width: min(190px, 45%); }
 .wallet-bal { font-family: var(--font-mono); font-weight: 700; font-size: var(--t-2xl); color: var(--brand); margin: 4px 0 6px; }
 
 .ledger-list { list-style: none; margin: 0; padding: var(--s-2) var(--s-4) var(--s-4); }
@@ -436,6 +485,8 @@ onMounted(loadDetail);
   .head-action-buttons { display: none; }
   .ov-dl--table .ov-item { grid-template-columns: 110px minmax(0, 1fr); gap: var(--s-3); }
   .ledger-row { grid-template-columns: 1fr auto; }
+  .detail-filter-row { flex-direction: column; }
+  .detail-filter-row .bw-select { width: 100%; }
   .ledger-when, .ledger-bal { grid-column: 1 / -1; opacity: 0.7; }
 }
 </style>

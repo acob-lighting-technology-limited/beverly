@@ -8,6 +8,7 @@
  * GET /api/v1/admin/funding/history
  *   ?status=all|approved|pending|rejected
  *   &channel=all|bank_transfer|paystack|manual
+ *   &q=reference|owner|email|phone
  *   &from=YYYY-MM-DD &to=YYYY-MM-DD
  *   &limit=50 &cursor=<iso>
  */
@@ -66,6 +67,7 @@ const statusFilter  = ref<'all' | 'approved' | 'pending' | 'rejected'>('all');
 const channelFilter = ref<'all' | 'bank_transfer' | 'paystack' | 'manual'>('all');
 const fromDate      = ref('');
 const toDate        = ref('');
+const searchQuery   = ref('');
 const showFilters   = ref(false);
 
 // ── data ─────────────────────────────────────────────────────────
@@ -85,6 +87,7 @@ const activeFilterCount = computed(() => [
     channelFilter.value !== 'all',
     Boolean(fromDate.value),
     Boolean(toDate.value),
+    Boolean(searchQuery.value.trim()),
 ].filter(Boolean).length);
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -138,6 +141,7 @@ function buildUrl(cursor?: string | null) {
         params.set('status', statusFilter.value);
     }
     if (channelFilter.value !== 'all') params.set('channel', channelFilter.value);
+    if (searchQuery.value.trim()) params.set('q', searchQuery.value.trim());
     if (fromDate.value) params.set('from', fromDate.value);
     if (toDate.value)   params.set('to', toDate.value);
     if (cursor)         params.set('cursor', cursor);
@@ -284,6 +288,10 @@ function printFundingReceipt(f: FundingRow) {
         aria-label="Funding history filters"
       >
         <div class="recent-filter-grid">
+          <label class="filter-group full-width" for="funding-history-search">
+            <span class="filter-label">Search</span>
+            <input id="funding-history-search" class="fh-input" v-model="searchQuery" placeholder="Reference, owner, email, or phone" @keyup.enter="load" />
+          </label>
           <div class="filter-group full-width">
             <span class="filter-label">Status</span>
             <div class="bw-segmented">
