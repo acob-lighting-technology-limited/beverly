@@ -52,6 +52,7 @@ export async function runSparkMeterTelemetrySync(
     for (const target of selected) {
         const seen = new Set<string>();
         let cursor: string | undefined;
+        let stage: 'fetch' | 'persist' = 'fetch';
         try {
             const sites = options.site ? [options.site] : target.sites;
             if (sites.length === 0 || sites.length > 90) {
@@ -59,8 +60,11 @@ export async function runSparkMeterTelemetrySync(
             }
             const scopeKey = `${date}:${date}:${sites.join(',')}`;
             for (let pageNumber = 0; pageNumber < 20; pageNumber += 1) {
+                stage = 'fetch';
                 const page = await deps.fetchPage({ ...target, sites, dateFrom: date, dateTo: date, cursor });
+                stage = 'persist';
                 const stored = await deps.persistPage(target.installationId, 'historical', scopeKey, page);
+                stage = 'fetch';
                 summary.pages += 1;
                 summary.readings += stored.readings;
                 summary.quarantine += stored.quarantine;
@@ -72,7 +76,7 @@ export async function runSparkMeterTelemetrySync(
                 await deps.wait?.(1700);
             }
         } catch (error) {
-            const reason = error instanceof Error && /^telemetry_/.test(error.message) ? error.message : 'telemetry_sync_failed';
+            const reason = error instanceof Error && /^telemetry_/.test(error.message) ? error.message : `telemetry_${stage}_failed`;
             summary.failures.push({ installationId: target.installationId, reason });
         }
     }
