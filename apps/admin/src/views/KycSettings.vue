@@ -9,6 +9,9 @@ interface Policy {
   tier0DailyLimitMinor: number;
   tier1DailyLimitMinor: number;
   tier2DailyLimitMinor: number | null;
+  tier0MeterLimit: number;
+  tier1MeterLimit: number;
+  tier2MeterLimit: number;
   version: number;
   updatedAt: string;
 }
@@ -41,6 +44,9 @@ const tier0Naira = ref<number | null>(null);
 const tier1Naira = ref<number | null>(null);
 const tier2Naira = ref<number | null>(null);
 const tier2Uncapped = ref(true);
+const tier0MeterLimit = ref<number | null>(null);
+const tier1MeterLimit = ref<number | null>(null);
+const tier2MeterLimit = ref<number | null>(null);
 const reason = ref('');
 const history = ref<any[]>([]);
 const loading = ref(true);
@@ -97,12 +103,18 @@ function apply(next: Policy) {
   tier1Naira.value = fromMinor(next.tier1DailyLimitMinor);
   tier2Naira.value = fromMinor(next.tier2DailyLimitMinor);
   tier2Uncapped.value = next.tier2DailyLimitMinor === null;
+  tier0MeterLimit.value = next.tier0MeterLimit;
+  tier1MeterLimit.value = next.tier1MeterLimit;
+  tier2MeterLimit.value = next.tier2MeterLimit;
 }
 
 const canSave = computed(() =>
   Number.isFinite(tier0Naira.value) && Number(tier0Naira.value) > 0
   && Number.isFinite(tier1Naira.value) && Number(tier1Naira.value) > Number(tier0Naira.value)
   && (tier2Uncapped.value || (Number.isFinite(tier2Naira.value) && Number(tier2Naira.value) > Number(tier1Naira.value)))
+  && Number.isInteger(tier0MeterLimit.value) && Number(tier0MeterLimit.value) > 0
+  && Number.isInteger(tier1MeterLimit.value) && Number(tier1MeterLimit.value) >= Number(tier0MeterLimit.value)
+  && Number.isInteger(tier2MeterLimit.value) && Number(tier2MeterLimit.value) >= Number(tier1MeterLimit.value)
   && reason.value.trim().length >= 4
   && !saving.value,
 );
@@ -155,12 +167,15 @@ async function save() {
       tier0DailyLimitMinor: Math.round(Number(tier0Naira.value) * 100),
       tier1DailyLimitMinor: Math.round(Number(tier1Naira.value) * 100),
       tier2DailyLimitMinor: tier2Uncapped.value ? null : Math.round(Number(tier2Naira.value) * 100),
+      tier0MeterLimit: Number(tier0MeterLimit.value),
+      tier1MeterLimit: Number(tier1MeterLimit.value),
+      tier2MeterLimit: Number(tier2MeterLimit.value),
       expectedVersion: policy.value.version,
       reason: reason.value.trim(),
     });
     apply(result.policy);
     reason.value = '';
-    notice.value = 'KYC limits updated. Policy-managed wallets now use the new limits.';
+    notice.value = 'KYC limits and meter allowances updated. New meter links now use the policy.';
     showFeedback('success', 'KYC limits saved', notice.value);
     await load();
   } catch (cause: any) {
@@ -179,7 +194,7 @@ onMounted(load);
       <div>
         <p class="eyebrow">Compliance</p>
         <h1>KYC tier limits</h1>
-        <p>One daily debit policy for customers and vendors.</p>
+        <p>Set daily debit limits and customer meter allowances for each tier.</p>
       </div>
       <button class="bw-btn" :disabled="loading || saving" @click="load">Refresh</button>
     </header>
@@ -274,7 +289,7 @@ onMounted(load);
     <form class="bw-card settings-card" @submit.prevent="save">
       <div class="intro">
         <strong>Applies to new and policy-managed accounts.</strong>
-        <span>Existing policy-managed wallets update automatically. Staff-set exception caps remain unchanged.</span>
+        <span>Existing policy-managed wallets update automatically. Meter allowances apply when a customer adds a meter; existing links stay in place.</span>
       </div>
 
       <div class="tier-grid">
@@ -283,12 +298,14 @@ onMounted(load);
           <strong>Registered</strong>
           <small>Up to this daily amount.</small>
           <div class="currency-input"><span>₦</span><input v-model.number="tier0Naira" type="number" min="1" step="1" inputmode="numeric" aria-label="Tier 0 daily limit" /></div>
+          <label class="meter-input">Meters allowed<input v-model.number="tier0MeterLimit" type="number" min="1" step="1" inputmode="numeric" aria-label="Tier 0 meter allowance" /></label>
         </label>
         <label class="tier-field">
           <span>Tier 1</span>
           <strong>Identity verified</strong>
           <small>Above Tier 0, up to this daily amount.</small>
           <div class="currency-input"><span>₦</span><input v-model.number="tier1Naira" type="number" min="1" step="1" inputmode="numeric" aria-label="Tier 1 daily limit" /></div>
+          <label class="meter-input">Meters allowed<input v-model.number="tier1MeterLimit" type="number" min="1" step="1" inputmode="numeric" aria-label="Tier 1 meter allowance" /></label>
         </label>
         <div class="tier-field">
           <span>Tier 2</span>
@@ -296,14 +313,15 @@ onMounted(load);
           <small>Above Tier 1.</small>
           <label class="toggle"><input v-model="tier2Uncapped" type="checkbox" /> No daily cap</label>
           <div v-if="!tier2Uncapped" class="currency-input"><span>₦</span><input v-model.number="tier2Naira" type="number" min="1" step="1" inputmode="numeric" aria-label="Tier 2 daily limit" /></div>
+          <label class="meter-input">Meters allowed<input v-model.number="tier2MeterLimit" type="number" min="1" step="1" inputmode="numeric" aria-label="Tier 2 meter allowance" /></label>
         </div>
       </div>
 
       <label class="reason-label">Why are you changing this policy?
         <textarea v-model="reason" class="bw-input" rows="3" maxlength="500" placeholder="Record the approved business or compliance reason." />
       </label>
-      <p class="hint">Changes are audited. Use whole naira amounts only.</p>
-      <button class="bw-btn primary" type="submit" :disabled="!canSave">{{ saving ? 'Saving…' : 'Save KYC limits' }}</button>
+      <p class="hint">Changes are audited. Use whole naira amounts and whole meter counts. Higher tiers cannot have fewer meters than lower tiers.</p>
+      <button class="bw-btn primary" type="submit" :disabled="!canSave">{{ saving ? 'Saving…' : 'Save KYC policy' }}</button>
     </form>
 
     <section v-if="!loading" class="bw-card history-card">
@@ -312,7 +330,7 @@ onMounted(load);
       <ul v-else>
         <li v-for="entry in history" :key="entry.id">
           <strong>{{ shortDate(entry.created_at) }}</strong>
-          <span>Tier 0 {{ naira(entry.after?.tier0DailyLimitMinor) }} · Tier 1 {{ naira(entry.after?.tier1DailyLimitMinor) }} · Tier 2 {{ entry.after?.tier2DailyLimitMinor == null ? 'No cap' : naira(entry.after.tier2DailyLimitMinor) }}</span>
+          <span>Tier 0 {{ naira(entry.after?.tier0DailyLimitMinor) }} / {{ entry.after?.tier0MeterLimit }} meters · Tier 1 {{ naira(entry.after?.tier1DailyLimitMinor) }} / {{ entry.after?.tier1MeterLimit }} meters · Tier 2 {{ entry.after?.tier2DailyLimitMinor == null ? 'No cap' : naira(entry.after.tier2DailyLimitMinor) }} / {{ entry.after?.tier2MeterLimit }} meters</span>
           <small>{{ entry.metadata_json?.reason || entry.metadata?.reason || 'No reason recorded.' }}</small>
         </li>
       </ul>
@@ -322,7 +340,7 @@ onMounted(load);
 </template>
 
 <style scoped>
-.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s-4);margin-bottom:var(--s-4)}.page-head h1{margin:0;font-size:var(--t-2xl)}.page-head p{margin:4px 0 0;color:var(--text-muted)}.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:10px!important;font-weight:800;color:var(--brand)!important}.settings-card,.history-card{display:grid;gap:var(--s-4);margin-bottom:var(--s-4)}.intro{display:grid;gap:4px;padding:var(--s-3);border-radius:var(--r-md);background:oklch(from var(--info) l c h/.08);border:1px solid oklch(from var(--info) l c h/.25)}.intro span,.hint,.muted{color:var(--text-muted);font-size:var(--t-sm)}.availability-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-3)}.availability-control{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);padding:var(--s-4);border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-2)}.availability-control>span:first-child{display:grid;gap:4px}.availability-control small{color:var(--text-muted)}.tier-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s-3)}.tier-field{display:flex;flex-direction:column;gap:7px;padding:var(--s-4);border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-2)}.tier-field>span{color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.tier-field small{color:var(--text-muted);min-height:36px}.currency-input{display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface)}.currency-input span{font-weight:800;color:var(--text-muted)}.currency-input input{width:100%;border:0;background:transparent;color:var(--text);padding:10px 0;font:700 var(--t-base) var(--font-mono);outline:0}.toggle{display:flex;align-items:center;gap:8px;font-weight:700;margin-top:auto}.reason-label{display:grid;gap:8px;font-weight:700}.reason-label textarea{resize:vertical}.history-card h2{margin:0}.history-card ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.history-card li{display:grid;gap:3px;padding-bottom:10px;border-bottom:1px solid var(--border)}.history-card li:last-child{border:0;padding-bottom:0}.history-card small{color:var(--text-muted)}.empty{text-align:center;padding:var(--s-8);color:var(--text-muted)}@media(max-width:700px){.page-head{align-items:flex-start;flex-direction:column}.page-head .bw-btn{width:100%}.availability-grid,.tier-grid{grid-template-columns:1fr}.tier-field small{min-height:0}}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s-4);margin-bottom:var(--s-4)}.page-head h1{margin:0;font-size:var(--t-2xl)}.page-head p{margin:4px 0 0;color:var(--text-muted)}.eyebrow{text-transform:uppercase;letter-spacing:.12em;font-size:10px!important;font-weight:800;color:var(--brand)!important}.settings-card,.history-card{display:grid;gap:var(--s-4);margin-bottom:var(--s-4)}.intro{display:grid;gap:4px;padding:var(--s-3);border-radius:var(--r-md);background:oklch(from var(--info) l c h/.08);border:1px solid oklch(from var(--info) l c h/.25)}.intro span,.hint,.muted{color:var(--text-muted);font-size:var(--t-sm)}.availability-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-3)}.availability-control{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);padding:var(--s-4);border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-2)}.availability-control>span:first-child{display:grid;gap:4px}.availability-control small{color:var(--text-muted)}.tier-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s-3)}.tier-field{display:flex;flex-direction:column;gap:7px;padding:var(--s-4);border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-2)}.tier-field>span{color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.tier-field small{color:var(--text-muted);min-height:36px}.currency-input{display:flex;align-items:center;gap:8px;padding:0 10px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface)}.currency-input span{font-weight:800;color:var(--text-muted)}.currency-input input{width:100%;border:0;background:transparent;color:var(--text);padding:10px 0;font:700 var(--t-base) var(--font-mono);outline:0}.meter-input{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--t-sm);font-weight:700}.meter-input input{width:78px;padding:8px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);color:var(--text);font:700 var(--t-base) var(--font-mono)}.toggle{display:flex;align-items:center;gap:8px;font-weight:700;margin-top:auto}.reason-label{display:grid;gap:8px;font-weight:700}.reason-label textarea{resize:vertical}.history-card h2{margin:0}.history-card ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}.history-card li{display:grid;gap:3px;padding-bottom:10px;border-bottom:1px solid var(--border)}.history-card li:last-child{border:0;padding-bottom:0}.history-card small{color:var(--text-muted)}.empty{text-align:center;padding:var(--s-8);color:var(--text-muted)}@media(max-width:700px){.page-head{align-items:flex-start;flex-direction:column}.page-head .bw-btn{width:100%}.availability-grid,.tier-grid{grid-template-columns:1fr}.tier-field small{min-height:0}}
 .scope-control{display:grid;gap:7px;font-weight:700}.step-pane{display:grid;gap:var(--s-4);min-height:300px}.step-heading{display:grid;gap:4px}.step-heading span{color:var(--brand);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.step-heading h2,.step-heading p{margin:0}.step-heading p{color:var(--text-muted);font-size:var(--t-sm)}.evidence-grid{display:grid;gap:var(--s-3)}.evidence-grid--two{grid-template-columns:repeat(2,minmax(0,1fr))}.evidence-grid--single{grid-template-columns:minmax(0,520px)}.evidence-grid fieldset{display:grid;gap:8px;margin:0;padding:var(--s-4);border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-2)}.evidence-grid legend{font-weight:800}.evidence-grid small{color:var(--text-muted);margin-bottom:4px}.evidence-grid label{display:flex;align-items:center;gap:8px}.wizard-nav{display:flex;align-items:center;justify-content:space-between;padding-top:var(--s-2);border-top:1px solid var(--border)}.review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-3)}.review-grid article{display:grid;gap:8px;padding:var(--s-4);border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface-2)}.review-grid header{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3)}.review-grid button{border:0;background:transparent;color:var(--brand);font:inherit;font-weight:700;cursor:pointer}.review-grid p{margin:0;color:var(--text-muted);font-size:var(--t-sm);line-height:1.5}@media(max-width:900px){.evidence-grid--two,.review-grid{grid-template-columns:1fr}}@media(max-width:640px){.step-pane{min-height:0}.wizard-nav .bw-btn{min-width:112px}}
 .evidence-grid fieldset{gap:12px;padding:20px}.evidence-grid legend{padding:0 8px;color:var(--text)}.evidence-grid label{min-height:46px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);cursor:pointer;transition:border-color .16s,background .16s}.evidence-grid label:has(input:checked){border-color:var(--brand);background:color-mix(in srgb,var(--brand) 10%,var(--surface))}.evidence-grid input{accent-color:var(--brand)}
 @media(max-width:640px){.evidence-grid fieldset{padding:16px}.evidence-grid label{min-height:48px}}

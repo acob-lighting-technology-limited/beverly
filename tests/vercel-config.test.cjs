@@ -20,9 +20,10 @@ assert(
     supabaseConfig.includes('"https://beverly.acoblighting.com/**"'),
   "Supabase auth must allow canonical Beverly redirects"
 );
-assert(packageJson.engines?.node === "22.x", "package.json engines.node must pin Vercel to 22.x");
+assert(packageJson.engines?.node === "24.x", "package.json engines.node must pin Vercel to 24.x");
 assert(packageJson.packageManager === "pnpm@10.28.0", "package.json packageManager must pin Vercel pnpm");
 assert(vercelJson.version === 2, "vercel.json must stay on version 2");
+assert(vercelJson.env?.ENABLE_EXPERIMENTAL_COREPACK === "1", "Vercel must enable Corepack for the pinned pnpm release");
 const oemRewriteIndex = vercelJson.rewrites.findIndex((rewrite) => rewrite.source === "/api/v1/oem/:path*");
 const genericApiRewriteIndex = vercelJson.rewrites.findIndex((rewrite) => rewrite.source === "/api/:path*");
 assert(oemRewriteIndex >= 0, "vercel.json must route OEM APIs to wallet");
