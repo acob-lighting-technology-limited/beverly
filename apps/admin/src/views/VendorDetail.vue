@@ -165,6 +165,7 @@ async function saveVendorDetails() {
 // Lazy per-tab data
 const wallet       = ref<any>(null);
 const transactions = ref<any[]>([]);
+const reconciliation = ref<any>(null);
 const funding      = ref<any[]>([]);
 const staff        = ref<any[]>([]);
 const analytics    = ref<any>(null);
@@ -268,6 +269,8 @@ async function loadDetail() {
     loading.value = true;
     try {
         detail.value = await api.get<any>(`/api/v1/admin/vendors/${id}`);
+        reconciliation.value = await api.get<any>(`/api/v1/admin/vendors/${id}/reconciliation`)
+            .catch(() => ({ status: 'unavailable', message: 'Ledger check unavailable. Try again later.' }));
     } catch (e: any) {
         const status = (e as any)?.status ?? (e as any)?.response?.status;
         // If the detail endpoint is 404 (stale backend build), reconstruct from
@@ -594,6 +597,7 @@ onMounted(loadDetail);
           :date-value="(row: any) => row.created_at"
           :status-value="(row: any) => row.status"
           :station-value="(row: any) => row.station_id || row.station"
+          :allow-daily-csv-archive="tab === 'transactions'"
         />
       </div>
 
@@ -616,6 +620,14 @@ onMounted(loadDetail);
 
       <!-- ── Overview ────────────────────────────────────────── -->
       <div v-if="tab === 'overview'" class="bw-card">
+        <div v-if="reconciliation" :class="['integrity-panel', reconciliation.status]">
+          <div><span>Ledger check</span><strong>{{ reconciliation.status === 'balanced' ? 'Records agree' : reconciliation.status === 'unavailable' ? 'Unavailable' : 'Review needed' }}</strong></div>
+          <div><span>Credits</span><strong>{{ reconciliation.credits_minor == null ? '—' : naira(reconciliation.credits_minor) }}</strong></div>
+          <div><span>Debits</span><strong>{{ reconciliation.debits_minor == null ? '—' : naira(reconciliation.debits_minor) }}</strong></div>
+          <div><span>Live balance</span><strong>{{ reconciliation.live_balance_minor == null ? '—' : naira(reconciliation.live_balance_minor) }}</strong></div>
+          <p v-if="reconciliation.status !== 'balanced'">{{ reconciliation.message }}</p>
+          <p v-else>Internal ledger and settled purchases agree. Gateway reconciliation remains separate.</p>
+        </div>
         <div class="overview-heading">
           <h2>Vendor details</h2>
           <button
@@ -1118,6 +1130,10 @@ onMounted(loadDetail);
 .danger-stat .stat-value { color: var(--danger); }
 .stat-sub { font-size: var(--t-xs); color: var(--text-muted); margin: 4px 0 0; }
 .vendor-table-toolbar { display:flex; align-items:center; justify-content:space-between; gap:var(--s-3); padding:var(--s-3) var(--s-4); border:1px solid var(--border); border-bottom:0; border-radius:var(--r-lg) var(--r-lg) 0 0; background:var(--surface-2); }
+.integrity-panel { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3); margin-bottom:var(--s-4); padding:var(--s-3); border:1px solid var(--border); border-radius:var(--r-md); background:var(--surface-2); }
+.integrity-panel > div { display:grid; gap:4px; }.integrity-panel span { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }.integrity-panel strong { font-family:var(--font-mono); }
+.integrity-panel.balanced { border-color:oklch(from var(--brand) l c h / .35); }.integrity-panel.attention { border-color:oklch(from var(--danger) l c h / .55); }.integrity-panel p { grid-column:1/-1; margin:0; color:var(--danger); font-size:var(--t-sm); }
+@media (max-width:700px) { .integrity-panel { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .vendor-table-toolbar + .bw-card { border-top-left-radius:0; border-top-right-radius:0; }
 .vendor-filter-fields { display:flex; align-items:end; gap:var(--s-2); flex:1; flex-wrap:wrap; }
 .vendor-filter-fields > .bw-input:first-child { width:min(300px, 100%); }

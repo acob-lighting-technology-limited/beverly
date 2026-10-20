@@ -58,20 +58,40 @@ async function switchTab(t: Tab) {
     tab.value = t;
     if (t === 'wallet' && !wallet.value) {
         tabLoading.value = true;
-        try { wallet.value = await api.get<any>(`/api/v1/admin/customers/${id}/wallet?limit=200`); }
-        catch { wallet.value = { entries: [] }; }
+        try { wallet.value = await loadAllCustomerHistory(`/api/v1/admin/customers/${id}/wallet`, 'entries'); }
+        catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load wallet history.' }; }
         finally { tabLoading.value = false; }
     }
     if (t === 'purchases' && !purchases.value.length) {
         tabLoading.value = true;
-        try { purchases.value = (await api.get<any>(`/api/v1/admin/customers/${id}/purchases?limit=200`)).purchases; }
+        try { purchases.value = (await loadAllCustomerHistory(`/api/v1/admin/customers/${id}/purchases`, 'purchases')).purchases; }
+        catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load purchase history.' }; }
         finally { tabLoading.value = false; }
     }
     if (t === 'funding' && !funding.value.length) {
         tabLoading.value = true;
-        try { funding.value = (await api.get<any>(`/api/v1/admin/customers/${id}/funding?limit=200`)).funding; }
+        try { funding.value = (await loadAllCustomerHistory(`/api/v1/admin/customers/${id}/funding`, 'funding')).funding; }
+        catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load funding history.' }; }
         finally { tabLoading.value = false; }
     }
+}
+
+async function loadAllCustomerHistory(path: string, key: string) {
+    let cursor: string | null = null;
+    let first: any = null;
+    const rows: any[] = [];
+    const seen = new Set<string>();
+    do {
+        const params = new URLSearchParams({ limit: '200' });
+        if (cursor) params.set('cursor', cursor);
+        const page: any = await api.get(`${path}?${params}`);
+        first ??= page;
+        rows.push(...(page[key] ?? []));
+        cursor = page.nextCursor ?? null;
+        if (cursor && seen.has(cursor)) throw new Error('History pagination repeated a page.');
+        if (cursor) seen.add(cursor);
+    } while (cursor);
+    return { ...(first ?? {}), [key]: rows, nextCursor: null };
 }
 
 // ─ Status action ──────────────────────────────────────────────
@@ -180,8 +200,8 @@ const detailExportColumns = computed<WalletExportColumn<any>[]>(() => {
   ];
   return [
     { key: 'created_at', header: 'When', value: (row) => shortDate(row.created_at) },
-    { key: 'gateway_reference', header: 'Reference', value: (row) => row.gateway_reference },
-    { key: 'gateway', header: 'Gateway', value: (row) => row.gateway },
+    { key: 'gateway_reference', header: 'Reference', value: normalizedFundingReference },
+    { key: 'gateway', header: 'Channel', value: normalizedFundingChannel },
     { key: 'amount_minor', header: 'Amount', value: (row) => naira(row.amount_minor) },
     { key: 'status', header: 'Status', value: (row) => row.status },
   ];
@@ -374,7 +394,7 @@ onMounted(loadDetail);
           </div>
         <div class="bw-t-wrap">
           <table class="bw-table">
-            <thead><tr><th>When</th><th>Reference</th><th>Gateway</th><th style="text-align:right">Amount</th><th>Status</th></tr></thead>
+            <thead><tr><th>When</th><th>Reference</th><th>Channel</th><th style="text-align:right">Amount</th><th>Status</th></tr></thead>
             <tbody>
               <tr v-for="f in filteredFunding" :key="f.id">
                 <td class="bw-mono bw-muted" style="font-size: var(--t-xs)">{{ shortDate(f.created_at) }}</td>

@@ -29,6 +29,7 @@ declare const component: DefineComponent<{
   initialActor: { type: StringConstructor; default: string };
   initialSince: { type: StringConstructor; default: string };
   initialUntil: { type: StringConstructor; default: string };
+  allowDailyCsvArchive: { type: BooleanConstructor; default: boolean };
   dateValue: { type: PropType<(row: any) => string | null | undefined> };
   statusValue: { type: PropType<(row: any) => string | null | undefined> };
   stationValue: { type: PropType<(row: any) => string | null | undefined> };

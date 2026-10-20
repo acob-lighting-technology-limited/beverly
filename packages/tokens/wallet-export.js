@@ -45,6 +45,83 @@ export function exportCsv(filenameBase, rows, columns) {
     );
 }
 
+function crc32(bytes) {
+    let crc = 0xffffffff;
+    for (const byte of bytes) {
+        crc ^= byte;
+        for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
+function uint16(value) {
+    return new Uint8Array([value & 0xff, (value >>> 8) & 0xff]);
+}
+
+function uint32(value) {
+    return new Uint8Array([value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff]);
+}
+
+function concatBytes(parts) {
+    const size = parts.reduce((total, part) => total + part.length, 0);
+    const output = new Uint8Array(size);
+    let offset = 0;
+    for (const part of parts) { output.set(part, offset); offset += part.length; }
+    return output;
+}
+
+// ZIP "store" mode avoids a dependency while producing standards-compatible archives.
+function buildZip(files) {
+    const encoder = new TextEncoder();
+    const local = [];
+    const central = [];
+    let offset = 0;
+    for (const file of files) {
+        const name = encoder.encode(file.name);
+        const data = encoder.encode(file.text);
+        const crc = crc32(data);
+        const header = concatBytes([
+            uint32(0x04034b50), uint16(20), uint16(0), uint16(0), uint16(0), uint16(0),
+            uint32(crc), uint32(data.length), uint32(data.length), uint16(name.length), uint16(0), name,
+        ]);
+        local.push(header, data);
+        central.push(concatBytes([
+            uint32(0x02014b50), uint16(20), uint16(20), uint16(0), uint16(0), uint16(0), uint16(0),
+            uint32(crc), uint32(data.length), uint32(data.length), uint16(name.length), uint16(0), uint16(0),
+            uint16(0), uint16(0), uint32(0), uint32(offset), name,
+        ]));
+        offset += header.length + data.length;
+    }
+    const centralBytes = concatBytes(central);
+    return concatBytes([...local, centralBytes, concatBytes([
+        uint32(0x06054b50), uint16(0), uint16(0), uint16(files.length), uint16(files.length),
+        uint32(centralBytes.length), uint32(offset), uint16(0),
+    ])]);
+}
+
+export function buildDailyCsvZip(filenameBase, rows, columns, dateValue) {
+    if (!rows.length) throw new Error('No records available.');
+    const grouped = new Map();
+    for (const row of rows) {
+        const raw = dateValue(row);
+        const parsed = raw ? new Date(raw) : null;
+        const day = parsed && !Number.isNaN(parsed.getTime())
+            ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+            : 'undated';
+        const bucket = grouped.get(day) ?? [];
+        bucket.push(row);
+        grouped.set(day, bucket);
+    }
+    const files = [...grouped.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, records]) => ({ name: `${filenameBase}-${day}.csv`, text: '\uFEFF' + rowsToCsv(records, columns) }));
+    return buildZip(files);
+}
+
+export function exportCsvByDayZip(filenameBase, rows, columns, dateValue) {
+    downloadBlob(new Blob([buildDailyCsvZip(filenameBase, rows, columns, dateValue)], { type: 'application/zip' }), `${filenameBase}-daily-${exportTimestamp()}.zip`);
+}
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')

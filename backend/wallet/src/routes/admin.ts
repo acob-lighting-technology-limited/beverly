@@ -492,6 +492,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'GET /vendors/:id': 'wallet.vendors.review',
     'GET /vendors/:id/wallet': 'wallet.vendors.review',
     'GET /vendors/:id/transactions': 'wallet.vending.monitor',
+    'GET /vendors/:id/reconciliation': 'wallet.vending.monitor',
     'GET /vendors/:id/funding': 'wallet.funding.view',
     'GET /vendors/:id/staff': 'wallet.vendors.review',
     'GET /vendors/:id/analytics': 'wallet.vendors.review',
@@ -531,6 +532,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'PATCH /customers/:id/status': 'wallet.funding.approve',
     'PATCH /customers/:id/profile-picture': 'wallet.funding.approve',
     'GET /purchases': 'wallet.vending.monitor',
+    'GET /purchases/actors': 'wallet.vending.monitor',
     'GET /vending': 'wallet.vending.monitor',
     'GET /purchases/summary': 'wallet.vending.monitor',
     'GET /purchases/:id': 'wallet.vending.monitor',
@@ -2023,6 +2025,69 @@ const route: FastifyPluginAsync = async (fastify) => {
         return { transactions: rows, nextCursor };
     });
 
+    // Read-only financial audit. The immutable ledger remains the source of truth.
+    fastify.get('/vendors/:id/reconciliation', async (req, reply) => {
+        const id = z.string().uuid().parse((req.params as { id: string }).id);
+        const { data: wallet } = await adminClient
+            .from('wallets').select('id').eq('owner_type', 'vendor').eq('owner_id', id).maybeSingle();
+        if (!wallet) return reply.code(404).send({ error: 'wallet_not_found', message: 'No wallet for this vendor.' });
+
+        const pageSize = 1_000;
+        const cap = 10_000;
+        const ledgerRows: any[] = [];
+        const purchases: any[] = [];
+        for (let offset = 0; offset < cap; offset += pageSize) {
+            const { data, error } = await adminClient.from('wallet_ledger_entries')
+                .select('reference_id, reference_type, direction, entry_type, amount_minor')
+                .eq('wallet_id', (wallet as any).id).order('created_at', { ascending: false })
+                .range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            ledgerRows.push(...(data ?? []));
+            if ((data?.length ?? 0) < pageSize) break;
+        }
+        for (let offset = 0; offset < cap; offset += pageSize) {
+            const { data, error } = await adminClient.from('purchase_orders')
+                .select('id, status, amount_minor').eq('actor_type', 'vendor').eq('actor_id', id)
+                .order('created_at', { ascending: false }).range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            purchases.push(...(data ?? []));
+            if ((data?.length ?? 0) < pageSize) break;
+        }
+        const credits = ledgerRows.filter((row) => row.direction === 'credit').reduce((sum, row) => sum + Number(row.amount_minor ?? 0), 0);
+        const debits = ledgerRows.filter((row) => row.direction === 'debit').reduce((sum, row) => sum + Number(row.amount_minor ?? 0), 0);
+        const purchaseDebits = new Map<string, number>();
+        for (const row of ledgerRows) {
+            if (row.entry_type !== 'purchase_debit' || row.reference_type !== 'purchase_order' || !row.reference_id) continue;
+            purchaseDebits.set(String(row.reference_id), (purchaseDebits.get(String(row.reference_id)) ?? 0) + Number(row.amount_minor ?? 0));
+        }
+        const settledPurchases = purchases.filter((row) => ['delivered', 'completed'].includes(String(row.status)));
+        const unmatchedPurchases = settledPurchases.filter((row) => purchaseDebits.get(String(row.id)) !== Number(row.amount_minor ?? 0));
+        const purchaseIds = new Set(purchases.map((row) => String(row.id)));
+        const orphanPurchaseDebits = [...purchaseDebits.keys()].filter((referenceId) => !purchaseIds.has(referenceId));
+        const unsettledPurchaseDebits = purchases.filter((row) => !['delivered', 'completed'].includes(String(row.status)) && purchaseDebits.has(String(row.id)));
+        const balance = await getBalance((wallet as any).id);
+        const complete = ledgerRows.length < cap && purchases.length < cap;
+        const ledgerDifference = credits - debits - balance.ledgerBalanceMinor;
+        const balanced = complete && ledgerDifference === 0 && !unmatchedPurchases.length && !orphanPurchaseDebits.length && !unsettledPurchaseDebits.length;
+        return {
+            status: balanced ? 'balanced' : 'attention',
+            message: !complete ? 'Audit limit reached. Narrow the vendor history before confirming a balance.'
+                : ledgerDifference !== 0 ? 'Ledger entries do not equal the current balance.'
+                    : unmatchedPurchases.length || orphanPurchaseDebits.length || unsettledPurchaseDebits.length ? 'Purchase records need operational review.'
+                        : 'Ledger credits, debits, and settled purchases agree.',
+            complete,
+            credits_minor: credits,
+            debits_minor: debits,
+            live_balance_minor: balance.ledgerBalanceMinor,
+            active_holds_minor: balance.activeHoldsMinor,
+            ledger_difference_minor: ledgerDifference,
+            unmatched_purchase_count: unmatchedPurchases.length,
+            unmatched_purchase_minor: unmatchedPurchases.reduce((sum, row) => sum + Number(row.amount_minor ?? 0), 0),
+            orphan_purchase_debit_count: orphanPurchaseDebits.length,
+            unsettled_purchase_debit_count: unsettledPurchaseDebits.length,
+        };
+    });
+
     // ── vendor funding history ──
     fastify.get('/vendors/:id/funding', async (req) => {
         const id = (req.params as { id: string }).id;
@@ -2484,6 +2549,11 @@ const route: FastifyPluginAsync = async (fastify) => {
         if (!Object.keys(patch).length) {
             return reply.code(400).send({ error: 'no_changes', message: 'Provide at least one limit field.' });
         }
+        const effectiveDaily = body.dailyCapMinor === undefined ? (before as any).daily_debit_cap_minor : body.dailyCapMinor;
+        const effectiveMonthly = body.monthlyCapMinor === undefined ? (before as any).monthly_debit_cap_minor : body.monthlyCapMinor;
+        if (effectiveDaily != null && effectiveMonthly != null && effectiveMonthly < effectiveDaily) {
+            return reply.code(400).send({ error: 'invalid_limits', message: 'Monthly cap cannot be lower than the daily cap.' });
+        }
 
         const { data: updated, error: updErr } = await adminClient
             .from('wallets').update(patch).eq('id', id).select('*').single();
@@ -2500,7 +2570,7 @@ const route: FastifyPluginAsync = async (fastify) => {
                 daily_debit_cap_minor:   (before as any).daily_debit_cap_minor,
                 monthly_debit_cap_minor: (before as any).monthly_debit_cap_minor,
             },
-            after: { ...patch, reason: body.reason },
+            after: { ...patch, effectiveDailyCapMinor: effectiveDaily, effectiveMonthlyCapMinor: effectiveMonthly, reason: body.reason },
         });
         return { ok: true, wallet: updated };
     });
@@ -2813,6 +2883,7 @@ const route: FastifyPluginAsync = async (fastify) => {
             holds_minor:     balance?.activeHoldsMinor ?? 0,
             available_minor: balance?.availableMinor ?? 0,
             entries,
+            nextCursor: entries.length === Math.min(Number(limit ?? 50), 200) ? entries.at(-1)?.created_at ?? null : null,
         };
     });
 
@@ -3018,6 +3089,37 @@ const route: FastifyPluginAsync = async (fastify) => {
         const nextCursor = rows.length === Math.min(Number(limit ?? 100), 500)
             ? rows[rows.length - 1].created_at : null;
         return { purchases: rows, nextCursor };
+    });
+
+    // Full account catalogue for exports. It is independent of purchase pages.
+    fastify.get('/purchases/actors', async (req) => {
+        const assignedStations = staffStations(req);
+        const scopedOwners = assignedStations ? await stationOwnerIds(assignedStations) : null;
+        if (scopedOwners && !scopedOwners.vendors.size && !scopedOwners.customers.size) return { actors: [] };
+        const pageSize = 1_000;
+        const actorOptions: Array<{ value: string; label: string }> = [];
+        for (let offset = 0; ; offset += pageSize) {
+            const query = adminClient.from('vendor_organizations').select('id, legal_name, trading_name')
+                .order('created_at', { ascending: false }).range(offset, offset + pageSize - 1);
+            const { data, error } = await query;
+            if (error) throw error;
+            for (const row of data ?? []) {
+                if (scopedOwners && !scopedOwners.vendors.has(row.id)) continue;
+                actorOptions.push({ value: `vendor:${row.id}`, label: `Vendor · ${row.trading_name || row.legal_name || row.id}` });
+            }
+            if ((data?.length ?? 0) < pageSize) break;
+        }
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await adminClient.from('customers').select('id, full_name, email')
+                .order('created_at', { ascending: false }).range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            for (const row of data ?? []) {
+                if (scopedOwners && !scopedOwners.customers.has(row.id)) continue;
+                actorOptions.push({ value: `customer:${row.id}`, label: `Customer · ${row.full_name || row.email || row.id}` });
+            }
+            if ((data?.length ?? 0) < pageSize) break;
+        }
+        return { actors: actorOptions.sort((left, right) => left.label.localeCompare(right.label)) };
     });
 
     // Back-compat alias for old /vending consumers.

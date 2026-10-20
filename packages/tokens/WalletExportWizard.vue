@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="T extends Record<string, any>">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { exportCsv, printPdf, type WalletExportColumn, type WalletExportMeta } from './wallet-export';
+import { exportCsv, exportCsvByDayZip, printPdf, type WalletExportColumn, type WalletExportMeta } from './wallet-export';
 import type { WalletExportOption, WalletExportSelection } from './wallet-export-wizard';
 
 const props = withDefaults(defineProps<{
@@ -34,6 +34,7 @@ const props = withDefaults(defineProps<{
   stationValue?: (row: T) => string | null | undefined;
   actorValue?: (row: T) => string | null | undefined;
   resolveRows?: (selection: WalletExportSelection) => Promise<T[]>;
+  allowDailyCsvArchive?: boolean;
 }>(), {
   subtitle: '',
   meta: () => [],
@@ -56,6 +57,7 @@ const props = withDefaults(defineProps<{
   initialActor: '',
   initialSince: '',
   initialUntil: '',
+  allowDailyCsvArchive: false,
 });
 
 const emit = defineEmits<{
@@ -68,15 +70,21 @@ const step = ref(1);
 const busy = ref(false);
 const message = ref('');
 const format = ref<'csv' | 'pdf'>(props.formats[0] ?? 'pdf');
+const csvDelivery = ref<'single' | 'daily-zip'>('single');
 const since = ref(props.initialSince);
 const until = ref(props.initialUntil);
 const status = ref(props.initialStatus);
 const station = ref(props.initialStation);
 const actor = ref(props.initialActor);
+const actorQuery = ref('');
 const selectedColumns = ref<string[]>(props.columns.map((column) => column.key));
 
-const disabled = computed(() => props.loading || busy.value || props.rows.length === 0);
+const disabled = computed(() => props.loading || busy.value || (props.rows.length === 0 && !props.resolveRows));
 const chosenColumns = computed(() => props.columns.filter((column) => selectedColumns.value.includes(column.key)));
+const matchingActorOptions = computed(() => {
+  const query = actorQuery.value.trim().toLocaleLowerCase();
+  return query ? props.actorOptions.filter((option) => option.label.toLocaleLowerCase().includes(query)) : props.actorOptions;
+});
 const selectedScopeCount = computed(() => [since.value || until.value, status.value, station.value, actor.value].filter(Boolean).length);
 const scopeSummary = computed(() => {
   const labels = [
@@ -90,11 +98,13 @@ const scopeSummary = computed(() => {
 function reset() {
   step.value = 1;
   format.value = props.formats[0] ?? 'pdf';
+  csvDelivery.value = 'single';
   since.value = props.initialSince;
   until.value = props.initialUntil;
   status.value = props.initialStatus;
   station.value = props.initialStation;
   actor.value = props.initialActor;
+  actorQuery.value = '';
   selectedColumns.value = props.columns.map((column) => column.key);
   message.value = '';
 }
@@ -131,6 +141,7 @@ function rowMatches(row: T) {
 function selection(): WalletExportSelection {
   return {
     format: format.value,
+    csvDelivery: csvDelivery.value,
     since: since.value,
     until: until.value,
     status: status.value,
@@ -162,7 +173,10 @@ async function run() {
       { label: 'Period', value: since.value || until.value ? `${since.value || 'First record'} to ${until.value || 'Latest record'}` : 'All loaded dates' },
       { label: 'Records', value: String(exportRows.length) },
     ];
-    if (format.value === 'csv') exportCsv(props.filename, exportRows, chosenColumns.value);
+    if (format.value === 'csv' && csvDelivery.value === 'daily-zip') {
+      if (!props.dateValue) throw new Error('Daily exports require dated records.');
+      exportCsvByDayZip(props.filename, exportRows, chosenColumns.value, props.dateValue);
+    } else if (format.value === 'csv') exportCsv(props.filename, exportRows, chosenColumns.value);
     else printPdf({ title: props.title, subtitle: props.subtitle, rows: exportRows, columns: chosenColumns.value, meta: scopeMeta });
     message.value = `${exportRows.length} records exported.`;
     emit('success', { format: format.value, count: exportRows.length, selection: currentSelection });
@@ -220,9 +234,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
             </header>
 
             <ol class="bw-export-steps" aria-label="Export steps">
-              <li v-for="number in 3" :key="number" :class="{ active: step === number, done: step > number }">
+              <li v-for="number in (allowDailyCsvArchive && formats.includes('csv') ? 4 : 3)" :key="number" :class="{ active: step === number, done: step > number }">
                 <span>{{ number }}</span>
-                {{ number === 1 ? 'Scope' : number === 2 ? 'Fields' : 'Format' }}
+                {{ number === 1 ? 'Scope' : number === 2 ? 'Fields' : number === 3 ? 'Format' : 'Delivery' }}
               </li>
             </ol>
 
@@ -233,7 +247,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
                 <label v-if="dateValue"><span>End date</span><input v-model="until" type="date" class="bw-input" /></label>
                 <label v-if="statusOptions.length"><span>{{ statusLabel }}</span><select v-model="status" class="bw-select"><option value="">{{ allStatusLabel }}</option><option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
                 <label v-if="stationOptions.length"><span>{{ stationLabel }}</span><select v-model="station" class="bw-select"><option value="">{{ allStationLabel }}</option><option v-for="option in stationOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
-                <label v-if="actorOptions.length" class="wide"><span>{{ actorLabel }}</span><select v-model="actor" class="bw-select"><option value="">{{ allActorLabel }}</option><option v-for="option in actorOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+                <label v-if="actorOptions.length" class="wide"><span>{{ actorLabel }}</span><input v-model="actorQuery" class="bw-input" type="search" placeholder="Search vendors or customers" /><select v-model="actor" class="bw-select"><option value="">{{ allActorLabel }}</option><option v-for="option in matchingActorOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select><small v-if="actorQuery">{{ matchingActorOptions.length }} matches</small></label>
               </div>
             </div>
 
@@ -250,7 +264,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
               </div>
             </div>
 
-            <div v-else class="bw-export-step-panel">
+            <div v-else-if="step === 3" class="bw-export-step-panel">
               <h3>Choose export format</h3>
               <div class="bw-export-format-grid">
                 <button v-if="formats.includes('csv')" type="button" :class="{ selected: format === 'csv' }" @click="format = 'csv'"><strong>CSV</strong><span>Power BI and spreadsheets</span></button>
@@ -263,10 +277,20 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
               </dl>
             </div>
 
+            <div v-else class="bw-export-step-panel">
+              <h3>Choose CSV delivery</h3>
+              <fieldset class="bw-export-csv-delivery">
+                <legend>CSV delivery</legend>
+                <label :class="{ selected: csvDelivery === 'single' }"><input v-model="csvDelivery" type="radio" value="single" /> One combined CSV</label>
+                <label :class="{ selected: csvDelivery === 'daily-zip' }"><input v-model="csvDelivery" type="radio" value="daily-zip" /> One CSV per day, zipped</label>
+                <small v-if="csvDelivery === 'daily-zip'">Dates use your local time.</small>
+              </fieldset>
+            </div>
+
             <p v-if="message" class="bw-export-message" role="status">{{ message }}</p>
             <footer class="bw-export-dialog-actions">
               <button type="button" class="bw-btn" @click="step === 1 ? close() : step--">{{ step === 1 ? 'Cancel' : 'Back' }}</button>
-              <button v-if="step < 3" type="button" class="bw-btn primary" :disabled="step === 2 && !selectedColumns.length" @click="step++">Continue</button>
+              <button v-if="step < 3 || (step === 3 && format === 'csv' && allowDailyCsvArchive)" type="button" class="bw-btn primary" :disabled="step === 2 && !selectedColumns.length" @click="step++">Continue</button>
               <button v-else type="button" class="bw-btn primary" :disabled="busy || !selectedColumns.length" @click="run">{{ busy ? 'Preparing…' : `Export ${format.toUpperCase()}` }}</button>
             </footer>
           </section>
@@ -276,3 +300,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
     <span class="bw-sr-only" aria-live="polite">{{ message }}</span>
   </div>
 </template>
+
+<style scoped>
+.bw-export-form-grid label.wide { display:grid; gap:var(--s-2); }
+.bw-export-form-grid label.wide small { color:var(--text-muted); font-size:var(--t-xs); }
+.bw-export-csv-delivery { display:grid; gap:var(--s-2); margin-top:var(--s-4); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--s-3); }
+.bw-export-csv-delivery legend { color:var(--text-muted); font-size:var(--t-xs); font-weight:700; padding:0 var(--s-1); text-transform:uppercase; letter-spacing:.06em; }
+.bw-export-csv-delivery label { display:flex; gap:var(--s-2); align-items:center; cursor:pointer; }
+.bw-export-csv-delivery small { color:var(--text-muted); }
+</style>

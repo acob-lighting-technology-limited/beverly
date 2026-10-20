@@ -175,13 +175,16 @@ const purchaseExportColumns: WalletExportColumn<Purchase>[] = [
     { key: 'units_kwh', header: 'Units (kWh)', value: (p) => p.units_kwh ?? '' },
     { key: 'status', header: 'Status', value: (p) => p.status },
 ];
-const purchaseActorOptions = computed(() => {
-    const seen = new Map<string, string>();
-    for (const item of items.value) {
-        if (item.actor_id) seen.set(item.actor_id, item.vended_by || item.customer_name || item.actor_id);
+const purchaseActorOptions = ref<{ value: string; label: string }[]>([]);
+
+async function loadPurchaseActorOptions() {
+    try {
+        const result = await api.get<{ actors: { value: string; label: string }[] }>('/api/v1/admin/purchases/actors');
+        purchaseActorOptions.value = result.actors ?? [];
+    } catch (e: any) {
+        banner.value = { tone: 'error', text: e?.message ?? 'Could not load purchase accounts.' };
     }
-    return [...seen].map(([value, label]) => ({ value, label }));
-});
+}
 
 async function loadStations() {
     try {
@@ -409,12 +412,19 @@ function buildPurchaseRowActions(p: Purchase): ActionItem[] {
 async function resolvePurchaseExportRows(selection: WalletExportSelection): Promise<Purchase[]> {
     const result: Purchase[] = [];
     let next: string | null = null;
-    for (let page = 0; page < 20; page += 1) {
+    const seenCursors = new Set<string>();
+    while (true) {
         const params = new URLSearchParams();
         params.set('limit', '500');
         if (selection.status) params.set('status', selection.status);
         if (selection.station) params.set('station', selection.station);
-        if (selection.actor) params.set('actorId', selection.actor);
+        if (selection.actor) {
+            const [actorType, actorId] = selection.actor.split(':', 2);
+            if (actorType && actorId) {
+                params.set('actorType', actorType);
+                params.set('actorId', actorId);
+            }
+        }
         if (selection.since) params.set('since', new Date(`${selection.since}T00:00:00`).toISOString());
         if (selection.until) params.set('until', new Date(`${selection.until}T23:59:59.999`).toISOString());
         if (next) params.set('cursor', next);
@@ -422,6 +432,8 @@ async function resolvePurchaseExportRows(selection: WalletExportSelection): Prom
         result.push(...(response.purchases ?? []));
         next = response.nextCursor;
         if (!next) break;
+        if (seenCursors.has(next)) throw new Error('Export pagination stalled. No partial file was created.');
+        seenCursors.add(next);
     }
     return result;
 }
@@ -434,7 +446,7 @@ function printPurchaseReceipt(p: Purchase | PurchaseDetail['purchase']) {
     printReceipt(purchaseReceipt(p));
 }
 
-onMounted(() => { void loadStations(); void loadList(); });
+onMounted(() => { void loadStations(); void loadPurchaseActorOptions(); void loadList(); });
 watch([fStatus, fActorType], () => loadList());
 </script>
 

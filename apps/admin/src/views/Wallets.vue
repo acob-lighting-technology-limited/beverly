@@ -203,22 +203,37 @@ async function doStatus() {
 
 // â”€ Limit edit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const limitsOpen = ref(false);
-const limitDailyNaira = ref<number | ''>('');
-const limitMonthlyNaira = ref<number | ''>('');
+const limitDailyNaira = ref('');
+const limitMonthlyNaira = ref('');
 const limitReason = ref('');
 const limitsBusy = ref(false);
 
+function capMinor(value: string): number | null | undefined {
+    if (!value.trim()) return null;
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0 || !Number.isSafeInteger(amount * 100)) return undefined;
+    return Math.round(amount * 100);
+}
+
+const dailyCapMinor = computed(() => capMinor(limitDailyNaira.value));
+const monthlyCapMinor = computed(() => capMinor(limitMonthlyNaira.value));
 const limitsValid = computed(() =>
     limitReason.value.trim().length >= 4 &&
-    (limitDailyNaira.value !== '' || limitMonthlyNaira.value !== ''),
+    dailyCapMinor.value !== undefined && monthlyCapMinor.value !== undefined &&
+    !(dailyCapMinor.value != null && monthlyCapMinor.value != null && monthlyCapMinor.value < dailyCapMinor.value),
 );
+const limitHint = computed(() => {
+    if (dailyCapMinor.value === undefined || monthlyCapMinor.value === undefined) return 'Enter amounts to two decimal places.';
+    if (dailyCapMinor.value != null && monthlyCapMinor.value != null && monthlyCapMinor.value < dailyCapMinor.value) return 'Monthly cap cannot be lower.';
+    return 'Blank removes that cap.';
+});
 
 function askLimits() {
     if (!detail.value) return;
     limitDailyNaira.value = detail.value.wallet.daily_debit_cap_minor != null
-        ? Math.round(detail.value.wallet.daily_debit_cap_minor / 100) : '';
+        ? String(detail.value.wallet.daily_debit_cap_minor / 100) : '';
     limitMonthlyNaira.value = detail.value.wallet.monthly_debit_cap_minor != null
-        ? Math.round(detail.value.wallet.monthly_debit_cap_minor / 100) : '';
+        ? String(detail.value.wallet.monthly_debit_cap_minor / 100) : '';
     limitReason.value = '';
     limitsOpen.value = true;
 }
@@ -228,9 +243,7 @@ async function doLimits() {
     limitsBusy.value = true;
     banner.value = null;
     try {
-        const body: Record<string, unknown> = { reason: limitReason.value.trim() };
-        if (limitDailyNaira.value !== '')   body.dailyCapMinor   = Math.round(Number(limitDailyNaira.value) * 100);
-        if (limitMonthlyNaira.value !== '') body.monthlyCapMinor = Math.round(Number(limitMonthlyNaira.value) * 100);
+        const body = { reason: limitReason.value.trim(), dailyCapMinor: dailyCapMinor.value, monthlyCapMinor: monthlyCapMinor.value };
         await api.patch(`/api/v1/admin/wallets/${detail.value.wallet.id}/limits`, body);
         limitsOpen.value = false;
         banner.value = { tone: 'success', text: 'Limits updated.' };
@@ -631,19 +644,19 @@ watch([fOwnerType, fStatus], () => loadList());
       :disable-confirm="!limitsValid"
       @confirm="doLimits"
     >
-      <div class="cd-grid-2">
+      <div class="limit-grid">
         <div>
           <label class="cd-input-label">Daily cap (â‚¦)</label>
-          <input v-model.number="limitDailyNaira" type="number" min="0" class="cd-input" />
+          <input v-model="limitDailyNaira" inputmode="decimal" type="number" min="0" step="1" class="cd-input" />
         </div>
         <div>
           <label class="cd-input-label">Monthly cap (â‚¦)</label>
-          <input v-model.number="limitMonthlyNaira" type="number" min="0" class="cd-input" />
+          <input v-model="limitMonthlyNaira" inputmode="decimal" type="number" min="0" step="1" class="cd-input" />
         </div>
       </div>
       <label class="cd-input-label" style="margin-top: var(--s-3)">Reason *</label>
       <textarea v-model="limitReason" rows="2" class="cd-input" placeholder="e.g. Vendor requested upgrade after Q2 review." />
-      <p class="cd-input-hint">Minimum 4 characters.</p>
+      <p class="cd-input-hint">{{ limitHint }} Reason requires four characters.</p>
     </ConfirmDialog>
 
   </AppShell>
@@ -664,6 +677,9 @@ watch([fOwnerType, fStatus], () => loadList());
 .banner-enter-active, .banner-leave-active { transition: all 0.20s var(--ease-out); }
 .banner-enter-from { opacity: 0; transform: translateY(-4px); }
 .banner-leave-to { opacity: 0; }
+.limit-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:var(--s-3); }
+.limit-grid .cd-input { width:100%; }
+@media (max-width: 480px) { .limit-grid { grid-template-columns:1fr; } }
 
 /* KPI */
 .kpi-grid {
