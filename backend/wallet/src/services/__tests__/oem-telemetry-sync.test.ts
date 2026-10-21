@@ -173,6 +173,20 @@ describe('OEM telemetry synchronization', () => {
         })).rejects.toThrow('telemetry_persist_failed');
     });
 
+    it('flags quarantined ownership rows after completing available pages', async () => {
+        const fetchPage = vi.fn()
+            .mockResolvedValueOnce({ readings: [], quarantine: [], nextCursor: 'next', hasMore: true })
+            .mockResolvedValueOnce({ readings: [], quarantine: [], nextCursor: null, hasMore: false });
+        const persistPage = vi.fn()
+            .mockResolvedValueOnce({ readings: 1, quarantine: 1 })
+            .mockResolvedValueOnce({ readings: 1, quarantine: 0 });
+        await expect(runSparkMeterTelemetrySync([target], { fetchPage, persistPage, wait: vi.fn() }))
+            .rejects.toMatchObject({
+                failures: [{ installationId: target.installationId, reason: 'telemetry_quarantine_requires_review' }],
+            });
+        expect(fetchPage).toHaveBeenCalledTimes(2);
+    });
+
     it('surfaces a safe upstream timeout classification', async () => {
         await expect(runSparkMeterTelemetrySync([target], {
             fetchPage: vi.fn().mockRejectedValue(new Error('telemetry_upstream_timeout')),

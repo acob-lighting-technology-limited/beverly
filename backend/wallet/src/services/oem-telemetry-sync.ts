@@ -50,6 +50,7 @@ export async function runSparkMeterTelemetrySync(
     if (options.site && selected.length === 0) throw new Error('OEM telemetry site outside installation');
     const summary: TelemetrySyncSummary = { installations: selected.length, pages: 0, readings: 0, quarantine: 0, failures: [] };
     for (const target of selected) {
+        const initialQuarantine = summary.quarantine;
         const seen = new Set<string>();
         let cursor: string | undefined;
         let stage: 'fetch' | 'persist' = 'fetch';
@@ -78,6 +79,9 @@ export async function runSparkMeterTelemetrySync(
         } catch (error) {
             const reason = error instanceof Error && /^telemetry_/.test(error.message) ? error.message : `telemetry_${stage}_failed`;
             summary.failures.push({ installationId: target.installationId, reason });
+        }
+        if (summary.quarantine > initialQuarantine) {
+            summary.failures.push({ installationId: target.installationId, reason: 'telemetry_quarantine_requires_review' });
         }
     }
     if (summary.failures.length) {
