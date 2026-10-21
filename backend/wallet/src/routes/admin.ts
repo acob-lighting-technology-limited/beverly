@@ -1908,7 +1908,7 @@ const route: FastifyPluginAsync = async (fastify) => {
 
         const [vendingAgg, failedVendingAgg, paystackFundingAgg, bankFundingAgg] = await Promise.all([
             pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
-                .eq('actor_type', 'vendor').eq('actor_id', id).eq('status', 'delivered').order('id').range(start, end)),
+                .eq('actor_type', 'vendor').eq('actor_id', id).in('status', ['delivered', 'completed']).order('id').range(start, end)),
             pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
                 .eq('actor_type', 'vendor').eq('actor_id', id).eq('status', 'failed').order('id').range(start, end)),
             pagedAmountTotal((start, end) => adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
@@ -2865,7 +2865,7 @@ const route: FastifyPluginAsync = async (fastify) => {
         const [meters, purchaseAgg, paymentFundingAgg, bankFundingAgg] = await Promise.all([
             adminClient.from('customer_meters').select('id, station_id').eq('customer_id', id),
             pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
-                .eq('customer_id', id).order('id').range(start, end)),
+                .eq('customer_id', id).in('status', ['delivered', 'completed']).order('id').range(start, end)),
             pagedAmountTotal((start, end) => adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
                 .eq('actor_type', 'customer').eq('actor_id', id).eq('purpose', 'wallet_funding')
                 .in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)).order('id').range(start, end)),
