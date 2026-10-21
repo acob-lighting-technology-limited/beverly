@@ -612,7 +612,6 @@ export async function dispatchGeneratedCustomerToken(
         const { error: remoteStatusError } = await adminClient.from('purchase_orders').update({
             remote_task_id: task.taskId,
             delivery_state: deliveryState,
-            ...(deliveryState === 'remote_send_delivered' ? { status: 'delivered' } : {}),
             ...(task.status === 'failed'
                 ? { failure_reason: `remote_send_failed: ${task.remark ?? 'Meter rejected the token.'}`.slice(0, 500) }
                 : {}),
