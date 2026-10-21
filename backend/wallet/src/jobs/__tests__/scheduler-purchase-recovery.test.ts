@@ -6,7 +6,10 @@ const state = vi.hoisted(() => ({
     exceptions: [] as Record<string, unknown>[],
     hold: { status: 'active', wallet_id: 'wallet-1', amount_minor: 1000 } as Record<string, unknown>,
     debits: [] as Record<string, unknown>[],
+    receipt: { id: 'receipt-1', payload: { token: 'TOKEN' } } as Record<string, unknown> | null,
     orders: [] as Record<string, unknown>[],
+    staleHolds: [] as Record<string, unknown>[],
+    releasedHolds: [] as string[],
 }));
 
 vi.mock('../../services/ledger.js', () => ({ captureHold: state.captureHold }));
@@ -27,17 +30,17 @@ vi.mock('../../db/supabase.js', () => ({
         from(table: string) {
             if (table === 'purchase_orders') {
                 return {
-                    select: () => ({
-                        eq: () => ({
+                    select: (columns: string) => columns === 'hold_id' ? ({
+                        in: () => ({ in: async () => ({ data: state.orders.map((row) => ({ hold_id: row.hold_id })), error: null }) }),
+                    }) : ({
+                        in: () => ({ eq: () => ({
                             not: () => ({
-                                or: () => ({ limit: async () => ({ data: state.orders.filter(
-                                    (order) => order.delivery_state == null || order.delivery_state === 'token_generated',
-                                ) }) }),
+                                limit: async () => ({ data: state.orders.filter((row) => Boolean(row.token)) }),
                             }),
-                        }),
+                        }) }),
                     }),
                     update: (payload: Record<string, unknown>) => ({
-                        eq: () => ({ eq: async () => {
+                        eq: () => ({ in: async () => {
                             state.deliveredUpdates.push(payload);
                             return { error: null };
                         } }),
@@ -46,9 +49,12 @@ vi.mock('../../db/supabase.js', () => ({
             }
             if (table === 'wallet_holds') {
                 return { select: () => ({ eq: () => ({
-                    lt: async () => ({ data: [] }),
+                    lt: async () => ({ data: state.staleHolds, error: null }),
                     single: async () => ({ data: state.hold, error: null }),
                 }) }) };
+            }
+            if (table === 'receipts') {
+                return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.receipt, error: null }) }) }) };
             }
             if (table === 'wallet_ledger_entries') {
                 return { select: () => ({ eq: () => ({ eq: () => ({ eq: () => ({
@@ -65,6 +71,10 @@ vi.mock('../../db/supabase.js', () => ({
             }
             throw new Error(`unexpected table ${table}`);
         },
+        rpc: async (_name: string, args: { p_hold_id: string }) => {
+            state.releasedHolds.push(args.p_hold_id);
+            return { error: null };
+        },
     },
 }));
 
@@ -77,6 +87,9 @@ describe('purchase recovery scheduler', () => {
         state.exceptions.length = 0;
         state.hold = { status: 'active', wallet_id: 'wallet-1', amount_minor: 1000 };
         state.debits = [];
+        state.staleHolds = [];
+        state.releasedHolds = [];
+        state.receipt = { id: 'receipt-1', payload: { token: 'TOKEN' } };
         state.orders = [{ id: 'order-1', hold_id: 'hold-1', meter_id: '1234',
             created_by: 'customer-1', delivery_state: null, token: 'TOKEN' }];
     });
@@ -87,6 +100,7 @@ describe('purchase recovery scheduler', () => {
         expect(state.captureHold).toHaveBeenCalledOnce();
         expect(state.deliveredUpdates).toContainEqual({
             status: 'delivered',
+            receipt_id: 'receipt-1',
             delivery_state: 'token_generated',
         });
     });
@@ -117,12 +131,31 @@ describe('purchase recovery scheduler', () => {
         expect(state.exceptions).toHaveLength(1);
     });
 
-    it('leaves remote-send purchases in their own delivery workflow', async () => {
+    it('delivers issued tokens while preserving remote-send status', async () => {
         state.orders[0].delivery_state = 'remote_send_pending_review';
         state.hold.status = 'captured';
+        state.debits = [{ id: 'debit-1', wallet_id: 'wallet-1', amount_minor: 1000 }];
         await sweepExpiredHolds();
         expect(state.captureHold).not.toHaveBeenCalled();
-        expect(state.deliveredUpdates).toHaveLength(0);
+        expect(state.deliveredUpdates).toContainEqual({
+            status: 'delivered', receipt_id: 'receipt-1', delivery_state: 'remote_send_pending_review',
+        });
         expect(state.exceptions).toHaveLength(0);
+    });
+
+    it('does not deliver an unverified token', async () => {
+        state.hold.status = 'captured';
+        state.debits = [{ id: 'debit-1', wallet_id: 'wallet-1', amount_minor: 1000 }];
+        state.receipt = { id: 'receipt-1', payload: { token: 'DIFFERENT' } };
+        await sweepExpiredHolds();
+        expect(state.deliveredUpdates).toHaveLength(0);
+        expect(state.exceptions).toContainEqual(expect.objectContaining({ category: 'purchase_recovery_failed' }));
+    });
+
+    it('never releases an unresolved purchase hold', async () => {
+        state.orders[0].token = null;
+        state.staleHolds = [{ id: 'hold-1' }];
+        await sweepExpiredHolds();
+        expect(state.releasedHolds).toHaveLength(0);
     });
 });

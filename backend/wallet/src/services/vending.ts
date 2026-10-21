@@ -358,13 +358,14 @@ async function vendorPurchaseImpl(input: VendorPurchaseInput): Promise<VendorPur
             });
             receiptId = receipt.id;
 
-            await adminClient.from('purchase_orders').update({
+            const { error: deliveryError } = await adminClient.from('purchase_orders').update({
                 token,
                 receipt_id: receiptId,
                 status: 'delivered',
                 delivery_state: 'token_generated',
                 vended_by: vendedByResolved,
             }).eq('id', po.id);
+            if (deliveryError) throw new VendingError(deliveryError.message, 'purchase_delivery_record_failed');
             po = { ...po, token, receipt_id: receiptId, status: 'delivered', delivery_state: 'token_generated', vended_by: vendedByResolved };
 
         } catch (e: any) {
@@ -525,12 +526,13 @@ export async function dispatchGeneratedVendorToken(
                 : 'remote_send_pending_review';
 
         if (deliveryState !== po.delivery_state) {
-            await adminClient.from('purchase_orders').update({
+            const { error: remoteStatusError } = await adminClient.from('purchase_orders').update({
                 delivery_state: deliveryState,
                 ...(status.status === 'failed'
                     ? { failure_reason: `remote_send_failed: ${status.remark ?? 'Meter rejected the token.'}`.slice(0, 500) }
                     : {}),
             }).eq('id', po.id);
+            if (remoteStatusError) throw new VendingError(remoteStatusError.message, 'remote_status_record_failed');
             if (status.status !== 'pending') await notifyVendor({
                 vendorOrganizationId, type: 'remote_send_update',
                 title: status.status === 'success' ? 'Remote send delivered' : 'Remote send failed',
@@ -584,7 +586,7 @@ export async function dispatchGeneratedVendorToken(
             : task.status === 'failed'
                 ? 'remote_send_failed_needs_manual_entry'
                 : 'remote_send_pending_review';
-        await adminClient.from('purchase_orders').update({
+        const { error: remoteStatusError } = await adminClient.from('purchase_orders').update({
             remote_task_id: task.taskId,
             delivery_state: deliveryState,
             ...(deliveryState === 'remote_send_delivered' ? { status: 'delivered' } : {}),
@@ -592,6 +594,7 @@ export async function dispatchGeneratedVendorToken(
                 ? { failure_reason: `remote_send_failed: ${task.remark ?? 'Meter rejected the token.'}`.slice(0, 500) }
                 : {}),
         }).eq('id', po.id);
+        if (remoteStatusError) throw new VendingError(remoteStatusError.message, 'remote_status_record_failed');
         await logAction({
             actorUserId: vendorUserId,
             actorType: 'vendor_user',
@@ -641,12 +644,13 @@ async function markPendingReview(
     reason: string,
     opts: { token?: string | null; deliveryState?: string | null } = {},
 ) {
-    await adminClient.from('purchase_orders').update({
+    const { error: reviewError } = await adminClient.from('purchase_orders').update({
         token: opts.token ?? undefined,
         status: 'delivery_pending_review',
         delivery_state: opts.deliveryState ?? 'manual_review_required',
         failure_reason: `${code}: ${reason}`.slice(0, 500),
     }).eq('id', purchaseOrderId);
+    if (reviewError) throw new VendingError(reviewError.message, 'purchase_review_record_failed');
 }
 
 export async function reconcileRemoteSendOrders(limit = 25) {

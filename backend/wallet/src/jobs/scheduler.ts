@@ -54,19 +54,22 @@ export async function sweepExpiredHolds(): Promise<void> {
     await reconcileGeneratedHoldOrders();
     // Holds older than 30 min with no capture → release
     const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data: stale } = await adminClient
+    const { data: stale, error: staleError } = await adminClient
         .from('wallet_holds')
         .select('id, wallet_id, amount_minor')
         .eq('status', 'active')
         .lt('created_at', cutoff);
+    if (staleError) throw staleError;
 
     if (!stale?.length) return;
     const holdIds = (stale as any[]).map((hold) => hold.id);
-    const { data: protectedOrders } = await adminClient
+    const { data: protectedOrders, error: protectedError } = await adminClient
         .from('purchase_orders')
         .select('hold_id')
         .in('hold_id', holdIds)
-        .in('status', ['dispatching', 'delivery_pending_review']);
+        .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
+    if (protectedError) throw protectedError;
+    // A token may exist upstream before its local order update succeeds.
     const protectedHoldIds = new Set((protectedOrders ?? []).map((row: any) => row.hold_id));
     let released = 0;
     for (const hold of stale as any[]) {
@@ -91,21 +94,27 @@ export async function sweepExpiredHolds(): Promise<void> {
 
 // ── Auto-reconcile hold_active orders with generated tokens ───────────────────
 export async function reconcileGeneratedHoldOrders(): Promise<void> {
-    const { data: rows } = await adminClient
+    const { data: rows, error: ordersError } = await adminClient
         .from('purchase_orders')
         .select('*')
-        .eq('status', 'hold_active')
+        .in('status', ['hold_active', 'delivery_pending_review'])
+        .eq('purchase_mode', 'wallet')
         .not('token', 'is', null)
-        // Remote-send orders have their own delivery lifecycle. They may already
-        // have a captured hold while meter delivery remains pending or failed.
-        .or('delivery_state.is.null,delivery_state.eq.token_generated')
         .limit(50);
+    if (ordersError) throw ordersError;
 
     if (!rows?.length) return;
     let count = 0;
     for (const po of rows as any[]) {
         try {
             if (!po.hold_id) throw new Error('purchase hold is missing');
+            const { data: receipt, error: receiptError } = await adminClient
+                .from('receipts').select('id, payload').eq('purchase_order_id', po.id).maybeSingle();
+            if (receiptError || !receipt) throw new Error('generated token receipt is missing');
+            const receiptToken = String(receipt.payload?.token ?? receipt.payload?.credit_token ?? '').replace(/\s/g, '');
+            if (!receiptToken || receiptToken !== String(po.token).replace(/\s/g, '')) {
+                throw new Error('generated token differs from receipt');
+            }
             {
                 const { data: hold, error: holdError } = await adminClient
                     .from('wallet_holds').select('wallet_id, amount_minor, status')
@@ -141,8 +150,9 @@ export async function reconcileGeneratedHoldOrders(): Promise<void> {
             }
             const { error: updateError } = await adminClient.from('purchase_orders').update({
                 status: 'delivered',
+                receipt_id: receipt.id,
                 delivery_state: po.delivery_state || 'token_generated',
-            }).eq('id', po.id).eq('status', 'hold_active');
+            }).eq('id', po.id).in('status', ['hold_active', 'delivery_pending_review']);
             if (updateError) throw updateError;
             count++;
         } catch (error) {

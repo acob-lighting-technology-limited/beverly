@@ -422,12 +422,13 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
                 },
             });
 
-            await adminClient.from('purchase_orders').update({
+            const { error: deliveryError } = await adminClient.from('purchase_orders').update({
                 token: tokenRes.token,
                 receipt_id: receipt.id,
                 status: 'delivered',
                 delivery_state: 'token_generated',
             }).eq('id', po.id);
+            if (deliveryError) throw new CustomerPurchaseError(deliveryError.message, 'purchase_delivery_record_failed');
             po = { ...po, token: tokenRes.token, receipt_id: receipt.id, status: 'delivered' };
 
             await logAction({
@@ -487,12 +488,13 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
             };
         } catch (e: any) {
             if (issuedToken) {
-                await adminClient.from('purchase_orders').update({
+                const { error: reviewError } = await adminClient.from('purchase_orders').update({
                     token: issuedToken,
                     status: 'delivery_pending_review',
                     delivery_state: 'token_generated_needs_reconciliation',
                     failure_reason: `${e.code ?? 'post_token_failed'}: ${e.message}`.slice(0, 500),
                 }).eq('id', po.id);
+                if (reviewError) throw new CustomerPurchaseError(reviewError.message, 'purchase_review_record_failed');
             } else {
                 try { await releaseHold(hold.id); } catch { /* noop */ }
                 await adminClient.from('purchase_orders').update({
@@ -547,12 +549,13 @@ export async function dispatchGeneratedCustomerToken(
                 : 'remote_send_pending_review';
 
         if (deliveryState !== po.delivery_state) {
-            await adminClient.from('purchase_orders').update({
+            const { error: remoteStatusError } = await adminClient.from('purchase_orders').update({
                 delivery_state: deliveryState,
                 ...(status.status === 'failed'
                     ? { failure_reason: `remote_send_failed: ${status.remark ?? 'Meter rejected the token.'}`.slice(0, 500) }
                     : {}),
             }).eq('id', po.id);
+            if (remoteStatusError) throw new CustomerPurchaseError(remoteStatusError.message, 'remote_status_record_failed');
             if (status.status !== 'pending') await sendNotification(customerId, {
                 type: 'remote_send_update',
                 title: status.status === 'success' ? 'Remote send delivered' : 'Remote send failed',
@@ -606,7 +609,7 @@ export async function dispatchGeneratedCustomerToken(
             : task.status === 'failed'
                 ? 'remote_send_failed_needs_manual_entry'
                 : 'remote_send_pending_review';
-        await adminClient.from('purchase_orders').update({
+        const { error: remoteStatusError } = await adminClient.from('purchase_orders').update({
             remote_task_id: task.taskId,
             delivery_state: deliveryState,
             ...(deliveryState === 'remote_send_delivered' ? { status: 'delivered' } : {}),
@@ -614,6 +617,7 @@ export async function dispatchGeneratedCustomerToken(
                 ? { failure_reason: `remote_send_failed: ${task.remark ?? 'Meter rejected the token.'}`.slice(0, 500) }
                 : {}),
         }).eq('id', po.id);
+        if (remoteStatusError) throw new CustomerPurchaseError(remoteStatusError.message, 'remote_status_record_failed');
         await logAction({
             actorUserId: customerUserId,
             actorType: 'customer',
