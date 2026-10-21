@@ -6,6 +6,7 @@ export interface WalletExportOption {
 
 export interface WalletExportSelection {
   format: 'csv' | 'pdf';
+  csvDelivery: 'single' | 'daily-zip';
   since: string;
   until: string;
   status: string;

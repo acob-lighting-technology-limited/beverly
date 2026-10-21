@@ -29,6 +29,8 @@ export declare function rowsToCsv<T>(rows: T[], columns: WalletExportColumn<T>[]
 export declare function exportTimestamp(date?: Date): string;
 export declare function downloadBlob(blob: Blob, filename: string): void;
 export declare function exportCsv<T>(filenameBase: string, rows: T[], columns: WalletExportColumn<T>[]): void;
+export declare function buildDailyCsvZip<T>(filenameBase: string, rows: T[], columns: WalletExportColumn<T>[], dateValue: (row: T) => string | null | undefined): Uint8Array;
+export declare function exportCsvByDayZip<T>(filenameBase: string, rows: T[], columns: WalletExportColumn<T>[], dateValue: (row: T) => string | null | undefined): void;
 export declare function resolveWalletPrintBranding(source?: Document | null): WalletPrintBranding;
 export declare function buildPrintDocument<T>(options: WalletPrintOptions<T>): string;
 export declare function printPdf<T>(options: WalletPrintOptions<T>): void;
