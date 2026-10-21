@@ -269,8 +269,10 @@ async function loadDetail() {
     loading.value = true;
     try {
         detail.value = await api.get<any>(`/api/v1/admin/vendors/${id}`);
-        reconciliation.value = await api.get<any>(`/api/v1/admin/vendors/${id}/reconciliation`)
-            .catch(() => ({ status: 'unavailable', message: 'Ledger check unavailable. Try again later.' }));
+        reconciliation.value = { status: 'loading', message: 'Checking wallet records…' };
+        void api.get<any>(`/api/v1/admin/vendors/${id}/reconciliation`)
+            .then((result) => { reconciliation.value = result; })
+            .catch(() => { reconciliation.value = { status: 'unavailable', message: 'Ledger check unavailable. Try again later.' }; });
     } catch (e: any) {
         const status = (e as any)?.status ?? (e as any)?.response?.status;
         // If the detail endpoint is 404 (stale backend build), reconstruct from
@@ -621,7 +623,7 @@ onMounted(loadDetail);
       <!-- ── Overview ────────────────────────────────────────── -->
       <div v-if="tab === 'overview'" class="bw-card">
         <div v-if="reconciliation" :class="['integrity-panel', reconciliation.status]">
-          <div><span>Ledger check</span><strong>{{ reconciliation.status === 'balanced' ? 'Records agree' : reconciliation.status === 'unavailable' ? 'Unavailable' : 'Review needed' }}</strong></div>
+          <div><span>Ledger check</span><strong>{{ reconciliation.status === 'balanced' ? 'Records agree' : reconciliation.status === 'loading' ? 'Checking…' : reconciliation.status === 'unavailable' ? 'Unavailable' : 'Review needed' }}</strong></div>
           <div><span>Funding in</span><strong>{{ reconciliation.funding_credits_minor == null ? '—' : naira(reconciliation.funding_credits_minor) }}</strong></div>
           <div><span>Other in</span><strong>{{ reconciliation.other_credits_minor == null ? '—' : naira(reconciliation.other_credits_minor) }}</strong></div>
           <div><span>Purchase out</span><strong>{{ reconciliation.purchase_debits_minor == null ? '—' : naira(reconciliation.purchase_debits_minor) }}</strong></div>

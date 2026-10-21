@@ -57,6 +57,7 @@ import { getKycTierPolicy, KycTierPolicyError, updateKycTierPolicy } from '../se
 import { replaceStaffPassword, StaffPasswordChangeError } from '../services/staff-password-change.js';
 import { provisionStaff, sendStaffPasswordSetup, updateStaff, StaffProvisioningError } from '../services/staff-provisioning.js';
 import { applyPurchasePageCursor, purchasePageCursor } from './purchase-pagination.js';
+import { pagedAmountTotal } from './paged-amount-total.js';
 function csvEscape(v: unknown): string {
     if (v === null || v === undefined) return '';
     const s = typeof v === 'string' ? v : JSON.stringify(v);
@@ -1906,19 +1907,16 @@ const route: FastifyPluginAsync = async (fastify) => {
         const balance = wallet ? await getBalance((wallet as any).id).catch(() => null) : null;
 
         const [vendingAgg, failedVendingAgg, paystackFundingAgg, bankFundingAgg] = await Promise.all([
-            adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
-                .eq('actor_type', 'vendor').eq('actor_id', id).eq('status', 'delivered'),
-            adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
-                .eq('actor_type', 'vendor').eq('actor_id', id).eq('status', 'failed'),
-            adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
+            pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
+                .eq('actor_type', 'vendor').eq('actor_id', id).eq('status', 'delivered').order('id').range(start, end)),
+            pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
+                .eq('actor_type', 'vendor').eq('actor_id', id).eq('status', 'failed').order('id').range(start, end)),
+            pagedAmountTotal((start, end) => adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
                 .eq('actor_type', 'vendor').eq('actor_id', id).eq('purpose', 'wallet_funding')
-                .eq('gateway', 'paystack')
-                .in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)),
-            adminClient.from('funding_requests').select('amount_minor', { count: 'exact' })
-                .eq('vendor_organization_id', id).eq('channel', 'bank_transfer').eq('status', 'approved'),
+                .eq('gateway', 'paystack').in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)).order('id').range(start, end)),
+            pagedAmountTotal((start, end) => adminClient.from('funding_requests').select('amount_minor', { count: 'exact' })
+                .eq('vendor_organization_id', id).eq('channel', 'bank_transfer').eq('status', 'approved').order('id').range(start, end)),
         ]);
-        const sum = (arr: any[] | null | undefined) =>
-            (arr ?? []).reduce((s, r) => s + Number(r.amount_minor ?? 0), 0);
 
         const stationCount = ((vendor as any).operating_stations ?? []).length;
 
@@ -1930,16 +1928,16 @@ const route: FastifyPluginAsync = async (fastify) => {
             holds_minor:     balance?.activeHoldsMinor     ?? 0,
             available_minor: balance?.availableMinor       ?? 0,
             stats: {
-                vendingCount:      vendingAgg.count ?? 0,
-                vendingValueMinor: sum(vendingAgg.data),
-                failedVendingCount: failedVendingAgg.count ?? 0,
-                failedVendingValueMinor: sum(failedVendingAgg.data),
-                fundingCount:      (paystackFundingAgg.count ?? 0) + (bankFundingAgg.count ?? 0),
-                fundingValueMinor: sum(paystackFundingAgg.data) + sum(bankFundingAgg.data),
-                paystackFundingCount: paystackFundingAgg.count ?? 0,
-                paystackFundingValueMinor: sum(paystackFundingAgg.data),
-                bankFundingCount: bankFundingAgg.count ?? 0,
-                bankFundingValueMinor: sum(bankFundingAgg.data),
+                vendingCount:      vendingAgg.count,
+                vendingValueMinor: vendingAgg.amountMinor,
+                failedVendingCount: failedVendingAgg.count,
+                failedVendingValueMinor: failedVendingAgg.amountMinor,
+                fundingCount:      paystackFundingAgg.count + bankFundingAgg.count,
+                fundingValueMinor: paystackFundingAgg.amountMinor + bankFundingAgg.amountMinor,
+                paystackFundingCount: paystackFundingAgg.count,
+                paystackFundingValueMinor: paystackFundingAgg.amountMinor,
+                bankFundingCount: bankFundingAgg.count,
+                bankFundingValueMinor: bankFundingAgg.amountMinor,
                 stationCount,
             },
         };
@@ -2866,14 +2864,14 @@ const route: FastifyPluginAsync = async (fastify) => {
 
         const [meters, purchaseAgg, paymentFundingAgg, bankFundingAgg] = await Promise.all([
             adminClient.from('customer_meters').select('id, station_id').eq('customer_id', id),
-            adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' }).eq('customer_id', id),
-            adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
+            pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
+                .eq('customer_id', id).order('id').range(start, end)),
+            pagedAmountTotal((start, end) => adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
                 .eq('actor_type', 'customer').eq('actor_id', id).eq('purpose', 'wallet_funding')
-                .in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)),
-            adminClient.from('funding_requests').select('amount_minor', { count: 'exact' })
-                .eq('customer_id', id).eq('channel', 'bank_transfer').eq('status', 'approved'),
+                .in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)).order('id').range(start, end)),
+            pagedAmountTotal((start, end) => adminClient.from('funding_requests').select('amount_minor', { count: 'exact' })
+                .eq('customer_id', id).eq('channel', 'bank_transfer').eq('status', 'approved').order('id').range(start, end)),
         ]);
-        const sum = (arr: any[] | null | undefined) => (arr ?? []).reduce((s, r) => s + Number(r.amount_minor ?? 0), 0);
 
         return {
             customer: {
@@ -2888,10 +2886,10 @@ const route: FastifyPluginAsync = async (fastify) => {
             available_minor: balance?.availableMinor ?? 0,
             stats: {
                 meterCount:        meters.data?.length ?? 0,
-                purchaseCount:     purchaseAgg.count ?? 0,
-                purchaseValueMinor: sum(purchaseAgg.data),
-                fundingCount:      (paymentFundingAgg.count ?? 0) + (bankFundingAgg.count ?? 0),
-                fundingValueMinor: sum(paymentFundingAgg.data) + sum(bankFundingAgg.data),
+                purchaseCount:     purchaseAgg.count,
+                purchaseValueMinor: purchaseAgg.amountMinor,
+                fundingCount:      paymentFundingAgg.count + bankFundingAgg.count,
+                fundingValueMinor: paymentFundingAgg.amountMinor + bankFundingAgg.amountMinor,
             },
         };
     });
