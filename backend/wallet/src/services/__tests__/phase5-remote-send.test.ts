@@ -26,6 +26,17 @@ describe('vending service — remote send flow (Bug H6)', () => {
         expect(block).toContain('remote_task_id: task.taskId');
     });
 
+    it('never promotes token dispatch to delivered before receipt reconciliation', () => {
+        const vendorDispatch = src.slice(src.indexOf('export async function dispatchGeneratedVendorToken'), src.indexOf('export async function reconcileRemoteSendOrders'));
+        const customer = readFileSync(resolve(ROOT, 'backend/wallet/src/services/customer-purchase.ts'), 'utf-8');
+        const customerDispatch = customer.slice(customer.indexOf('export async function dispatchGeneratedCustomerToken'));
+        expect(vendorDispatch).not.toContain("{ status: 'delivered' }");
+        expect(customerDispatch).not.toContain("{ status: 'delivered' }");
+        const reconciliation = src.slice(src.indexOf('export async function reconcileRemoteSendOrders'));
+        expect(reconciliation).toContain('receipt_id: receipt.id');
+        expect(reconciliation).toContain('if (deliveryError) throw');
+    });
+
     it('exports resendRemoteSendOrder function', () => {
         expect(src).toContain('export async function resendRemoteSendOrder');
     });

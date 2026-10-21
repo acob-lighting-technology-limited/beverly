@@ -589,7 +589,6 @@ export async function dispatchGeneratedVendorToken(
         const { error: remoteStatusError } = await adminClient.from('purchase_orders').update({
             remote_task_id: task.taskId,
             delivery_state: deliveryState,
-            ...(deliveryState === 'remote_send_delivered' ? { status: 'delivered' } : {}),
             ...(task.status === 'failed'
                 ? { failure_reason: `remote_send_failed: ${task.remark ?? 'Meter rejected the token.'}`.slice(0, 500) }
                 : {}),
@@ -654,7 +653,7 @@ async function markPendingReview(
 }
 
 export async function reconcileRemoteSendOrders(limit = 25) {
-    const { data: rows } = await adminClient
+    const { data: rows, error: ordersError } = await adminClient
         .from('purchase_orders')
         .select('*')
         .eq('purchase_mode', 'remote_send')
@@ -663,6 +662,7 @@ export async function reconcileRemoteSendOrders(limit = 25) {
         .not('remote_task_id', 'is', null)
         .order('created_at', { ascending: true })
         .limit(limit);
+    if (ordersError) throw ordersError;
 
     let checked = 0;
     let delivered = 0;
@@ -727,11 +727,12 @@ export async function reconcileRemoteSendOrders(limit = 25) {
                     purchaseMode: 'remote_send',
                 },
             });
-            await adminClient.from('purchase_orders').update({
+            const { error: deliveryError } = await adminClient.from('purchase_orders').update({
                 receipt_id: receipt.id,
                 status: 'delivered',
                 delivery_state: 'remote_send_delivered',
             }).eq('id', row.id);
+            if (deliveryError) throw new VendingError(deliveryError.message, 'purchase_delivery_record_failed');
             if (row.actor_type === 'vendor') await notifyVendor({
                 vendorOrganizationId: row.actor_id, type: 'remote_send_update', title: 'Remote send delivered',
                 body: `Token delivered to meter ${row.meter_id}.`, path: '/remote-send',
