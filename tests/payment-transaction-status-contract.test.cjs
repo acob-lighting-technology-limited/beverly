@@ -14,6 +14,7 @@ const adminRoutes = [
 ].join("\n");
 const paymentWebhooks = read("backend/wallet/src/services/payment-webhooks.ts");
 const admin = read("backend/wallet/src/routes/admin.ts");
+const fundingSummary = read("backend/wallet/src/services/ledger-funding-summary.ts");
 const scheduler = read("backend/wallet/src/jobs/scheduler.ts");
 const webhooks = read("backend/wallet/src/routes/webhooks.ts");
 const customerPurchase = read("backend/wallet/src/services/customer-purchase.ts");
@@ -46,7 +47,12 @@ assert.match(fulfillment, /payment_reference_mismatch/);
 assert.match(fulfillment, /payment_currency_mismatch/);
 
 const adminSucceededFilters = adminRoutes.match(/\.in\('status', Array\.from\(PAYMENT_SUCCEEDED_STATUSES\)\)/g) ?? [];
-assert.equal(adminSucceededFilters.length, 3, "admin funding aggregates must count canonical and legacy success states");
+assert.equal(adminSucceededFilters.length, 1, "payment transaction lists retain canonical and legacy success states");
+assert.match(admin, /ledgerFundingSummary\(\(wallet as any\)\?\.id\)/);
+assert.match(fundingSummary, /wallet_ledger_entries/);
+assert.match(fundingSummary, /\.in\('entry_type', \['funding_credit', 'payment_credit'\]\)/);
+assert.match(fundingSummary, /reference_type === 'funding_request'/);
+assert.match(fundingSummary, /reference_type === 'payment_transaction'/);
 
 assert.match(scheduler, /\.select\('\*'\)/);
 assert.match(scheduler, /\.in\('status', Array\.from\(PAYMENT_RECONCILABLE_STATUSES\)\)/);
