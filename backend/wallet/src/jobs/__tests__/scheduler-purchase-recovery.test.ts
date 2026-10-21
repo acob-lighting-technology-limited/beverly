@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
     captureHold: vi.fn(),
     deliveredUpdates: [] as Record<string, unknown>[],
+    reviewUpdates: [] as Record<string, unknown>[],
     exceptions: [] as Record<string, unknown>[],
     hold: { status: 'active', wallet_id: 'wallet-1', amount_minor: 1000 } as Record<string, unknown>,
     debits: [] as Record<string, unknown>[],
@@ -30,7 +31,11 @@ vi.mock('../../db/supabase.js', () => ({
         from(table: string) {
             if (table === 'purchase_orders') {
                 return {
-                    select: (columns: string) => columns === 'hold_id' ? ({
+                    select: (columns: string) => columns === 'id, hold_id, meter_id, amount_minor' ? ({
+                        eq: () => ({ eq: () => ({ is: () => ({ limit: async () => ({
+                            data: state.orders.filter((row) => !row.token), error: null,
+                        }) }) }) }),
+                    }) : columns === 'hold_id' ? ({
                         in: () => ({ in: async () => ({ data: state.orders.map((row) => ({ hold_id: row.hold_id })), error: null }) }),
                     }) : ({
                         in: () => ({ eq: () => ({
@@ -43,7 +48,10 @@ vi.mock('../../db/supabase.js', () => ({
                         eq: () => ({ in: async () => {
                             state.deliveredUpdates.push(payload);
                             return { error: null };
-                        } }),
+                        }, eq: () => ({ is: () => ({ select: async () => {
+                            state.reviewUpdates.push(payload);
+                            return { data: [{ id: 'order-1' }], error: null };
+                        } }) }) }),
                     }),
                 };
             }
@@ -51,6 +59,7 @@ vi.mock('../../db/supabase.js', () => ({
                 return { select: () => ({ eq: () => ({
                     lt: async () => ({ data: state.staleHolds, error: null }),
                     single: async () => ({ data: state.hold, error: null }),
+                    maybeSingle: async () => ({ data: state.hold, error: null }),
                 }) }) };
             }
             if (table === 'receipts') {
@@ -84,6 +93,7 @@ describe('purchase recovery scheduler', () => {
     beforeEach(() => {
         state.captureHold.mockReset();
         state.deliveredUpdates.length = 0;
+        state.reviewUpdates.length = 0;
         state.exceptions.length = 0;
         state.hold = { status: 'active', wallet_id: 'wallet-1', amount_minor: 1000 };
         state.debits = [];
@@ -157,5 +167,18 @@ describe('purchase recovery scheduler', () => {
         state.staleHolds = [{ id: 'hold-1' }];
         await sweepExpiredHolds();
         expect(state.releasedHolds).toHaveLength(0);
+    });
+
+    it('flags captured purchases lacking local tokens for review', async () => {
+        state.orders[0].token = null;
+        state.orders[0].amount_minor = 1000;
+        state.hold.status = 'captured';
+        state.debits = [{ wallet_id: 'wallet-1', amount_minor: 1000 }];
+        await sweepExpiredHolds();
+        expect(state.deliveredUpdates).toHaveLength(0);
+        expect(state.reviewUpdates).toContainEqual(expect.objectContaining({
+            status: 'delivery_pending_review', delivery_state: 'token_not_persisted_needs_review',
+        }));
+        expect(state.exceptions).toContainEqual(expect.objectContaining({ category: 'purchase_token_review' }));
     });
 });

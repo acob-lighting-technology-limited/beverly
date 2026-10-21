@@ -52,6 +52,7 @@ export async function sweepApprovedFundingCredits(): Promise<{
 // ── Hold expiry sweeper ────────────────────────────────────────────────────────
 export async function sweepExpiredHolds(): Promise<void> {
     await reconcileGeneratedHoldOrders();
+    await flagCapturedOrdersWithoutTokens();
     // Holds older than 30 min with no capture → release
     const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     const { data: stale, error: staleError } = await adminClient
@@ -90,6 +91,42 @@ export async function sweepExpiredHolds(): Promise<void> {
         released++;
     }
     console.info(`[JOB:holds] released ${released} expired holds`);
+}
+
+// A captured debit without a locally persisted token must never look like an
+// active hold or a delivered purchase. Keep it visible for evidence review.
+export async function flagCapturedOrdersWithoutTokens(): Promise<void> {
+    const { data: orders, error } = await adminClient.from('purchase_orders')
+        .select('id, hold_id, meter_id, amount_minor')
+        .eq('purchase_mode', 'wallet').eq('status', 'hold_active')
+        .is('token', null).limit(50);
+    if (error) throw error;
+    for (const order of orders ?? []) {
+        if (!order.hold_id) continue;
+        const { data: hold, error: holdError } = await adminClient.from('wallet_holds')
+            .select('wallet_id, amount_minor, status').eq('id', order.hold_id).maybeSingle();
+        if (holdError || !hold || hold.status !== 'captured'
+            || Number(hold.amount_minor) !== Number(order.amount_minor)) continue;
+        const { data: debits, error: debitError } = await adminClient.from('wallet_ledger_entries')
+            .select('wallet_id, amount_minor').eq('reference_type', 'purchase_order')
+            .eq('reference_id', order.id).eq('entry_type', 'purchase_debit').eq('direction', 'debit');
+        if (debitError || debits?.length !== 1 || debits[0].wallet_id !== hold.wallet_id
+            || Number(debits[0].amount_minor) !== Number(hold.amount_minor)) continue;
+        const { data: updated, error: updateError } = await adminClient.from('purchase_orders')
+            .update({ status: 'delivery_pending_review', delivery_state: 'token_not_persisted_needs_review',
+                failure_reason: 'Captured purchase debit; token issuance requires OEM evidence review.' })
+            .eq('id', order.id).eq('status', 'hold_active').is('token', null).select('id');
+        if (updateError) throw updateError;
+        if (!updated?.length) continue;
+        const { error: exceptionError } = await adminClient.from('operations_exceptions').upsert([{
+            exception_key: `purchase-token-review:${order.id}`,
+            category: 'purchase_token_review', target_type: 'purchase_order', target_id: order.id,
+            severity: 'critical', status: 'open',
+            details: { meter_id: order.meter_id, hold_id: order.hold_id, reason: 'captured_debit_missing_local_token' },
+            updated_at: new Date().toISOString(),
+        }], { onConflict: 'exception_key' });
+        if (exceptionError) throw exceptionError;
+    }
 }
 
 // ── Auto-reconcile hold_active orders with generated tokens ───────────────────
