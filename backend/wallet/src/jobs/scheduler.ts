@@ -52,21 +52,25 @@ export async function sweepApprovedFundingCredits(): Promise<{
 // ── Hold expiry sweeper ────────────────────────────────────────────────────────
 export async function sweepExpiredHolds(): Promise<void> {
     await reconcileGeneratedHoldOrders();
+    await flagCapturedOrdersWithoutTokens();
     // Holds older than 30 min with no capture → release
     const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data: stale } = await adminClient
+    const { data: stale, error: staleError } = await adminClient
         .from('wallet_holds')
         .select('id, wallet_id, amount_minor')
         .eq('status', 'active')
         .lt('created_at', cutoff);
+    if (staleError) throw staleError;
 
     if (!stale?.length) return;
     const holdIds = (stale as any[]).map((hold) => hold.id);
-    const { data: protectedOrders } = await adminClient
+    const { data: protectedOrders, error: protectedError } = await adminClient
         .from('purchase_orders')
         .select('hold_id')
         .in('hold_id', holdIds)
-        .in('status', ['dispatching', 'delivery_pending_review']);
+        .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
+    if (protectedError) throw protectedError;
+    // A token may exist upstream before its local order update succeeds.
     const protectedHoldIds = new Set((protectedOrders ?? []).map((row: any) => row.hold_id));
     let released = 0;
     for (const hold of stale as any[]) {
@@ -89,23 +93,65 @@ export async function sweepExpiredHolds(): Promise<void> {
     console.info(`[JOB:holds] released ${released} expired holds`);
 }
 
+// A captured debit without a locally persisted token must never look like an
+// active hold or a delivered purchase. Keep it visible for evidence review.
+export async function flagCapturedOrdersWithoutTokens(): Promise<void> {
+    const { data: orders, error } = await adminClient.from('purchase_orders')
+        .select('id, hold_id, meter_id, amount_minor')
+        .eq('purchase_mode', 'wallet').eq('status', 'hold_active')
+        .is('token', null).limit(50);
+    if (error) throw error;
+    for (const order of orders ?? []) {
+        if (!order.hold_id) continue;
+        const { data: hold, error: holdError } = await adminClient.from('wallet_holds')
+            .select('wallet_id, amount_minor, status').eq('id', order.hold_id).maybeSingle();
+        if (holdError || !hold || hold.status !== 'captured'
+            || Number(hold.amount_minor) !== Number(order.amount_minor)) continue;
+        const { data: debits, error: debitError } = await adminClient.from('wallet_ledger_entries')
+            .select('wallet_id, amount_minor').eq('reference_type', 'purchase_order')
+            .eq('reference_id', order.id).eq('entry_type', 'purchase_debit').eq('direction', 'debit');
+        if (debitError || debits?.length !== 1 || debits[0].wallet_id !== hold.wallet_id
+            || Number(debits[0].amount_minor) !== Number(hold.amount_minor)) continue;
+        const { data: updated, error: updateError } = await adminClient.from('purchase_orders')
+            .update({ status: 'delivery_pending_review', delivery_state: 'token_not_persisted_needs_review',
+                failure_reason: 'Captured purchase debit; token issuance requires OEM evidence review.' })
+            .eq('id', order.id).eq('status', 'hold_active').is('token', null).select('id');
+        if (updateError) throw updateError;
+        if (!updated?.length) continue;
+        const { error: exceptionError } = await adminClient.from('operations_exceptions').upsert([{
+            exception_key: `purchase-token-review:${order.id}`,
+            category: 'purchase_token_review', target_type: 'purchase_order', target_id: order.id,
+            severity: 'critical', status: 'open',
+            details: { meter_id: order.meter_id, hold_id: order.hold_id, reason: 'captured_debit_missing_local_token' },
+            updated_at: new Date().toISOString(),
+        }], { onConflict: 'exception_key' });
+        if (exceptionError) throw exceptionError;
+    }
+}
+
 // ── Auto-reconcile hold_active orders with generated tokens ───────────────────
 export async function reconcileGeneratedHoldOrders(): Promise<void> {
-    const { data: rows } = await adminClient
+    const { data: rows, error: ordersError } = await adminClient
         .from('purchase_orders')
         .select('*')
-        .eq('status', 'hold_active')
+        .in('status', ['hold_active', 'delivery_pending_review'])
+        .eq('purchase_mode', 'wallet')
         .not('token', 'is', null)
-        // Remote-send orders have their own delivery lifecycle. They may already
-        // have a captured hold while meter delivery remains pending or failed.
-        .or('delivery_state.is.null,delivery_state.eq.token_generated')
         .limit(50);
+    if (ordersError) throw ordersError;
 
     if (!rows?.length) return;
     let count = 0;
     for (const po of rows as any[]) {
         try {
             if (!po.hold_id) throw new Error('purchase hold is missing');
+            const { data: receipt, error: receiptError } = await adminClient
+                .from('receipts').select('id, payload').eq('purchase_order_id', po.id).maybeSingle();
+            if (receiptError || !receipt) throw new Error('generated token receipt is missing');
+            const receiptToken = String(receipt.payload?.token ?? receipt.payload?.credit_token ?? '').replace(/\s/g, '');
+            if (!receiptToken || receiptToken !== String(po.token).replace(/\s/g, '')) {
+                throw new Error('generated token differs from receipt');
+            }
             {
                 const { data: hold, error: holdError } = await adminClient
                     .from('wallet_holds').select('wallet_id, amount_minor, status')
@@ -141,8 +187,9 @@ export async function reconcileGeneratedHoldOrders(): Promise<void> {
             }
             const { error: updateError } = await adminClient.from('purchase_orders').update({
                 status: 'delivered',
+                receipt_id: receipt.id,
                 delivery_state: po.delivery_state || 'token_generated',
-            }).eq('id', po.id).eq('status', 'hold_active');
+            }).eq('id', po.id).in('status', ['hold_active', 'delivery_pending_review']);
             if (updateError) throw updateError;
             count++;
         } catch (error) {

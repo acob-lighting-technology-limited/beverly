@@ -38,7 +38,6 @@ import { approveVatPolicy, listVatPolicies, submitVatPolicy } from '../services/
 import { listDeletionRequests, reviewDeletionRequest } from '../services/data-privacy.js';
 import { activateProfilePicture, assertProfilePictureSop, PROFILE_PICTURE_BUCKET, toProfilePicturePath } from '../services/profile-picture.js';
 import { runMalwareScan } from '../services/file-scan.js';
-import { PAYMENT_SUCCEEDED_STATUSES } from '../services/payment-status.js';
 import { createAdminMeterOrder, assertMeterOrderTransition, getMeterPrices, rejectMeterOrder, updateMeterPrices } from '../services/meter-orders.js';
 import { revokePortalSession } from '../services/portal-session.js';
 import { pushConfig, removePushSubscription, savePushSubscription, sendWebPush } from '../services/push-notifications.js';
@@ -58,6 +57,7 @@ import { replaceStaffPassword, StaffPasswordChangeError } from '../services/staf
 import { provisionStaff, sendStaffPasswordSetup, updateStaff, StaffProvisioningError } from '../services/staff-provisioning.js';
 import { applyPurchasePageCursor, purchasePageCursor } from './purchase-pagination.js';
 import { pagedAmountTotal } from './paged-amount-total.js';
+import { ledgerFundingSummary } from '../services/ledger-funding-summary.js';
 function csvEscape(v: unknown): string {
     if (v === null || v === undefined) return '';
     const s = typeof v === 'string' ? v : JSON.stringify(v);
@@ -1906,16 +1906,12 @@ const route: FastifyPluginAsync = async (fastify) => {
             .from('wallets').select('*').eq('owner_type', 'vendor').eq('owner_id', id).maybeSingle();
         const balance = wallet ? await getBalance((wallet as any).id).catch(() => null) : null;
 
-        const [vendingAgg, failedVendingAgg, paystackFundingAgg, bankFundingAgg] = await Promise.all([
+        const [vendingAgg, failedVendingAgg, funding] = await Promise.all([
             pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
                 .eq('actor_type', 'vendor').eq('actor_id', id).in('status', ['delivered', 'completed']).order('id').range(start, end)),
             pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
                 .eq('actor_type', 'vendor').eq('actor_id', id).eq('status', 'failed').order('id').range(start, end)),
-            pagedAmountTotal((start, end) => adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
-                .eq('actor_type', 'vendor').eq('actor_id', id).eq('purpose', 'wallet_funding')
-                .eq('gateway', 'paystack').in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)).order('id').range(start, end)),
-            pagedAmountTotal((start, end) => adminClient.from('funding_requests').select('amount_minor', { count: 'exact' })
-                .eq('vendor_organization_id', id).eq('channel', 'bank_transfer').eq('status', 'approved').order('id').range(start, end)),
+            ledgerFundingSummary((wallet as any)?.id),
         ]);
 
         const stationCount = ((vendor as any).operating_stations ?? []).length;
@@ -1932,12 +1928,7 @@ const route: FastifyPluginAsync = async (fastify) => {
                 vendingValueMinor: vendingAgg.amountMinor,
                 failedVendingCount: failedVendingAgg.count,
                 failedVendingValueMinor: failedVendingAgg.amountMinor,
-                fundingCount:      paystackFundingAgg.count + bankFundingAgg.count,
-                fundingValueMinor: paystackFundingAgg.amountMinor + bankFundingAgg.amountMinor,
-                paystackFundingCount: paystackFundingAgg.count,
-                paystackFundingValueMinor: paystackFundingAgg.amountMinor,
-                bankFundingCount: bankFundingAgg.count,
-                bankFundingValueMinor: bankFundingAgg.amountMinor,
+                ...funding,
                 stationCount,
             },
         };
@@ -2862,15 +2853,11 @@ const route: FastifyPluginAsync = async (fastify) => {
         const { getBalance } = await import('../services/ledger.js');
         const balance = wallet ? await getBalance((wallet as any).id).catch(() => null) : null;
 
-        const [meters, purchaseAgg, paymentFundingAgg, bankFundingAgg] = await Promise.all([
+        const [meters, purchaseAgg, funding] = await Promise.all([
             adminClient.from('customer_meters').select('id, station_id').eq('customer_id', id),
             pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
                 .eq('customer_id', id).in('status', ['delivered', 'completed']).order('id').range(start, end)),
-            pagedAmountTotal((start, end) => adminClient.from('payment_transactions').select('amount_minor', { count: 'exact' })
-                .eq('actor_type', 'customer').eq('actor_id', id).eq('purpose', 'wallet_funding')
-                .in('status', Array.from(PAYMENT_SUCCEEDED_STATUSES)).order('id').range(start, end)),
-            pagedAmountTotal((start, end) => adminClient.from('funding_requests').select('amount_minor', { count: 'exact' })
-                .eq('customer_id', id).eq('channel', 'bank_transfer').eq('status', 'approved').order('id').range(start, end)),
+            ledgerFundingSummary((wallet as any)?.id),
         ]);
 
         return {
@@ -2888,8 +2875,8 @@ const route: FastifyPluginAsync = async (fastify) => {
                 meterCount:        meters.data?.length ?? 0,
                 purchaseCount:     purchaseAgg.count,
                 purchaseValueMinor: purchaseAgg.amountMinor,
-                fundingCount:      paymentFundingAgg.count + bankFundingAgg.count,
-                fundingValueMinor: paymentFundingAgg.amountMinor + bankFundingAgg.amountMinor,
+                fundingCount:      funding.fundingCount,
+                fundingValueMinor: funding.fundingValueMinor,
             },
         };
     });

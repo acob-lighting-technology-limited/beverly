@@ -560,7 +560,12 @@ onMounted(loadDetail);
         <div class="stat-tile">
           <p class="stat-label">Bank transfer funded</p>
           <p class="stat-value">{{ naira(detail.stats?.bankFundingValueMinor ?? 0) }}</p>
-          <p class="stat-sub">{{ detail.stats?.bankFundingCount ?? 0 }} approvals</p>
+          <p class="stat-sub">{{ detail.stats?.bankFundingCount ?? 0 }} wallet credits</p>
+        </div>
+        <div v-if="detail.stats?.otherFundingCount" class="stat-tile">
+          <p class="stat-label">Other funding credits</p>
+          <p class="stat-value">{{ naira(detail.stats.otherFundingValueMinor) }}</p>
+          <p class="stat-sub">{{ detail.stats.otherFundingCount }} to review</p>
         </div>
         <div class="stat-tile">
           <p class="stat-label">Successful vends</p>
