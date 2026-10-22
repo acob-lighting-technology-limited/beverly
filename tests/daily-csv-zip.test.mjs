@@ -30,4 +30,7 @@ assert.match(files[1].name, /2026-10-20\.csv$/);
 assert.match(files[1].csv, /300/);
 assert.equal(view.getUint32(bytes.length - 22, true), 0x06054b50);
 assert.equal(view.getUint16(bytes.length - 12, true), 2);
+assert.throws(() => buildDailyCsvZip('vendor-transactions', [{ when: null, amount: 100 }], [
+  { key: 'amount', header: 'Amount', value: (row) => row.amount },
+], (row) => row.when), /valid date for every record/);
 console.log('daily CSV archive passed');

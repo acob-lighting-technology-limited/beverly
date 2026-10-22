@@ -197,6 +197,8 @@ onMounted(() => void Promise.all([loadVendors(), loadHistory()]));
           title="Vendor Transfer History"
           subtitle="Controlled wallet movements"
           :loading="loadingHistory"
+          :date-value="(row: Transfer) => row.created_at"
+          allow-daily-csv-archive
         />
         <button class="bw-btn" type="button" @click="resetForm">Start another transfer</button>
       </div>

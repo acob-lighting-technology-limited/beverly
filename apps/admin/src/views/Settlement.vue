@@ -1,8 +1,18 @@
 ﻿<template>
   <AppShell title="Settlement Batches">
     <div class="bw-filter-bar">
-      <button class="bw-btn bw-btn-sm" :disabled="!filteredBatches.length" @click="exportCsvRows">Export CSV</button>
-      <button class="bw-btn bw-btn-sm" :disabled="!filteredBatches.length" @click="exportPdfDoc">PDF</button>
+      <WalletExportWizard
+        :rows="filteredBatches"
+        :columns="exportColumns"
+        filename="settlement-batches"
+        title="Settlement Batches"
+        :subtitle="searchQ ? `Vendor search: ${searchQ}` : 'All vendor settlement batches'"
+        :loading="loading"
+        :status-options="[{ value: 'pending', label: 'Pending' }, { value: 'settled', label: 'Settled' }, { value: 'failed', label: 'Failed' }]"
+        :date-value="(row: any) => row.created_at"
+        :resolve-rows="resolveExportRows"
+        allow-daily-csv-archive
+      />
       <input v-model="search" class="bw-input bw-input-sm bw-mono" placeholder="Search vendor org…" @keyup.enter="applySearch" />
       <button class="bw-btn bw-btn-ghost bw-btn-sm" @click="applySearch">Search</button>
     </div>
@@ -74,7 +84,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { api, naira } from '../lib/api';
 import AppShell from '../components/AppShell.vue';
-import { exportCsv, printPdf } from '../lib/export';
+import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
+import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
+import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 import { printReceipt, settlementReceipt, viewReceipt } from '../lib/receipts';
 
 const allBatches = ref<any[]>([]);
@@ -138,8 +150,7 @@ function viewSettlementReceipt(b: any) { viewReceipt(settlementReceipt(b)); }
 
 function printSettlementReceipt(b: any) { printReceipt(settlementReceipt(b)); }
 
-function exportCsvRows() {
-  exportCsv('settlement-batches', filteredBatches.value, [
+const exportColumns: WalletExportColumn<any>[] = [
     { key: 'id', header: 'Batch ID', value: (b) => b.id },
     { key: 'vendor', header: 'Vendor Org', value: vendorName },
     { key: 'period_start', header: 'Period Start', value: (b) => b.period_start },
@@ -149,24 +160,31 @@ function exportCsvRows() {
     { key: 'net', header: 'Net (â‚¦)', value: (b) => (b.net_amount_minor ?? 0) / 100 },
     { key: 'status', header: 'Status', value: (b) => b.status },
     { key: 'created_at', header: 'Created', value: (b) => b.created_at },
-  ]);
-}
+  ];
 
-function exportPdfDoc() {
-  printPdf({
-    title: 'Settlement Batches',
-    subtitle: searchQ.value ? `Filtered by "${searchQ.value}"` : 'All vendor settlement batches',
-    meta: [
-      { label: 'Batches', value: String(filteredBatches.value.length) },
-      { label: 'Total net', value: naira(filteredBatches.value.reduce((s, b) => s + Number(b.net_amount_minor ?? 0), 0)) },
-    ],
-    tables: [{
-      title: 'Batches',
-      columns: ['Vendor', 'Period', 'Gross', 'Fee', 'Net', 'Status'],
-      rows: filteredBatches.value.map((b) => [
-        vendorName(b), fmtPeriod(b.period_start, b.period_end), naira(b.gross_amount_minor), naira(b.fee_minor), naira(b.net_amount_minor), b.status,
-      ]),
-    }],
+async function resolveExportRows(selection: WalletExportSelection): Promise<any[]> {
+  const rows: any[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+  while (true) {
+    const params = new URLSearchParams({ limit: '200' });
+    if (cursor) params.set('cursor', cursor);
+    const result: { batches: any[]; nextCursor: string | null } = await api.get(`/api/v1/admin/settlement?${params}`);
+    rows.push(...(result.batches ?? []));
+    cursor = result.nextCursor;
+    if (!cursor) break;
+    if (seenCursors.has(cursor)) throw new Error('Export pagination stalled. No partial file was created.');
+    seenCursors.add(cursor);
+  }
+  const searchTerm = searchQ.value.trim().toLowerCase();
+  const since = selection.since ? new Date(`${selection.since}T00:00:00`).getTime() : -Infinity;
+  const until = selection.until ? new Date(`${selection.until}T23:59:59.999`).getTime() : Infinity;
+  return rows.filter((row) => {
+    const created = new Date(row.created_at).getTime();
+    return (!searchTerm || [row.vendor_organizations?.legal_name, row.vendor_organizations?.trading_name, row.vendor_organization_id]
+      .some((value) => String(value ?? '').toLowerCase().includes(searchTerm)))
+      && (!selection.status || row.status === selection.status)
+      && created >= since && created <= until;
   });
 }
 

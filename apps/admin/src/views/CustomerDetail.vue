@@ -172,10 +172,16 @@ const overviewFields = computed(() => detail.value ? [
 
 const detailExportRows = computed<any[]>(() => {
   if (tab.value === 'overview') return overviewFields.value;
-  if (tab.value === 'wallet') return wallet.value?.entries ?? [];
-  if (tab.value === 'purchases') return purchases.value;
-  if (tab.value === 'funding') return funding.value;
+  if (tab.value === 'wallet') return filteredWalletEntries.value;
+  if (tab.value === 'purchases') return filteredPurchases.value;
+  if (tab.value === 'funding') return filteredFunding.value;
   return [];
+});
+const detailStatusOptions = computed(() => {
+  const source: any[] = tab.value === 'wallet' ? wallet.value?.entries ?? []
+    : tab.value === 'purchases' ? purchases.value : tab.value === 'funding' ? funding.value : [];
+  return [...new Set(source.map((row: any) => String(tab.value === 'wallet' ? row.entry_type ?? '' : row.status ?? '')).filter(Boolean))]
+    .map((value) => ({ value, label: value.replace(/_/g, ' ') }));
 });
 const detailExportColumns = computed<WalletExportColumn<any>[]>(() => {
   if (tab.value === 'overview') return [
@@ -292,6 +298,11 @@ onMounted(loadDetail);
           :title="`Customer ${tab}`"
           :subtitle="detail?.full_name || detail?.email || 'Customer record'"
           :loading="loading || tabLoading"
+          :date-value="tab === 'overview' ? undefined : (row: any) => row.created_at"
+          :status-options="detailStatusOptions"
+          :status-label="tab === 'wallet' ? 'Entry type' : 'Status'"
+          :status-value="(row: any) => tab === 'wallet' ? row.entry_type : row.status"
+          :allow-daily-csv-archive="tab !== 'overview'"
         />
       </div>
 

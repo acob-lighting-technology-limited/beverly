@@ -11,6 +11,7 @@ declare const component: DefineComponent<{
     loading: { type: BooleanConstructor; default: boolean };
     label: { type: StringConstructor; default: string };
     formats: { type: PropType<Array<'csv' | 'pdf'>>; default: () => Array<'csv' | 'pdf'> };
+    allowDailyCsvArchive: { type: BooleanConstructor; default: boolean };
 }>;
 
 export default component;

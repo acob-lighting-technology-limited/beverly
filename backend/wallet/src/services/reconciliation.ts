@@ -126,12 +126,17 @@ export async function runDailyReconciliation(runDate?: string, options: { force?
     }
 }
 
-export async function listReconciliationRuns(limit = 30) {
-    const { data, error } = await adminClient
+export async function listReconciliationRuns(limit = 30, cursor?: string) {
+    let query = adminClient
         .from('reconciliation_runs')
         .select('*')
         .order('run_date', { ascending: false })
         .limit(limit);
+    if (cursor) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(cursor)) throw new Error('Invalid reconciliation cursor.');
+        query = query.lt('run_date', cursor);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     return data ?? [];
 }

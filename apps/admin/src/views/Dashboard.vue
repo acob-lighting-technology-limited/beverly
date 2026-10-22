@@ -885,6 +885,8 @@ onUnmounted(() => { if (poll) clearInterval(poll); });
             title="Recent Wallet Transactions"
             subtitle="Filtered vending and funding activity"
             :loading="loading"
+            :date-value="(row: any) => row.createdAt"
+            allow-daily-csv-archive
           />
           <WalletDataViewSwitch
             v-model="recentViewMode"

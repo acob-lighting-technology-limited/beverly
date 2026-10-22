@@ -105,9 +105,8 @@ export function buildDailyCsvZip(filenameBase, rows, columns, dateValue) {
     for (const row of rows) {
         const raw = dateValue(row);
         const parsed = raw ? new Date(raw) : null;
-        const day = parsed && !Number.isNaN(parsed.getTime())
-            ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
-            : 'undated';
+        if (!parsed || Number.isNaN(parsed.getTime())) throw new Error('Daily exports require a valid date for every record.');
+        const day = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
         const bucket = grouped.get(day) ?? [];
         bucket.push(row);
         grouped.set(day, bucket);

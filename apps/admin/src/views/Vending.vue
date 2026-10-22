@@ -7,7 +7,7 @@ import type { ActionItem } from '@beverly/tokens/WalletRowActions.vue';
 import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
 import WalletTablePagination from '@beverly/tokens/WalletTablePagination.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
-import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
+import type { WalletExportOption, WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 import { api, naira, shortDate } from '../lib/api';
 import { printReceipt, purchaseReceipt, viewReceipt } from '../lib/receipts';
 import { useStaffAuthStore } from '../stores/auth';
@@ -96,6 +96,7 @@ const vendingExportColumns: WalletExportColumn<Purchase>[] = [
     { key: 'token', header: 'Token', value: (purchase) => purchase.token || '' },
 ];
 const vendingStatusOptions = [
+    { value: 'created', label: 'Created' },
     { value: 'delivered', label: 'Successful transactions' },
     { value: 'failed', label: 'Failed transactions' },
     { value: 'dispatching', label: 'Dispatching' },
@@ -103,11 +104,7 @@ const vendingStatusOptions = [
     { value: 'delivery_pending_review', label: 'Pending review' },
     { value: 'reversed', label: 'Reversed' },
 ];
-const vendingActorOptions = computed(() => {
-    const seen = new Map<string, string>();
-    for (const item of items.value) if (item.actor_id) seen.set(item.actor_id, item.vended_by || item.customer_name || item.actor_id);
-    return [...seen].map(([value, label]) => ({ value, label }));
-});
+const vendingActorOptions = ref<WalletExportOption[]>([]);
 const PAGE = 100;
 const POLL_INTERVAL_MS = 5_000;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -196,6 +193,15 @@ async function loadStations() {
     } catch { /* use empty */ }
 }
 
+async function loadActorOptions() {
+    try {
+        const response = await api.get<{ actors: WalletExportOption[] }>('/api/v1/admin/purchases/actors');
+        vendingActorOptions.value = response.actors ?? [];
+    } catch (cause: any) {
+        error.value = cause?.message ?? 'Could not load purchase accounts.';
+    }
+}
+
 function clearFilters() {
     q.value = '';
     status.value = '';
@@ -207,12 +213,20 @@ function clearFilters() {
 async function resolveVendingExportRows(selection: WalletExportSelection): Promise<Purchase[]> {
     const result: Purchase[] = [];
     let next: string | null = null;
-    for (let page = 0; page < 20; page += 1) {
+    const seenCursors = new Set<string>();
+    while (true) {
         const params = new URLSearchParams();
         params.set('limit', '500');
         if (selection.status) params.set('status', selection.status);
         if (selection.station) params.set('station', selection.station);
-        if (selection.actor) params.set('actorId', selection.actor);
+        if (selection.actorType) params.set('actorType', selection.actorType);
+        if (selection.actor) {
+            const [actorType, actorId] = selection.actor.split(':', 2);
+            if (actorType && actorId) {
+                params.set('actorType', actorType);
+                params.set('actorId', actorId);
+            }
+        }
         if (selection.since) params.set('since', new Date(`${selection.since}T00:00:00`).toISOString());
         if (selection.until) params.set('until', new Date(`${selection.until}T23:59:59.999`).toISOString());
         if (next) params.set('cursor', next);
@@ -220,6 +234,8 @@ async function resolveVendingExportRows(selection: WalletExportSelection): Promi
         result.push(...(response.purchases ?? []));
         next = response.nextCursor;
         if (!next) break;
+        if (seenCursors.has(next)) throw new Error('Export pagination stalled. No partial file was created.');
+        seenCursors.add(next);
     }
     return result;
 }
@@ -340,7 +356,7 @@ watch(q, () => {
 });
 
 onMounted(async () => {
-    await Promise.all([load(), loadStations(), loadRecovery()]);
+    await Promise.all([load(), loadStations(), loadRecovery(), loadActorOptions()]);
     pollTimer = setInterval(() => {
         if (!loading.value) void load();
         if (!recoveryLoading.value) void loadRecovery(true);
@@ -421,13 +437,15 @@ onUnmounted(() => {
             :status-options="vendingStatusOptions"
             :station-options="stations.map(item => ({ value: item.stationId, label: `${item.name || item.stationId} · ${item.stationId}` }))"
             :actor-options="vendingActorOptions"
+            show-actor-type-selector
             :initial-status="status"
             :initial-station="station"
             :date-value="(row: Purchase) => row.created_at"
             :status-value="(row: Purchase) => row.status"
             :station-value="(row: Purchase) => row.station_id"
-            :actor-value="(row: Purchase) => row.actor_id"
+            :actor-value="(row: Purchase) => `${row.actor_type}:${row.actor_id}`"
             :resolve-rows="resolveVendingExportRows"
+            allow-daily-csv-archive
           />
           <button
             type="button"

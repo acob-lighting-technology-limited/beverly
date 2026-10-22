@@ -87,14 +87,21 @@ export async function runDailySettlement(): Promise<void> {
 export async function listSettlementBatches(opts: {
     vendorOrganizationId?: string;
     limit?: number;
+    cursor?: string;
 }) {
     let query = adminClient
         .from('settlement_batches')
         .select('*, vendor_organizations(trading_name, legal_name)')
         .order('period_start', { ascending: false })
+        .order('id', { ascending: false })
         .limit(opts.limit ?? 200);
     if (opts.vendorOrganizationId) {
         query = query.eq('vendor_organization_id', opts.vendorOrganizationId);
+    }
+    if (opts.cursor) {
+        const [periodStart, id] = opts.cursor.split('|');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^[0-9a-f-]{36}$/i.test(id ?? '')) throw new Error('Invalid settlement cursor.');
+        query = query.or(`period_start.lt.${periodStart},and(period_start.eq.${periodStart},id.lt.${id})`);
     }
     const { data, error } = await query;
     if (error) throw new Error(`Settlement list failed: ${error.message}`);

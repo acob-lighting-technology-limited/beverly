@@ -235,10 +235,19 @@ async function readPurchaseBreakdownFallback(
         grouped.set(key, row);
     }
 
-    const [{ data: vendorRows }, { data: customerRows }] = await Promise.all([
-        groupBy === 'vendor' ? adminClient.from('vendor_organizations').select('id, trading_name, legal_name').limit(50_000) : Promise.resolve({ data: [] }),
-        groupBy === 'customer' ? adminClient.from('customers').select('id, full_name').limit(50_000) : Promise.resolve({ data: [] }),
-    ]);
+    const vendorRows: any[] = [];
+    const customerRows: any[] = [];
+    if (groupBy !== 'site') {
+        const ids = [...new Set([...grouped.values()].map((row) => row.entity_id).filter(isUuid))];
+        for (let offset = 0; offset < ids.length; offset += 200) {
+            const batch = ids.slice(offset, offset + 200);
+            const { data, error } = groupBy === 'vendor'
+                ? await adminClient.from('vendor_organizations').select('id, trading_name, legal_name').in('id', batch)
+                : await adminClient.from('customers').select('id, full_name').in('id', batch);
+            if (error) throw new ReportQueryError(`Report account names unavailable: ${error.message}`, error.code);
+            (groupBy === 'vendor' ? vendorRows : customerRows).push(...(data ?? []));
+        }
+    }
     const vendorNames = new Map((vendorRows ?? []).map((row: any) => [String(row.id), String(row.trading_name || row.legal_name || row.id)]));
     const customerNames = new Map((customerRows ?? []).map((row: any) => [String(row.id), String(row.full_name || row.id)]));
     return [...grouped.values()].map((row) => ({

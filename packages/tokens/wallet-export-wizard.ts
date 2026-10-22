@@ -12,5 +12,6 @@ export interface WalletExportSelection {
   status: string;
   station: string;
   actor: string;
+  actorType: '' | 'vendor' | 'customer';
   columnKeys: string[];
 }

@@ -16,7 +16,9 @@ import { onMounted, ref, computed, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import { api, naira, shortDate, ApiError } from '../lib/api';
-import { exportCsv, type Column } from '../lib/export';
+import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
+import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
+import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 import { fundingReceipt, printReceipt, viewReceipt } from '../lib/receipts';
 import WalletDataViewSwitch from '@beverly/tokens/WalletDataViewSwitch.vue';
 import WalletTablePagination from '@beverly/tokens/WalletTablePagination.vue';
@@ -193,7 +195,7 @@ watch(statusFilter, () => load());
 onMounted(load);
 
 // ── export ────────────────────────────────────────────────────────
-const CSV_COLS: Column<FundingRow>[] = [
+const CSV_COLS: WalletExportColumn<FundingRow>[] = [
     { key: 'created_at',  header: 'Date',      value: (r) => r.created_at },
     { key: 'owner_type',  header: 'Owner type', value: (r) => r.owner_type },
     { key: 'owner',       header: 'Wallet owner', value: ownerName },
@@ -207,8 +209,26 @@ const CSV_COLS: Column<FundingRow>[] = [
     { key: 'submitted_by',header: 'Submitted By', value: (r) => r.submitted_by ?? '' },
 ];
 
-function doExport() {
-    exportCsv('beverly-funding-history', displayItems.value, CSV_COLS);
+async function resolveFundingExportRows(selection: WalletExportSelection): Promise<FundingRow[]> {
+    const rows: FundingRow[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+    while (true) {
+        const params = new URLSearchParams({ limit: '200' });
+        if (selection.status) params.set('status', selection.status);
+        if (channelFilter.value !== 'all') params.set('channel', channelFilter.value);
+        if (searchQuery.value.trim()) params.set('q', searchQuery.value.trim());
+        if (selection.since) params.set('from', new Date(`${selection.since}T00:00:00`).toISOString());
+        if (selection.until) params.set('to', new Date(`${selection.until}T23:59:59.999`).toISOString());
+        if (cursor) params.set('cursor', cursor);
+        const response = await api.get<HistoryResponse>(`/api/v1/admin/funding/history?${params}`);
+        rows.push(...(response.funding ?? []));
+        cursor = response.nextCursor;
+        if (!cursor) break;
+        if (seenCursors.has(cursor)) throw new Error('Export pagination stalled. No partial file was created.');
+        seenCursors.add(cursor);
+    }
+    return rows;
 }
 
 function viewFundingReceipt(f: FundingRow) {
@@ -327,7 +347,23 @@ function printFundingReceipt(f: FundingRow) {
               <button class="bw-btn sm" :disabled="loading" @click="load">
                 {{ loading ? 'Loading…' : 'Refresh' }}
               </button>
-              <button class="bw-btn sm" :disabled="!displayItems.length" @click="doExport">Export CSV</button>
+              <WalletExportWizard
+                :rows="displayItems"
+                :columns="CSV_COLS"
+                filename="beverly-funding-history"
+                title="Funding History"
+                subtitle="Current channel and search filters"
+                :loading="loading"
+                :formats="['csv']"
+                :status-options="[{ value: 'approved', label: 'Approved' }, { value: 'pending', label: 'Pending' }, { value: 'rejected', label: 'Rejected' }]"
+                :initial-status="statusFilter === 'all' ? '' : statusFilter"
+                :initial-since="fromDate"
+                :initial-until="toDate"
+                :date-value="(row: FundingRow) => row.created_at"
+                :resolve-rows="resolveFundingExportRows"
+                :meta="[{ label: 'Channel', value: channelFilter === 'all' ? 'All channels' : channelFilter }, { label: 'Search', value: searchQuery.trim() || 'None' }]"
+                allow-daily-csv-archive
+              />
               <RouterLink class="bw-btn sm primary fh-queue-link" :to="{ name: 'funding' }">Approval Queue</RouterLink>
             </div>
           </div>

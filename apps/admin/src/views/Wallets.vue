@@ -22,8 +22,10 @@ import AppShell from '../components/AppShell.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
 import WalletDataViewSwitch from '@beverly/tokens/WalletDataViewSwitch.vue';
+import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
+import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
+import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 import { api, naira, shortDate, ApiError } from '../lib/api';
-import { exportCsv, printPdf } from '../lib/export';
 import { printReceipt, viewReceipt, walletReceipt } from '../lib/receipts';
 
 interface Wallet {
@@ -268,8 +270,7 @@ function ownerBadge(t: string) {
 
 function dirSign(d: string) { return d === 'credit' ? '+' : '−'; }
 
-function exportCsvRows() {
-    exportCsv('wallets', wallets.value, [
+const exportColumns: WalletExportColumn<Wallet>[] = [
         { key: 'id', header: 'Wallet ID', value: (w) => w.id },
         { key: 'owner_type', header: 'Owner Type', value: (w) => w.owner_type },
         { key: 'owner_name', header: 'Owner', value: (w) => w.owner_name ?? '' },
@@ -278,24 +279,32 @@ function exportCsvRows() {
         { key: 'holds', header: 'Holds (₦)', value: (w) => (w.holds_minor ?? 0) / 100 },
         { key: 'available', header: 'Available (₦)', value: (w) => (w.available_minor ?? 0) / 100 },
         { key: 'created_at', header: 'Created', value: (w) => w.created_at },
-    ]);
-}
+    ];
 
-function exportPdfDoc() {
-    printPdf({
-        title: 'Wallets',
-        subtitle: `${wallets.value.length} wallets`,
-        meta: [
-            { label: 'Wallets', value: String(wallets.value.length) },
-            { label: 'Total balance', value: naira(wallets.value.reduce((s, w) => s + Number(w.balance_minor ?? 0), 0)) },
-        ],
-        tables: [{
-            title: 'Wallets',
-            columns: ['Owner', 'Type', 'Status', 'Balance', 'Available'],
-            rows: wallets.value.map((w) => [
-                w.owner_name ?? w.id.slice(0, 8), w.owner_type, w.status, naira(w.balance_minor), naira(w.available_minor),
-            ]),
-        }],
+async function resolveExportRows(selection: WalletExportSelection): Promise<Wallet[]> {
+    const rows: Wallet[] = [];
+    const seenCursors = new Set<string>();
+    let next: string | null = null;
+    while (true) {
+        const params = new URLSearchParams({ limit: '500' });
+        if (fOwnerType.value) params.set('ownerType', fOwnerType.value);
+        if (selection.status) params.set('status', selection.status);
+        if (fQ.value) params.set('q', fQ.value);
+        if (fMinBal.value !== '') params.set('minBalance', String(Math.round(Number(fMinBal.value) * 100)));
+        if (fMaxBal.value !== '') params.set('maxBalance', String(Math.round(Number(fMaxBal.value) * 100)));
+        if (next) params.set('cursor', next);
+        const response: { wallets: Wallet[]; nextCursor: string | null } = await api.get(`/api/v1/admin/wallets?${params}`);
+        rows.push(...(response.wallets ?? []));
+        next = response.nextCursor;
+        if (!next) break;
+        if (seenCursors.has(next)) throw new Error('Export pagination stalled. No partial file was created.');
+        seenCursors.add(next);
+    }
+    const since = selection.since ? new Date(`${selection.since}T00:00:00`).getTime() : -Infinity;
+    const until = selection.until ? new Date(`${selection.until}T23:59:59.999`).getTime() : Infinity;
+    return rows.filter((row) => {
+        const created = new Date(row.created_at).getTime();
+        return created >= since && created <= until;
     });
 }
 
@@ -409,8 +418,20 @@ watch([fOwnerType, fStatus], () => loadList());
         </div>
         <div class="bw-table-actions">
           <WalletDataViewSwitch v-model="viewMode" label="Wallet display view" />
-          <button class="bw-btn sm" :disabled="!wallets.length" @click="exportCsvRows">Export CSV</button>
-          <button class="bw-btn sm" :disabled="!wallets.length" @click="exportPdfDoc">PDF</button>
+          <WalletExportWizard
+            :rows="wallets"
+            :columns="exportColumns"
+            filename="wallets"
+            title="Wallets"
+            subtitle="Current owner and balance filters"
+            :loading="loading"
+            :status-options="[{ value: 'active', label: 'Active' }, { value: 'frozen', label: 'Frozen' }, { value: 'closed', label: 'Closed' }]"
+            :initial-status="fStatus"
+            :date-value="(row: Wallet) => row.created_at"
+            :resolve-rows="resolveExportRows"
+            :meta="[{ label: 'Owner type', value: fOwnerType || 'All' }, { label: 'Search', value: fQ.trim() || 'None' }]"
+            allow-daily-csv-archive
+          />
         </div>
       </div>
 
