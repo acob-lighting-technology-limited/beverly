@@ -601,10 +601,10 @@ onMounted(loadDetail);
           :loading="loading || tabLoading"
           :status-options="detailStatusOptions"
           :station-options="detail?.vendor?.station_id ? [{ value: detail.vendor.station_id, label: detail.vendor.station_id }] : []"
-          :date-value="(row: any) => row.created_at"
+          :date-value="['wallet', 'transactions', 'funding', 'staff'].includes(tab) ? (row: any) => row.created_at : undefined"
           :status-value="(row: any) => row.status"
           :station-value="(row: any) => row.station_id || row.station"
-          :allow-daily-csv-archive="tab === 'transactions'"
+          :allow-daily-csv-archive="['wallet', 'transactions', 'funding'].includes(tab)"
         />
       </div>
 

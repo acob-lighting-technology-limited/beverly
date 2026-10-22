@@ -123,8 +123,8 @@ function auditQueryParams() {
     if (fAction.value)     p.set('action',     fAction.value);
     if (fTargetType.value) p.set('targetType', fTargetType.value);
     if (fTarget.value)     p.set('target',     fTarget.value);
-    if (fSince.value)      p.set('since',      new Date(fSince.value).toISOString());
-    if (fUntil.value)      p.set('until',      new Date(fUntil.value).toISOString());
+    if (fSince.value)      p.set('since',      new Date(`${fSince.value}T00:00:00`).toISOString());
+    if (fUntil.value)      p.set('until',      new Date(`${fUntil.value}T23:59:59.999`).toISOString());
     return p;
 }
 

@@ -60,7 +60,8 @@ import { pagedAmountTotal } from './paged-amount-total.js';
 import { ledgerFundingSummary } from '../services/ledger-funding-summary.js';
 function csvEscape(v: unknown): string {
     if (v === null || v === undefined) return '';
-    const s = typeof v === 'string' ? v : JSON.stringify(v);
+    const raw = typeof v === 'string' ? v : JSON.stringify(v);
+    const s = /^[\t\r ]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
     if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
     return s;
 }
@@ -2179,30 +2180,45 @@ const route: FastifyPluginAsync = async (fastify) => {
                 adminClient.from('customers').select('id').or(`full_name.ilike.%${safeQ}%,email.ilike.%${safeQ}%,phone.ilike.%${safeQ}%`).limit(200),
                 adminClient.from('vendor_organizations').select('id').or(`legal_name.ilike.%${safeQ}%,trading_name.ilike.%${safeQ}%,contact_email.ilike.%${safeQ}%,contact_phone.ilike.%${safeQ}%`).limit(200),
             ]);
+            if (customerSearch.error) throw customerSearch.error;
+            if (vendorSearch.error) throw vendorSearch.error;
+            if ((customerSearch.data?.length ?? 0) === 200 || (vendorSearch.data?.length ?? 0) === 200) {
+                throw new Error('Search matches too many accounts. Narrow the search before exporting.');
+            }
             const customerIds = (customerSearch.data ?? []).map((row: any) => row.id).filter(Boolean);
             const vendorIds = (vendorSearch.data ?? []).map((row: any) => row.id).filter(Boolean);
             ownerFilters.push(`funding_reference.ilike.%${safeQ}%`, `submitted_by.ilike.%${safeQ}%`);
             if (customerIds.length) ownerFilters.push(`customer_id.in.(${customerIds.join(',')})`);
             if (vendorIds.length) ownerFilters.push(`vendor_organization_id.in.(${vendorIds.join(',')})`);
         }
-        let query = adminClient
-            .from('funding_requests')
-            .select('*, vendor_organizations(legal_name, trading_name, contact_email, contact_phone), customers(full_name, email, phone)')
-            .order('created_at', { ascending: false })
-            .limit(scopedOwners ? 10_000 : pageSize);
-        if (status === 'pending') query = query.in('status', ['initiated', 'proof_uploaded', 'under_review']);
-        else if (status && status !== 'all') query = query.eq('status', status);
-        if (channel && channel !== 'all') query = query.eq('channel', channel);
-        if (from)   query = query.gte('created_at', new Date(from).toISOString());
-        if (to)     query = query.lte('created_at', new Date(new Date(to).setHours(23, 59, 59, 999)).toISOString());
-        if (ownerFilters.length) query = query.or(ownerFilters.join(','));
-        if (cursor) query = query.lt('created_at', cursor);
-        const { data } = await query;
-        const scopedRows = scopedOwners ? (data ?? []).filter((row: any) => row.owner_type === 'customer'
-            ? scopedOwners.customers.has(row.customer_id)
-            : scopedOwners.vendors.has(row.vendor_organization_id)) : (data ?? []);
-        const rows = (scopedOwners ? scopedRows.slice(0, pageSize) : scopedRows) as any[];
-        const nextCursor = rows.length === pageSize ? rows[rows.length - 1].created_at : null;
+        const rows: any[] = [];
+        let scanCursor = cursor;
+        while (rows.length < pageSize) {
+            const batchSize = scopedOwners ? 1_000 : pageSize;
+            let query = adminClient.from('funding_requests')
+                .select('*, vendor_organizations(legal_name, trading_name, contact_email, contact_phone), customers(full_name, email, phone)')
+                .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(batchSize);
+            if (status === 'pending') query = query.in('status', ['initiated', 'proof_uploaded', 'under_review']);
+            else if (status && status !== 'all') query = query.eq('status', status);
+            if (channel && channel !== 'all') query = query.eq('channel', channel);
+            if (from) query = query.gte('created_at', new Date(from).toISOString());
+            if (to) query = query.lte('created_at', to.includes('T') ? new Date(to).toISOString() : new Date(new Date(to).setHours(23, 59, 59, 999)).toISOString());
+            if (ownerFilters.length) query = query.or(ownerFilters.join(','));
+            query = applyPurchasePageCursor(query, scanCursor);
+            const { data, error } = await query;
+            if (error) throw error;
+            const batch = data ?? [];
+            for (const row of batch) {
+                if (scopedOwners && !(row.owner_type === 'customer'
+                    ? scopedOwners.customers.has(row.customer_id)
+                    : scopedOwners.vendors.has(row.vendor_organization_id))) continue;
+                rows.push(row);
+                if (rows.length === pageSize) break;
+            }
+            if (rows.length === pageSize || batch.length < batchSize) break;
+            scanCursor = purchasePageCursor(batch[batch.length - 1]);
+        }
+        const nextCursor = rows.length === pageSize ? purchasePageCursor(rows[rows.length - 1]) : null;
         const withUrls = await attachProofUrls(rows);
         const approvedIds = rows.filter((row) => row.status === 'approved').map((row) => row.id);
         const { data: creditRows, error: creditError } = approvedIds.length
@@ -2233,15 +2249,23 @@ const route: FastifyPluginAsync = async (fastify) => {
         // KPI aggregates (only on first page / no cursor)
         let summary: Record<string, number> | null = null;
         if (!cursor) {
-            let aggQ = adminClient.from('funding_requests').select('status, amount_minor, owner_type, vendor_organization_id, customer_id');
-            if (from)    aggQ = aggQ.gte('created_at', new Date(from).toISOString());
-            if (to)      aggQ = aggQ.lte('created_at', new Date(new Date(to).setHours(23, 59, 59, 999)).toISOString());
-            if (channel && channel !== 'all') aggQ = aggQ.eq('channel', channel);
-            if (ownerFilters.length) aggQ = aggQ.or(ownerFilters.join(','));
-            const { data: agg } = await aggQ.limit(10_000);
-            const rows2 = (scopedOwners ? (agg ?? []).filter((row: any) => row.owner_type === 'customer'
+            const aggregates: any[] = [];
+            for (let offset = 0; ; offset += 1_000) {
+                let aggQ = adminClient.from('funding_requests')
+                    .select('status, amount_minor, owner_type, vendor_organization_id, customer_id')
+                    .order('id').range(offset, offset + 999);
+                if (from) aggQ = aggQ.gte('created_at', new Date(from).toISOString());
+                if (to) aggQ = aggQ.lte('created_at', to.includes('T') ? new Date(to).toISOString() : new Date(new Date(to).setHours(23, 59, 59, 999)).toISOString());
+                if (channel && channel !== 'all') aggQ = aggQ.eq('channel', channel);
+                if (ownerFilters.length) aggQ = aggQ.or(ownerFilters.join(','));
+                const { data, error } = await aggQ;
+                if (error) throw error;
+                aggregates.push(...(data ?? []));
+                if ((data?.length ?? 0) < 1_000) break;
+            }
+            const rows2 = (scopedOwners ? aggregates.filter((row: any) => row.owner_type === 'customer'
                 ? scopedOwners.customers.has(row.customer_id)
-                : scopedOwners.vendors.has(row.vendor_organization_id)) : (agg ?? [])) as any[];
+                : scopedOwners.vendors.has(row.vendor_organization_id)) : aggregates) as any[];
             const sumMinor = (s: string) => rows2.filter((r) => r.status === s).reduce((acc, r) => acc + Number(r.amount_minor ?? 0), 0);
             summary = {
                 totalCount:    rows2.length,
@@ -2313,77 +2337,68 @@ const route: FastifyPluginAsync = async (fastify) => {
             ownerType, status, q, minBalance, maxBalance, limit, cursor,
         } = req.query as Record<string, string | undefined>;
         const assignedStations = staffStations(req);
-        const hasComputedFilters = !!(q || minBalance || maxBalance);
-        const pageSize = Math.min(Number(limit ?? 100), 500);
-        const fetchSize = hasComputedFilters || assignedStations ? 5000 : pageSize;
-
-        let query = adminClient
-            .from('wallets')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(fetchSize);
-        if (ownerType) query = query.eq('owner_type', ownerType);
-        if (status)    query = query.eq('status',     status);
-        if (cursor)    query = query.lt('created_at', cursor);
-        const { data: wallets, error } = await query;
-        if (error) return { wallets: [], error: error.message };
-        let rows = wallets ?? [];
-        if (assignedStations) {
-            const owners = await stationOwnerIds(assignedStations);
-            rows = rows.filter((wallet: any) => wallet.owner_type === 'vendor'
-                ? owners.vendors.has(wallet.owner_id)
-                : owners.customers.has(wallet.owner_id));
+        const pageSize = Math.min(Math.max(Number(limit) || 100, 1), 500);
+        const owners = assignedStations ? await stationOwnerIds(assignedStations) : null;
+        const searchTerm = cleanSearchTerm(q).toLowerCase();
+        const result: any[] = [];
+        let scanCursor = cursor;
+        let nextCursor: string | null = null;
+        let scanned = 0;
+        while (result.length < pageSize && scanned < 500) {
+            let query = adminClient.from('wallets').select('*')
+                .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100);
+            if (ownerType) query = query.eq('owner_type', ownerType);
+            if (status) query = query.eq('status', status);
+            query = applyPurchasePageCursor(query, scanCursor);
+            const { data, error } = await query;
+            if (error) throw error;
+            const batch = data ?? [];
+            scanned += batch.length;
+            const scoped = owners ? batch.filter((wallet: any) => wallet.owner_type === 'vendor'
+                ? owners.vendors.has(wallet.owner_id) : owners.customers.has(wallet.owner_id)) : batch;
+            const vendorIds = scoped.filter((wallet: any) => wallet.owner_type === 'vendor').map((wallet: any) => wallet.owner_id);
+            const customerIds = scoped.filter((wallet: any) => wallet.owner_type === 'customer').map((wallet: any) => wallet.owner_id);
+            const [vendors, customers] = await Promise.all([
+                vendorIds.length ? adminClient.from('vendor_organizations').select('id, legal_name, trading_name').in('id', vendorIds)
+                    : Promise.resolve({ data: [] as any[], error: null }),
+                customerIds.length ? adminClient.from('customers').select('id, full_name, phone, email').in('id', customerIds)
+                    : Promise.resolve({ data: [] as any[], error: null }),
+            ]);
+            if (vendors.error) throw vendors.error;
+            if (customers.error) throw customers.error;
+            const vendorMap = new Map((vendors.data ?? []).map((row: any) => [row.id, row]));
+            const customerMap = new Map((customers.data ?? []).map((row: any) => [row.id, row]));
+            const { getBalance } = await import('../services/ledger.js');
+            const balances = await Promise.all(scoped.map((wallet: any) => getBalance(wallet.id)));
+            const enriched = new Map(scoped.map((wallet: any, index: number) => {
+                const owner: any = wallet.owner_type === 'vendor' ? vendorMap.get(wallet.owner_id) : customerMap.get(wallet.owner_id);
+                const balance = balances[index];
+                return [wallet.id, {
+                    ...wallet,
+                    balance_minor: balance.ledgerBalanceMinor,
+                    holds_minor: balance.activeHoldsMinor,
+                    available_minor: balance.availableMinor,
+                    owner_name: owner?.legal_name ?? owner?.trading_name ?? owner?.full_name ?? null,
+                    owner_phone: owner?.phone ?? null,
+                    owner_email: owner?.email ?? null,
+                }];
+            }));
+            for (const wallet of batch) {
+                scanCursor = purchasePageCursor(wallet);
+                const row = enriched.get(wallet.id);
+                if (!row) continue;
+                if (searchTerm && ![row.id, row.owner_name, row.owner_phone, row.owner_email]
+                    .some((value) => String(value ?? '').toLowerCase().includes(searchTerm))) continue;
+                if (minBalance !== undefined && row.balance_minor < Number(minBalance)) continue;
+                if (maxBalance !== undefined && row.balance_minor > Number(maxBalance)) continue;
+                result.push(row);
+                if (result.length === pageSize) break;
+            }
+            if (result.length === pageSize) { nextCursor = scanCursor ?? null; break; }
+            if (batch.length < 100) { nextCursor = null; break; }
+            nextCursor = scanCursor ?? null;
         }
-        if (!rows.length) return { wallets: [], nextCursor: null };
-
-        // Hydrate owner display name in batch
-        const vendorIds = rows.filter((w: any) => w.owner_type === 'vendor').map((w: any) => w.owner_id);
-        const customerIds = rows.filter((w: any) => w.owner_type === 'customer').map((w: any) => w.owner_id);
-        const [vendorMap, customerMap] = await Promise.all([
-            vendorIds.length
-                ? adminClient.from('vendor_organizations').select('id, legal_name, trading_name').in('id', vendorIds)
-                    .then((r) => new Map((r.data ?? []).map((v: any) => [v.id, v])))
-                : Promise.resolve(new Map()),
-            customerIds.length
-                ? adminClient.from('customers').select('id, full_name, phone, email').in('id', customerIds)
-                    .then((r) => new Map((r.data ?? []).map((c: any) => [c.id, c])))
-                : Promise.resolve(new Map()),
-        ]);
-
-        const { getBalance } = await import('../services/ledger.js');
-        const balances = await Promise.all(rows.map((w: any) => getBalance(w.id).catch(() => null)));
-
-        let enriched = rows.map((w: any, i: number) => {
-            const b = balances[i];
-            const owner = w.owner_type === 'vendor' ? vendorMap.get(w.owner_id) : customerMap.get(w.owner_id);
-            return {
-                ...w,
-                balance_minor:   b?.ledgerBalanceMinor   ?? 0,
-                holds_minor:     b?.activeHoldsMinor     ?? 0,
-                available_minor: b?.availableMinor       ?? 0,
-                owner_name:      owner?.legal_name ?? owner?.trading_name ?? owner?.full_name ?? null,
-                owner_phone:     owner?.phone ?? null,
-                owner_email:     owner?.email ?? null,
-            };
-        });
-
-        if (q) {
-            const ql = cleanSearchTerm(q).toLowerCase();
-            enriched = enriched.filter((w: any) =>
-                w.id.toLowerCase().includes(ql) ||
-                (w.owner_name ?? '').toLowerCase().includes(ql) ||
-                (w.owner_phone ?? '').toLowerCase().includes(ql) ||
-                (w.owner_email ?? '').toLowerCase().includes(ql),
-            );
-        }
-        if (minBalance) enriched = enriched.filter((w: any) => w.balance_minor >= Number(minBalance));
-        if (maxBalance) enriched = enriched.filter((w: any) => w.balance_minor <= Number(maxBalance));
-
-        const paged = enriched.slice(0, pageSize);
-        const nextCursor = !hasComputedFilters && rows.length === pageSize
-            ? rows[rows.length - 1].created_at : null;
-
-        return { wallets: paged, nextCursor };
+        return { wallets: result, nextCursor };
     });
 
     // KPI summary across the entire wallet system.
@@ -3113,28 +3128,42 @@ const route: FastifyPluginAsync = async (fastify) => {
     // Full account catalogue for exports. It is independent of purchase pages.
     fastify.get('/purchases/actors', async (req) => {
         const assignedStations = staffStations(req);
+        if (assignedStations && !assignedStations.length) return { actors: [] };
         const scopedOwners = assignedStations ? await stationOwnerIds(assignedStations) : null;
         if (scopedOwners && !scopedOwners.vendors.size && !scopedOwners.customers.size) return { actors: [] };
         const pageSize = 1_000;
-        const actorOptions: Array<{ value: string; label: string }> = [];
+        const walletOwners = { vendors: new Set<string>(), customers: new Set<string>() };
+        for (let offset = 0; ; offset += pageSize) {
+            const { data, error } = await adminClient.from('wallets').select('owner_type, owner_id')
+                .in('owner_type', ['vendor', 'customer']).order('id').range(offset, offset + pageSize - 1);
+            if (error) throw error;
+            for (const row of data ?? []) {
+                if (row.owner_type === 'vendor') walletOwners.vendors.add(row.owner_id);
+                if (row.owner_type === 'customer') walletOwners.customers.add(row.owner_id);
+            }
+            if ((data?.length ?? 0) < pageSize) break;
+        }
+        const actorOptions: Array<{ value: string; label: string; description: string }> = [];
         for (let offset = 0; ; offset += pageSize) {
             const query = adminClient.from('vendor_organizations').select('id, legal_name, trading_name')
-                .order('created_at', { ascending: false }).range(offset, offset + pageSize - 1);
+                .is('deleted_at', null).order('id').range(offset, offset + pageSize - 1);
             const { data, error } = await query;
             if (error) throw error;
             for (const row of data ?? []) {
-                if (scopedOwners && !scopedOwners.vendors.has(row.id)) continue;
-                actorOptions.push({ value: `vendor:${row.id}`, label: `Vendor · ${row.trading_name || row.legal_name || row.id}` });
+                if (!walletOwners.vendors.has(row.id) || (scopedOwners && !scopedOwners.vendors.has(row.id))) continue;
+                actorOptions.push({ value: `vendor:${row.id}`, label: `Vendor · ${row.trading_name || row.legal_name || row.id}`,
+                    description: [row.legal_name, row.id].filter(Boolean).join(' ') });
             }
             if ((data?.length ?? 0) < pageSize) break;
         }
         for (let offset = 0; ; offset += pageSize) {
             const { data, error } = await adminClient.from('customers').select('id, full_name, email')
-                .order('created_at', { ascending: false }).range(offset, offset + pageSize - 1);
+                .order('id').range(offset, offset + pageSize - 1);
             if (error) throw error;
             for (const row of data ?? []) {
-                if (scopedOwners && !scopedOwners.customers.has(row.id)) continue;
-                actorOptions.push({ value: `customer:${row.id}`, label: `Customer · ${row.full_name || row.email || row.id}` });
+                if (!walletOwners.customers.has(row.id) || (scopedOwners && !scopedOwners.customers.has(row.id))) continue;
+                actorOptions.push({ value: `customer:${row.id}`, label: `Customer · ${row.full_name || row.email || row.id}`,
+                    description: row.id });
             }
             if ((data?.length ?? 0) < pageSize) break;
         }
@@ -3569,7 +3598,7 @@ const route: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.get('/meter-orders', async (req, reply) => {
-        const { status, q, limit, cursor } = req.query as { status?: string; q?: string; limit?: string; cursor?: string };
+        const { status, q, limit, cursor, since, until } = req.query as { status?: string; q?: string; limit?: string; cursor?: string; since?: string; until?: string };
         const pageSize = Math.min(Number(limit ?? 100), 200);
         const assignedStations = staffStations(req);
         if (!requireStationScope(reply, assignedStations)) return reply;
@@ -3577,17 +3606,21 @@ const route: FastifyPluginAsync = async (fastify) => {
             .from('meter_purchase_orders')
             .select('*, customers(full_name, email, phone), vendor_organizations(legal_name, trading_name)')
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .limit(pageSize);
         if (status) query = query.eq('status', status);
+        if (since) query = query.gte('created_at', since);
+        if (until) query = query.lte('created_at', until);
         query = scopeStations(query, assignedStations);
         if (q) {
             const safeQ = cleanSearchTerm(q);
             if (safeQ) query = query.or(`property_address.ilike.%${safeQ}%,service_area.ilike.%${safeQ}%,contact_phone.ilike.%${safeQ}%,customer_name_snapshot.ilike.%${safeQ}%`);
         }
-        if (cursor) query = query.lt('created_at', cursor);
-        const { data } = await query;
+        query = applyPurchasePageCursor(query, cursor);
+        const { data, error } = await query;
+        if (error) throw error;
         const rows = data ?? [];
-        const nextCursor = rows.length === pageSize ? (rows[rows.length - 1] as any).created_at : null;
+        const nextCursor = rows.length === pageSize ? purchasePageCursor(rows[rows.length - 1] as any) : null;
         return { orders: rows, nextCursor };
     });
 
@@ -4491,18 +4524,24 @@ const route: FastifyPluginAsync = async (fastify) => {
 
     // ── settlement ──
     fastify.get('/settlement', async (req) => {
-        const { vendor_id } = req.query as { vendor_id?: string };
-        return { batches: await listSettlementBatches({ vendorOrganizationId: vendor_id, limit: 200 }) };
+        const { vendor_id, cursor, limit } = req.query as { vendor_id?: string; cursor?: string; limit?: string };
+        const pageSize = Math.min(Math.max(Number(limit ?? 200) || 200, 1), 200);
+        const batches = await listSettlementBatches({ vendorOrganizationId: vendor_id, cursor, limit: pageSize });
+        const last = batches[batches.length - 1];
+        return { batches, nextCursor: batches.length === pageSize && last ? `${last.period_start}|${last.id}` : null };
     });
 
     // ── reconciliation ──
-    fastify.get('/reconciliation', async () => {
-        const runs = await listReconciliationRuns(30);
+    fastify.get('/reconciliation', async (req) => {
+        const { cursor, limit } = req.query as { cursor?: string; limit?: string };
+        const pageSize = Math.min(Math.max(Number(limit ?? 30) || 30, 1), 200);
+        const runs = await listReconciliationRuns(pageSize, cursor);
         return {
             runs: runs.map((run: any) => ({
                 ...run,
                 db_total_minor: run.db_total_minor ?? run.total_amount_minor ?? 0,
             })),
+            nextCursor: runs.length === pageSize ? runs[runs.length - 1].run_date : null,
         };
     });
 
@@ -4605,28 +4644,33 @@ const route: FastifyPluginAsync = async (fastify) => {
         return entry;
     });
 
-    // ── CSV export (capped at 10k rows for safety) ──
+    // ── CSV export (rejects oversized scopes instead of truncating) ──
     fastify.get('/audit/export.csv', async (req, reply) => {
         const { actor, actorType, action, targetType, target, since, until } =
             req.query as Record<string, string | undefined>;
-        let query = adminClient.from('wallet_audit_log').select('*')
-            .order('created_at', { ascending: false }).limit(10_000);
-        if (actor)      query = query.eq('actor_user_id', actor);
-        if (actorType)  query = query.eq('actor_type', actorType);
-        if (action)     query = query.ilike('action', `${action}%`);
-        if (targetType) query = query.eq('target_type', targetType);
-        if (target)     query = query.eq('target_id', target);
-        if (since)      query = query.gte('created_at', since);
-        if (until)      query = query.lte('created_at', until);
-        const { data, error } = await query;
-        if (error) {
-            return reply.code(502).send({
-                error: 'audit_export_unavailable',
-                message: 'Audit export failed.',
-                details: error.message,
-            });
+        const rowsRaw: any[] = [];
+        let cursor: string | undefined;
+        while (rowsRaw.length <= 10_000) {
+            let query = adminClient.from('wallet_audit_log').select('*')
+                .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(1_000);
+            if (actor)      query = query.eq('actor_user_id', actor);
+            if (actorType)  query = query.eq('actor_type', actorType);
+            if (action)     query = query.ilike('action', `${action}%`);
+            if (targetType) query = query.eq('target_type', targetType);
+            if (target)     query = query.eq('target_id', target);
+            if (since)      query = query.gte('created_at', since);
+            if (until)      query = query.lte('created_at', until);
+            const { data, error } = await applyPurchasePageCursor(query, cursor);
+            if (error) {
+                return reply.code(502).send({ error: 'audit_export_unavailable', message: 'Audit export failed.', details: error.message });
+            }
+            rowsRaw.push(...(data ?? []));
+            if ((data?.length ?? 0) < 1_000) break;
+            cursor = purchasePageCursor(data![data!.length - 1] as any);
         }
-        const rowsRaw = data ?? [];
+        if (rowsRaw.length > 10_000) {
+            return reply.code(413).send({ error: 'audit_export_too_large', message: 'More than 10,000 audit entries match. Narrow the date range.' });
+        }
         const actorNames = await resolveRegisteredActorNames(rowsRaw.map((entry: any) => String(entry.actor_user_id ?? '')).filter(Boolean));
         const rows = enrichAuditActors(rowsRaw as any[], actorNames);
         const header = ['created_at', 'actor_type', 'actor_user_id', 'actor_role', 'action',

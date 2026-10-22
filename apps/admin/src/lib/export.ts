@@ -16,7 +16,8 @@ export type Column<T> = {
 
 function csvEscape(value: unknown): string {
     if (value === null || value === undefined) return '';
-    const s = typeof value === 'string' ? value : String(value);
+    const raw = typeof value === 'string' ? value : String(value);
+    const s = /^[\t\r ]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

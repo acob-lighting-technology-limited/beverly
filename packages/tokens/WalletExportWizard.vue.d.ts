@@ -16,6 +16,7 @@ declare const component: DefineComponent<{
   statusOptions: { type: PropType<WalletExportOption[]>; default: () => WalletExportOption[] };
   stationOptions: { type: PropType<WalletExportOption[]>; default: () => WalletExportOption[] };
   actorOptions: { type: PropType<WalletExportOption[]>; default: () => WalletExportOption[] };
+  showActorTypeSelector: { type: BooleanConstructor; default: boolean };
   statusLabel: { type: StringConstructor; default: string };
   stationLabel: { type: StringConstructor; default: string };
   actorLabel: { type: StringConstructor; default: string };

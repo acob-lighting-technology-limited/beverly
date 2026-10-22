@@ -17,9 +17,11 @@ import ConfirmDialog from '../components/ConfirmDialog.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
 import WalletRowActions from '@beverly/tokens/WalletRowActions.vue';
 import WalletTablePagination from '@beverly/tokens/WalletTablePagination.vue';
+import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
 import type { ActionItem } from '@beverly/tokens/WalletRowActions.vue';
+import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
+import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 import { api, naira, shortDate, ApiError } from '../lib/api';
-import { exportCsv, type Column } from '../lib/export';
 import { useStaffAuthStore } from '../stores/auth';
 
 const auth = useStaffAuthStore();
@@ -160,9 +162,9 @@ async function loadStats() {
     } catch { /* non-critical */ }
 }
 
-function buildUrl(cursor?: string | null) {
-    const p = new URLSearchParams({ limit: '100' });
-    if (filterStatus.value) p.set('status', filterStatus.value);
+function buildUrl(cursor?: string | null, status = filterStatus.value, limit = 100) {
+    const p = new URLSearchParams({ limit: String(limit) });
+    if (status) p.set('status', status);
     if (search.value.trim()) p.set('q', search.value.trim());
     if (cursor) p.set('cursor', cursor);
     return `/api/v1/admin/meter-orders?${p}`;
@@ -355,7 +357,7 @@ const paginatedOrders = computed(() => {
 });
 
 // ── export ────────────────────────────────────────────────────────
-const CSV_COLS: Column<MeterOrder>[] = [
+const CSV_COLS: WalletExportColumn<MeterOrder>[] = [
     { key: 'created_at',  header: 'Date',         value: (r) => r.created_at },
     { key: 'customer',    header: 'Customer',      value: customerName },
     { key: 'phone',       header: 'Phone',         value: customerContact },
@@ -369,8 +371,22 @@ const CSV_COLS: Column<MeterOrder>[] = [
     { key: 'notes',       header: 'Notes',         value: (r) => r.notes ?? '' },
 ];
 
-function doExport() {
-    exportCsv('beverly-meter-orders', orders.value, CSV_COLS);
+async function resolveExportRows(selection: WalletExportSelection): Promise<MeterOrder[]> {
+    const rows: MeterOrder[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+    while (true) {
+        const p: URLSearchParams = new URLSearchParams(buildUrl(cursor, selection.status, 200).split('?')[1]);
+        if (selection.since) p.set('since', new Date(`${selection.since}T00:00:00`).toISOString());
+        if (selection.until) p.set('until', new Date(`${selection.until}T23:59:59.999`).toISOString());
+        const response: { orders: MeterOrder[]; nextCursor: string | null } = await api.get<{ orders: MeterOrder[]; nextCursor: string | null }>(`/api/v1/admin/meter-orders?${p}`);
+        rows.push(...(response.orders ?? []));
+        cursor = response.nextCursor;
+        if (!cursor) break;
+        if (seenCursors.has(cursor)) throw new Error('Export pagination stalled. No partial file was created.');
+        seenCursors.add(cursor);
+    }
+    return rows;
 }
 </script>
 
@@ -439,9 +455,21 @@ function doExport() {
       <button type="button" class="bw-btn sm" :disabled="loading" @click.prevent="refresh">
         {{ loading ? 'Loading…' : 'Refresh' }}
       </button>
-      <button type="button" class="bw-btn sm" :disabled="!orders.length" @click.prevent="doExport">
-        Export CSV
-      </button>
+      <WalletExportWizard
+        :rows="orders"
+        :columns="CSV_COLS"
+        filename="beverly-meter-orders"
+        title="Meter Orders"
+        subtitle="Current status and search filters"
+        :loading="loading"
+        :formats="['csv']"
+        :status-options="STATUS_OPTS.filter((option) => option.value)"
+        :initial-status="filterStatus"
+        :date-value="(row: MeterOrder) => row.created_at"
+        :resolve-rows="resolveExportRows"
+        :meta="[{ label: 'Search', value: search.trim() || 'None' }]"
+        allow-daily-csv-archive
+      />
       </div>
     </div>
 

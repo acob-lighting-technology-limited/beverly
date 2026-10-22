@@ -16,6 +16,7 @@ const props = withDefaults(defineProps<{
   statusOptions?: WalletExportOption[];
   stationOptions?: WalletExportOption[];
   actorOptions?: WalletExportOption[];
+  showActorTypeSelector?: boolean;
   statusLabel?: string;
   stationLabel?: string;
   actorLabel?: string;
@@ -44,6 +45,7 @@ const props = withDefaults(defineProps<{
   statusOptions: () => [],
   stationOptions: () => [],
   actorOptions: () => [],
+  showActorTypeSelector: false,
   statusLabel: 'Transaction status',
   stationLabel: 'StationID',
   actorLabel: 'Vendor or customer',
@@ -76,6 +78,7 @@ const until = ref(props.initialUntil);
 const status = ref(props.initialStatus);
 const station = ref(props.initialStation);
 const actor = ref(props.initialActor);
+const actorType = ref<'' | 'vendor' | 'customer'>('');
 const actorQuery = ref('');
 const selectedColumns = ref<string[]>(props.columns.map((column) => column.key));
 
@@ -83,14 +86,19 @@ const disabled = computed(() => props.loading || busy.value || (props.rows.lengt
 const chosenColumns = computed(() => props.columns.filter((column) => selectedColumns.value.includes(column.key)));
 const matchingActorOptions = computed(() => {
   const query = actorQuery.value.trim().toLocaleLowerCase();
-  return query ? props.actorOptions.filter((option) => option.label.toLocaleLowerCase().includes(query)) : props.actorOptions;
+  return props.actorOptions.filter((option) =>
+    (!actorType.value || option.value.startsWith(`${actorType.value}:`))
+    && (!query || `${option.label} ${option.description ?? ''}`.toLocaleLowerCase().includes(query)));
 });
-const selectedScopeCount = computed(() => [since.value || until.value, status.value, station.value, actor.value].filter(Boolean).length);
+const hasDeliveryStep = computed(() => props.allowDailyCsvArchive && Boolean(props.dateValue) && format.value === 'csv' && props.formats.includes('csv'));
+const selectedScopeCount = computed(() => [since.value || until.value, status.value, station.value, actorType.value, actor.value].filter(Boolean).length);
 const scopeSummary = computed(() => {
   const labels = [
     props.stationOptions.length ? (station.value ? props.stationOptions.find((item) => item.value === station.value)?.label : props.allStationLabel) : '',
     props.statusOptions.length ? (status.value ? props.statusOptions.find((item) => item.value === status.value)?.label : props.allStatusLabel) : '',
-    props.actorOptions.length ? (actor.value ? props.actorOptions.find((item) => item.value === actor.value)?.label : props.allActorLabel) : '',
+    props.showActorTypeSelector || props.actorOptions.length
+      ? (actor.value ? props.actorOptions.find((item) => item.value === actor.value)?.label
+        : actorType.value === 'vendor' ? 'All vendors' : actorType.value === 'customer' ? 'All customers' : props.allActorLabel) : '',
   ];
   return labels.filter(Boolean).join(' · ');
 });
@@ -104,6 +112,8 @@ function reset() {
   status.value = props.initialStatus;
   station.value = props.initialStation;
   actor.value = props.initialActor;
+  actorType.value = props.showActorTypeSelector && props.initialActor.startsWith('vendor:') ? 'vendor'
+    : props.showActorTypeSelector && props.initialActor.startsWith('customer:') ? 'customer' : '';
   actorQuery.value = '';
   selectedColumns.value = props.columns.map((column) => column.key);
   message.value = '';
@@ -119,6 +129,11 @@ function close() {
   if (!busy.value) open.value = false;
 }
 
+function selectActorType(value: '' | 'vendor' | 'customer') {
+  actorType.value = value;
+  actor.value = '';
+}
+
 function toggleColumn(key: string) {
   selectedColumns.value = selectedColumns.value.includes(key)
     ? selectedColumns.value.filter((item) => item !== key)
@@ -130,10 +145,12 @@ function rowMatches(row: T) {
   const rowStatus = props.statusValue?.(row);
   const rowStation = props.stationValue?.(row);
   const rowActor = props.actorValue?.(row);
+  if ((since.value || until.value) && (!date || Number.isNaN(new Date(date).getTime()))) return false;
   if (since.value && date && new Date(date) < new Date(`${since.value}T00:00:00`)) return false;
   if (until.value && date && new Date(date) > new Date(`${until.value}T23:59:59.999`)) return false;
   if (status.value && String(rowStatus ?? '') !== status.value) return false;
   if (station.value && String(rowStation ?? '') !== station.value) return false;
+  if (actorType.value && !String(rowActor ?? '').startsWith(`${actorType.value}:`)) return false;
   if (actor.value && String(rowActor ?? '') !== actor.value) return false;
   return true;
 }
@@ -147,6 +164,7 @@ function selection(): WalletExportSelection {
     status: status.value,
     station: station.value,
     actor: actor.value,
+    actorType: actorType.value,
     columnKeys: [...selectedColumns.value],
   };
 }
@@ -170,7 +188,8 @@ async function run() {
     const scopeMeta = [
       ...props.meta,
       { label: 'Scope', value: scopeSummary.value },
-      { label: 'Period', value: since.value || until.value ? `${since.value || 'First record'} to ${until.value || 'Latest record'}` : 'All loaded dates' },
+      { label: 'Coverage', value: props.resolveRows ? 'All matching records' : 'Loaded records only' },
+      { label: 'Period', value: since.value || until.value ? `${since.value || 'First record'} to ${until.value || 'Latest record'}` : props.resolveRows ? 'All dates' : 'All loaded dates' },
       { label: 'Records', value: String(exportRows.length) },
     ];
     if (format.value === 'csv' && csvDelivery.value === 'daily-zip') {
@@ -233,8 +252,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
               <button type="button" class="bw-export-close" aria-label="Close export builder" @click="close">×</button>
             </header>
 
-            <ol class="bw-export-steps" aria-label="Export steps">
-              <li v-for="number in (allowDailyCsvArchive && formats.includes('csv') ? 4 : 3)" :key="number" :class="{ active: step === number, done: step > number }">
+            <ol class="bw-export-steps" :class="{ 'has-delivery': hasDeliveryStep }" aria-label="Export steps">
+              <li v-for="number in (hasDeliveryStep ? 4 : 3)" :key="number" :class="{ active: step === number, done: step > number }">
                 <span>{{ number }}</span>
                 {{ number === 1 ? 'Scope' : number === 2 ? 'Fields' : number === 3 ? 'Format' : 'Delivery' }}
               </li>
@@ -247,7 +266,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
                 <label v-if="dateValue"><span>End date</span><input v-model="until" type="date" class="bw-input" /></label>
                 <label v-if="statusOptions.length"><span>{{ statusLabel }}</span><select v-model="status" class="bw-select"><option value="">{{ allStatusLabel }}</option><option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
                 <label v-if="stationOptions.length"><span>{{ stationLabel }}</span><select v-model="station" class="bw-select"><option value="">{{ allStationLabel }}</option><option v-for="option in stationOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
-                <label v-if="actorOptions.length" class="wide"><span>{{ actorLabel }}</span><input v-model="actorQuery" class="bw-input" type="search" placeholder="Search vendors or customers" /><select v-model="actor" class="bw-select"><option value="">{{ allActorLabel }}</option><option v-for="option in matchingActorOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select><small v-if="actorQuery">{{ matchingActorOptions.length }} matches</small></label>
+                <div v-if="showActorTypeSelector || actorOptions.length" class="wide bw-export-actor-scope">
+                  <label v-if="showActorTypeSelector"><span>Account type</span><select :value="actorType" class="bw-select" @change="selectActorType(($event.target as HTMLSelectElement).value as '' | 'vendor' | 'customer')"><option value="">All vendors and customers</option><option value="vendor">Vendors</option><option value="customer">Customers</option></select></label>
+                  <template v-if="actorOptions.length">
+                    <label><span>Search {{ actorLabel.toLocaleLowerCase() }}</span><input v-model="actorQuery" class="bw-input" type="search" :placeholder="actorType === 'vendor' ? 'Search vendors' : actorType === 'customer' ? 'Search customers' : 'Search vendors or customers'" @input="actor = ''" /><small v-if="actorQuery">{{ matchingActorOptions.length }} matches</small></label>
+                    <label><span>{{ actorLabel }}</span><select v-model="actor" class="bw-select"><option value="">{{ actorType === 'vendor' ? 'All vendors' : actorType === 'customer' ? 'All customers' : allActorLabel }}</option><option v-for="option in matchingActorOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+                  </template>
+                </div>
+                <p v-if="!resolveRows" class="bw-export-coverage-note">This export includes loaded records only.</p>
               </div>
             </div>
 
@@ -290,7 +316,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
             <p v-if="message" class="bw-export-message" role="status">{{ message }}</p>
             <footer class="bw-export-dialog-actions">
               <button type="button" class="bw-btn" @click="step === 1 ? close() : step--">{{ step === 1 ? 'Cancel' : 'Back' }}</button>
-              <button v-if="step < 3 || (step === 3 && format === 'csv' && allowDailyCsvArchive)" type="button" class="bw-btn primary" :disabled="step === 2 && !selectedColumns.length" @click="step++">Continue</button>
+              <button v-if="step < 3 || (step === 3 && hasDeliveryStep)" type="button" class="bw-btn primary" :disabled="step === 2 && !selectedColumns.length" @click="step++">Continue</button>
               <button v-else type="button" class="bw-btn primary" :disabled="busy || !selectedColumns.length" @click="run">{{ busy ? 'Preparing…' : `Export ${format.toUpperCase()}` }}</button>
             </footer>
           </section>
@@ -304,6 +330,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
 <style scoped>
 .bw-export-form-grid label.wide { display:grid; gap:var(--s-2); }
 .bw-export-form-grid label.wide small { color:var(--text-muted); font-size:var(--t-xs); }
+.bw-export-actor-scope { display:grid; gap:var(--s-3); }
+.bw-export-actor-scope label { display:grid; gap:var(--s-2); }
+.bw-export-coverage-note { color:var(--text-muted); font-size:var(--t-xs); margin:var(--s-3) 0 0; }
 .bw-export-csv-delivery { display:grid; gap:var(--s-2); margin-top:var(--s-4); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--s-3); }
 .bw-export-csv-delivery legend { color:var(--text-muted); font-size:var(--t-xs); font-weight:700; padding:0 var(--s-1); text-transform:uppercase; letter-spacing:.06em; }
 .bw-export-csv-delivery label { display:flex; gap:var(--s-2); align-items:center; cursor:pointer; }
