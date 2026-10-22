@@ -41,6 +41,8 @@ assert.match(settlement, /resolveExportRows/, 'settlement exports must page thro
 assert.match(reconciliation, /resolveExportRows/, 'reconciliation exports must page through all runs');
 assert.match(wallets, /resolveExportRows/, 'wallet exports must page through all matching wallets');
 assert.match(admin, /fastify\.get\('\/wallets'[\s\S]*?applyPurchasePageCursor\(query, scanCursor\)/, 'wallet filters must scan complete pages');
+assert.match(admin, /scanned < 500/, 'wallet scans must remain bounded per request');
+assert.match(wallets, /while \(!r\.wallets\.length && r\.nextCursor\)/, 'wallet search must continue after sparse empty pages');
 assert.match(admin, /audit_export_too_large/, 'oversized audit exports must fail instead of truncating');
 assert.match(audit, /T23:59:59\.999/, 'audit export must include the selected final day');
 assert.match(admin, /const s = \/\^\[\\t\\r \]\*\[=\+\\-@\]\//, 'legacy server CSV must escape formulas');

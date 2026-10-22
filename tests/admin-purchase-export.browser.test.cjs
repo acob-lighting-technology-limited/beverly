@@ -23,6 +23,10 @@ const meterOrders = [
   { id: "m1", customer_id: "c1", customer_name_snapshot: "Ada One", meter_type: "single_phase", property_address: "North Street", service_area: "Tunga", contact_phone: "08000000000", amount_minor: 5000000, status: "paid", payment_reference: "ORDER-FIRST", technician_name: null, notes: null, created_at: "2026-10-19T10:00:00Z" },
   { id: "m2", customer_id: "c2", customer_name_snapshot: "Bola Two", meter_type: "three_phase", property_address: "South Street", service_area: "Tunga", contact_phone: "08100000000", amount_minor: 7000000, status: "installed", payment_reference: "ORDER-SECOND", technician_name: null, notes: null, created_at: "2026-10-20T10:00:00Z" },
 ];
+const wallets = [
+  { id: "w1", owner_type: "vendor", owner_id: "v1", owner_name: "Alpha Shop", status: "active", currency: "NGN", balance_minor: 100000, holds_minor: 0, available_minor: 100000, created_at: "2026-10-19T10:00:00Z" },
+  { id: "w2", owner_type: "customer", owner_id: "c1", owner_name: "Ada One", status: "active", currency: "NGN", balance_minor: 200000, holds_minor: 0, available_minor: 200000, created_at: "2026-10-20T10:00:00Z" },
+];
 
 function startServer() {
   const server = http.createServer((request, response) => {
@@ -47,14 +51,14 @@ function startServer() {
     await context.addInitScript(() => {
       localStorage.setItem("beverly.staff.access_token", "browser-test-token");
       localStorage.setItem("beverly.staff.user", JSON.stringify({ id: "staff-1", email: "staff@example.test", full_name: "Export Tester", role: "developer" }));
-      localStorage.setItem("beverly.staff.permissions", JSON.stringify(["wallet.vending.monitor", "wallet.vendors.review"]));
+      localStorage.setItem("beverly.staff.permissions", JSON.stringify(["wallet.vending.monitor", "wallet.vendors.review", "wallet.funding.view"]));
     });
     const requests = [];
     await context.route("**/api/v1/admin/**", async (route) => {
       const url = new URL(route.request().url());
       const pathname = url.pathname;
       const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-      if (pathname.endsWith("/me")) return json({ user: { id: "staff-1", full_name: "Export Tester", role: "developer" }, permissions: ["wallet.vending.monitor", "wallet.vendors.review"] });
+      if (pathname.endsWith("/me")) return json({ user: { id: "staff-1", full_name: "Export Tester", role: "developer" }, permissions: ["wallet.vending.monitor", "wallet.vendors.review", "wallet.funding.view"] });
       if (pathname.endsWith("/stations")) return json({ stations: [{ stationId: "TUNGA", name: "Tunga" }] });
       if (pathname.endsWith("/purchases/actors")) return json({ actors });
       if (pathname.endsWith("/purchases/summary")) return json({ totalCount: 3, successCount: 3, failedCount: 0, refundedCount: 0, totalValueMinor: 60000, failedValueMinor: 0, refundedValueMinor: 0 });
@@ -69,6 +73,11 @@ function startServer() {
       if (pathname.endsWith("/meter-orders")) {
         const secondPage = url.searchParams.has("cursor");
         return json({ orders: [meterOrders[secondPage ? 1 : 0]], nextCursor: secondPage ? null : "cursor2" });
+      }
+      if (pathname.endsWith("/wallets/summary")) return json({ walletCount: 2, totalFloatMinor: 300000, totalHoldsMinor: 0, vendorFloatMinor: 100000, customerFloatMinor: 200000, byStatus: { active: 2 }, byOwnerType: { vendor: 1, customer: 1 } });
+      if (pathname.endsWith("/wallets")) {
+        const secondPage = url.searchParams.has("cursor");
+        return json({ wallets: [wallets[secondPage ? 1 : 0]], nextCursor: secondPage ? null : "cursor2" });
       }
       return json({});
     });
@@ -115,6 +124,19 @@ function startServer() {
     const meterCsv = fs.readFileSync(await meterDownload.path(), "utf8");
     assert.match(meterCsv, /ORDER-FIRST/, "first meter page must export");
     assert.match(meterCsv, /ORDER-SECOND/, "later meter pages must export");
+    await page.goto(`http://127.0.0.1:${server.address().port}/wallet-admin/wallets`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const walletDialog = page.getByRole("dialog", { name: "Wallets export" });
+    await walletDialog.getByRole("button", { name: "Continue" }).click();
+    await walletDialog.getByRole("button", { name: "Continue" }).click();
+    await walletDialog.getByRole("button", { name: "Continue" }).click();
+    const [walletDownload] = await Promise.all([
+      page.waitForEvent("download"),
+      walletDialog.getByRole("button", { name: "Export CSV" }).click(),
+    ]);
+    const walletCsv = fs.readFileSync(await walletDownload.path(), "utf8");
+    assert.match(walletCsv, /w1/, "first wallet page must export");
+    assert.match(walletCsv, /w2/, "later wallet pages must export");
     await context.close();
   } finally {
     await browser?.close();

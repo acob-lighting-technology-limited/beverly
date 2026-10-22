@@ -98,9 +98,16 @@ async function loadList(reset = true) {
         if (fMaxBal.value !== '') p.set('maxBalance', String(Math.round(Number(fMaxBal.value) * 100)));
         p.set('limit', '100');
         if (!reset && cursor.value) p.set('cursor', cursor.value);
-        const r = await api.get<{ wallets: Wallet[]; nextCursor: string | null }>(
+        let r = await api.get<{ wallets: Wallet[]; nextCursor: string | null }>(
             `/api/v1/admin/wallets?${p}`,
         );
+        const seenCursors = new Set<string>();
+        while (!r.wallets.length && r.nextCursor) {
+            if (seenCursors.has(r.nextCursor)) throw new Error('Wallet pagination stalled.');
+            seenCursors.add(r.nextCursor);
+            p.set('cursor', r.nextCursor);
+            r = await api.get<{ wallets: Wallet[]; nextCursor: string | null }>(`/api/v1/admin/wallets?${p}`);
+        }
         wallets.value = reset ? r.wallets : [...wallets.value, ...r.wallets];
         cursor.value = r.nextCursor;
     } catch (e: any) {

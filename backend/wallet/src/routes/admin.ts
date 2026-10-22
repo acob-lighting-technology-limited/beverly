@@ -2343,7 +2343,8 @@ const route: FastifyPluginAsync = async (fastify) => {
         const result: any[] = [];
         let scanCursor = cursor;
         let nextCursor: string | null = null;
-        while (result.length < pageSize) {
+        let scanned = 0;
+        while (result.length < pageSize && scanned < 500) {
             let query = adminClient.from('wallets').select('*')
                 .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(100);
             if (ownerType) query = query.eq('owner_type', ownerType);
@@ -2352,6 +2353,7 @@ const route: FastifyPluginAsync = async (fastify) => {
             const { data, error } = await query;
             if (error) throw error;
             const batch = data ?? [];
+            scanned += batch.length;
             const scoped = owners ? batch.filter((wallet: any) => wallet.owner_type === 'vendor'
                 ? owners.vendors.has(wallet.owner_id) : owners.customers.has(wallet.owner_id)) : batch;
             const vendorIds = scoped.filter((wallet: any) => wallet.owner_type === 'vendor').map((wallet: any) => wallet.owner_id);
@@ -2393,7 +2395,8 @@ const route: FastifyPluginAsync = async (fastify) => {
                 if (result.length === pageSize) break;
             }
             if (result.length === pageSize) { nextCursor = scanCursor ?? null; break; }
-            if (batch.length < 100) break;
+            if (batch.length < 100) { nextCursor = null; break; }
+            nextCursor = scanCursor ?? null;
         }
         return { wallets: result, nextCursor };
     });
