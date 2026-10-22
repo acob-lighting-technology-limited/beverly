@@ -66,7 +66,8 @@ function startServer() {
         requests.push(url.searchParams.toString());
         const matching = purchases.filter((row) =>
           (!url.searchParams.get("actorType") || row.actor_type === url.searchParams.get("actorType"))
-          && (!url.searchParams.get("actorId") || row.actor_id === url.searchParams.get("actorId")));
+          && (!url.searchParams.get("actorId") || row.actor_id === url.searchParams.get("actorId"))
+          && (!url.searchParams.get("status") || row.status === url.searchParams.get("status")));
         return json({ purchases: matching, nextCursor: null });
       }
       if (pathname.endsWith("/meter-orders/stats")) return json({ total: 2 });
@@ -83,15 +84,24 @@ function startServer() {
     });
     const page = await context.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}/wallet-admin/purchases`, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await page.locator(".bw-export-wizard-trigger").click();
     const dialog = page.getByRole("dialog", { name: "Token Purchases export" });
     const accountSelect = dialog.locator(".bw-export-actor-scope select").last();
     await dialog.getByLabel("Account type").selectOption("vendor");
     assert.equal(await accountSelect.locator("option").count(), 2);
     await dialog.getByLabel("Account type").selectOption("customer");
     assert.equal(await accountSelect.locator("option").count(), 3);
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    assert.equal(await dialog.getByText("Vendor Name").count(), 0, "customer fields must exclude vendor-only columns");
+    assert.equal(await dialog.getByText("Vendor Business").count(), 0, "customer fields must exclude vendor-only columns");
+    assert.match(await dialog.locator(".bw-export-step-title p").innerText(), /13 fields selected for customers/);
+    await dialog.getByRole("button", { name: "Back" }).click();
     await dialog.getByLabel("Account type").selectOption("");
     assert.equal(await accountSelect.locator("option").count(), 4);
+    await accountSelect.selectOption("customer:c1");
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    assert.equal(await dialog.getByText("Vendor Name").count(), 0, "selected customer must exclude vendor-only columns");
+    await dialog.getByRole("button", { name: "Back" }).click();
     await dialog.getByLabel("Account type").selectOption("vendor");
     await dialog.getByPlaceholder("Search vendors").fill("Alpha Limited");
     assert.equal(await accountSelect.locator("option").count(), 2);
@@ -110,6 +120,15 @@ function startServer() {
     assert.match(archive.toString("utf8"), /beverly-admin-purchases-2026-10-20\.csv/);
     assert.ok(!archive.toString("utf8").includes("M3"), "customer purchase must not leak into vendor archive");
     assert.ok(requests.some((query) => query.includes("actorType=vendor") && query.includes("actorId=v1")), "export request must apply selected actor");
+    await page.locator(".bw-export-wizard-trigger").click();
+    await dialog.getByLabel("Transaction status").selectOption("failed");
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    await dialog.getByRole("button", { name: "Export CSV" }).click();
+    assert.match(await dialog.getByRole("status").innerText(), /No records match these filters/);
+    assert.equal(await dialog.getByRole("heading", { name: "Choose record scope" }).count(), 1, "empty export must return to editable scope");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, "mobile layout must not overflow");
     await page.goto(`http://127.0.0.1:${server.address().port}/wallet-admin/meter-orders`, { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Export", exact: true }).click();

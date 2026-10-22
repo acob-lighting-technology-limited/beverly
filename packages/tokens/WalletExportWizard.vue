@@ -83,7 +83,11 @@ const actorQuery = ref('');
 const selectedColumns = ref<string[]>(props.columns.map((column) => column.key));
 
 const disabled = computed(() => props.loading || busy.value || (props.rows.length === 0 && !props.resolveRows));
-const chosenColumns = computed(() => props.columns.filter((column) => selectedColumns.value.includes(column.key)));
+const fieldActorType = computed(() => actor.value.startsWith('vendor:') ? 'vendor'
+  : actor.value.startsWith('customer:') ? 'customer' : actorType.value);
+const availableColumns = computed(() => props.columns.filter((column) =>
+  !fieldActorType.value || !column.actorTypes?.length || column.actorTypes.includes(fieldActorType.value)));
+const chosenColumns = computed(() => availableColumns.value.filter((column) => selectedColumns.value.includes(column.key)));
 const matchingActorOptions = computed(() => {
   const query = actorQuery.value.trim().toLocaleLowerCase();
   return props.actorOptions.filter((option) =>
@@ -132,6 +136,9 @@ function close() {
 function selectActorType(value: '' | 'vendor' | 'customer') {
   actorType.value = value;
   actor.value = '';
+  actorQuery.value = '';
+  selectedColumns.value = availableColumns.value.map((column) => column.key);
+  message.value = '';
 }
 
 function toggleColumn(key: string) {
@@ -165,7 +172,7 @@ function selection(): WalletExportSelection {
     station: station.value,
     actor: actor.value,
     actorType: actorType.value,
-    columnKeys: [...selectedColumns.value],
+    columnKeys: chosenColumns.value.map((column) => column.key),
   };
 }
 
@@ -184,7 +191,11 @@ async function run() {
     const currentSelection = selection();
     const sourceRows = props.resolveRows ? await props.resolveRows(currentSelection) : props.rows;
     const exportRows = props.resolveRows ? sourceRows : sourceRows.filter(rowMatches);
-    if (!exportRows.length) throw new Error('No records match this scope.');
+    if (!exportRows.length) {
+      step.value = 1;
+      message.value = 'No records match these filters. Change the available scope options.';
+      return;
+    }
     const scopeMeta = [
       ...props.meta,
       { label: 'Scope', value: scopeSummary.value },
@@ -215,6 +226,9 @@ function onKeydown(event: KeyboardEvent) {
 
 watch(() => props.columns, (columns) => {
   if (!open.value) selectedColumns.value = columns.map((column) => column.key);
+});
+watch(actor, () => {
+  if (open.value) selectedColumns.value = availableColumns.value.map((column) => column.key);
 });
 
 onMounted(() => document.addEventListener('keydown', onKeydown));
@@ -279,11 +293,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
 
             <div v-else-if="step === 2" class="bw-export-step-panel">
               <div class="bw-export-step-title">
-                <div><h3>Choose exported fields</h3><p>{{ selectedColumns.length }} fields selected.</p></div>
-                <div class="bw-export-inline-actions"><button type="button" class="bw-btn sm" @click="selectedColumns = columns.map(column => column.key)">Select all</button><button type="button" class="bw-btn sm" @click="selectedColumns = []">Clear</button></div>
+                <div><h3>Choose exported fields</h3><p>{{ chosenColumns.length }} fields selected for {{ fieldActorType === 'vendor' ? 'vendors' : fieldActorType === 'customer' ? 'customers' : 'all accounts' }}.</p></div>
+                <div class="bw-export-inline-actions"><button type="button" class="bw-btn sm" @click="selectedColumns = availableColumns.map(column => column.key)">Select all</button><button type="button" class="bw-btn sm" @click="selectedColumns = []">Clear</button></div>
               </div>
+              <p v-if="scopeSummary" class="bw-export-field-scope">{{ scopeSummary }}</p>
               <div class="bw-export-field-grid">
-                <label v-for="column in columns" :key="column.key" :class="{ selected: selectedColumns.includes(column.key) }">
+                <label v-for="column in availableColumns" :key="column.key" :class="{ selected: selectedColumns.includes(column.key) }">
                   <input type="checkbox" :checked="selectedColumns.includes(column.key)" @change="toggleColumn(column.key)" />
                   <span>{{ column.header }}</span>
                 </label>
@@ -298,7 +313,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
               </div>
               <dl class="bw-export-review">
                 <div><dt>Scope</dt><dd>{{ scopeSummary }}</dd></div>
-                <div><dt>Fields</dt><dd>{{ selectedColumns.length }} selected</dd></div>
+                <div><dt>Fields</dt><dd>{{ chosenColumns.length }} selected</dd></div>
                 <div><dt>Source</dt><dd>{{ resolveRows ? 'Complete filtered dataset' : `${rows.length} loaded records` }}</dd></div>
               </dl>
             </div>
@@ -316,8 +331,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
             <p v-if="message" class="bw-export-message" role="status">{{ message }}</p>
             <footer class="bw-export-dialog-actions">
               <button type="button" class="bw-btn" @click="step === 1 ? close() : step--">{{ step === 1 ? 'Cancel' : 'Back' }}</button>
-              <button v-if="step < 3 || (step === 3 && hasDeliveryStep)" type="button" class="bw-btn primary" :disabled="step === 2 && !selectedColumns.length" @click="step++">Continue</button>
-              <button v-else type="button" class="bw-btn primary" :disabled="busy || !selectedColumns.length" @click="run">{{ busy ? 'Preparing…' : `Export ${format.toUpperCase()}` }}</button>
+              <button v-if="step < 3 || (step === 3 && hasDeliveryStep)" type="button" class="bw-btn primary" :disabled="step === 2 && !chosenColumns.length" @click="message = ''; step++">Continue</button>
+              <button v-else type="button" class="bw-btn primary" :disabled="busy || !chosenColumns.length" @click="run">{{ busy ? 'Preparing…' : `Export ${format.toUpperCase()}` }}</button>
             </footer>
           </section>
         </div>
@@ -333,6 +348,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
 .bw-export-actor-scope { display:grid; gap:var(--s-3); }
 .bw-export-actor-scope label { display:grid; gap:var(--s-2); }
 .bw-export-coverage-note { color:var(--text-muted); font-size:var(--t-xs); margin:var(--s-3) 0 0; }
+.bw-export-field-scope { color:var(--text-muted); font-size:var(--t-sm); margin:0 0 var(--s-3); }
 .bw-export-csv-delivery { display:grid; gap:var(--s-2); margin-top:var(--s-4); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--s-3); }
 .bw-export-csv-delivery legend { color:var(--text-muted); font-size:var(--t-xs); font-weight:700; padding:0 var(--s-1); text-transform:uppercase; letter-spacing:.06em; }
 .bw-export-csv-delivery label { display:flex; gap:var(--s-2); align-items:center; cursor:pointer; }

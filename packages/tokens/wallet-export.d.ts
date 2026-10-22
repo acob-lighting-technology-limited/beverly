@@ -2,6 +2,7 @@ export interface WalletExportColumn<T = Record<string, unknown>> {
     key: string;
     header: string;
     value: (row: T) => unknown;
+    actorTypes?: Array<'vendor' | 'customer'>;
 }
 
 export interface WalletExportMeta {
