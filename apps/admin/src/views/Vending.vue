@@ -81,8 +81,8 @@ const canRetryRecovery = computed(() => auth.hasPermission('wallet.funding.appro
 const activeFilterCount = computed(() => [q.value.trim(), status.value, station.value, meterType.value].filter(Boolean).length);
 const vendingExportColumns: WalletExportColumn<Purchase>[] = [
     { key: 'created_at', header: 'When', value: (purchase) => shortDate(purchase.created_at) },
-    { key: 'vended_by', header: 'Vendor Name', value: (purchase) => purchase.vended_by_name || purchase.vended_by || '' },
-    { key: 'vendor_business_name', header: 'Vendor Business', value: (purchase) => purchase.vendor_business_name || '' },
+    { key: 'vended_by', header: 'Vendor Name', value: (purchase) => purchase.vended_by_name || purchase.vended_by || '', actorTypes: ['vendor'] },
+    { key: 'vendor_business_name', header: 'Vendor Business', value: (purchase) => purchase.vendor_business_name || '', actorTypes: ['vendor'] },
     { key: 'customer_name', header: 'Customer', value: (purchase) => purchase.customer_name || '' },
     { key: 'meter_id', header: 'Meter', value: (purchase) => purchase.meter_id },
     { key: 'meter_type', header: 'Phase', value: (purchase) => meterTypeLabel(purchase.meter_type) },
