@@ -29,6 +29,94 @@ This section supersedes older checkpoint statements about credentials, restore a
 
 Independent local checks can verify code, contracts, types, and builds. They cannot close production database, deployment, live-data, financial-contract, or physical-meter gates.
 
+### Owner-run migration handoff
+
+Target: Beverly production project `qpoipyqgrjsjdvfqmxok`.
+Installation: `53f12390-74f7-40b3-b1db-e907c256986d`.
+The restore project is different.
+
+Apply after reviewing these results:
+
+```sql
+-- Read-only baseline. Save the results before migration.
+select id, status, environment,
+  (select count(*) from public.oem_telemetry_readings r
+   where r.oem_installation_id = i.id) as reading_count,
+  (select count(*) from public.oem_telemetry_quarantine q
+   where q.oem_installation_id = i.id) as quarantine_count
+from public.oem_installations i
+where i.id = '53f12390-74f7-40b3-b1db-e907c256986d';
+
+select
+  to_regclass('public.oem_inventory_meters') is not null as inventory_exists,
+  to_regclass('public.oem_sync_cursors') is not null as checkpoints_exist,
+  to_regprocedure('public.apply_oem_telemetry_page(uuid,text,text,jsonb,jsonb,jsonb)') is not null as page_rpc_exists,
+  exists(select 1 from pg_trigger
+    where tgrelid = 'public.oem_telemetry_readings'::regclass
+      and tgname = 'require_oem_telemetry_meter_ownership'
+      and not tgisinternal and tgenabled = 'O') as ownership_trigger_enabled;
+```
+
+Expected installation status: `draft`.
+Expected environment: `production`.
+All prerequisite booleans must pass.
+Stop for any unexpected result.
+Inspect the current function before replacement:
+
+```sql
+select pg_get_functiondef(
+  'public.apply_oem_telemetry_page(uuid,text,text,jsonb,jsonb,jsonb)'::regprocedure
+) as current_page_rpc;
+```
+
+Save its complete definition privately.
+Compare against the reviewed rollback function.
+Stop if newer changes would disappear.
+
+1. Open the production SQL editor.
+2. Save baseline results and function definition.
+3. Open the reviewed migration file.
+4. Paste its complete contents unchanged.
+5. Run its complete transaction once.
+6. Save the execution result.
+7. Run the verification query below.
+
+Migration: [`20261021120000_oem_telemetry_ownership_quarantine.sql`](../supabase/migrations/20261021120000_oem_telemetry_ownership_quarantine.sql).
+SHA-256: `2E563BA27B4B1C06BA99C4D8DE0ACE6EF82735D7B317753BB8ACB9EAC64331DE`.
+
+```sql
+-- Read-only verification. All six booleans must be true.
+with target as (
+  select to_regprocedure('public.apply_oem_telemetry_page(uuid,text,text,jsonb,jsonb,jsonb)')::oid as fn
+)
+select
+  to_regclass('public.oem_telemetry_quarantine_ownership_lookup_idx') is not null as quarantine_index_exists,
+  coalesce(position('telemetry_meter_ownership_mismatch' in pg_get_functiondef(fn)) > 0, false) as quarantine_branch_exists,
+  exists(select 1 from pg_trigger
+    where tgrelid = 'public.oem_telemetry_readings'::regclass
+      and tgname = 'require_oem_telemetry_meter_ownership'
+      and not tgisinternal and tgenabled = 'O') as ownership_trigger_enabled,
+  coalesce(has_function_privilege('service_role', fn, 'EXECUTE'), false) as service_execution_allowed,
+  not coalesce(has_function_privilege('anon', fn, 'EXECUTE'), true) as anonymous_execution_denied,
+  not coalesce(has_function_privilege('authenticated', fn, 'EXECUTE'), true) as client_execution_denied
+from target;
+```
+
+Rerun the baseline query afterward.
+Status and counts must remain unchanged.
+This migration does not ingest readings.
+It does not activate the installation.
+These checks verify migration structure only.
+Live ingestion remains a separate gate.
+
+Rollback: [`20261021120000_oem_telemetry_ownership_quarantine.rollback.sql`](../supabase/rollbacks/20261021120000_oem_telemetry_ownership_quarantine.rollback.sql).
+Use only after reviewing the failure.
+Rollback restores strict page rejection.
+It retains readings and quarantine evidence.
+It does not deactivate an installation.
+Record manual execution for migration-history reconciliation.
+Never reconcile history without verifying SQL.
+
 ## 2026-10-19 release investigation
 
 ### Published release candidate
