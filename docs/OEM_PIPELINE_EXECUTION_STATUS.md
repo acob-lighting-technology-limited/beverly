@@ -1,6 +1,33 @@
 # OEM pipeline execution status
 
-Status: **Incomplete: internal provisioning and deployment verification remain, alongside provider-controlled write gates**. Updated 2026-10-19.
+Status: **Incomplete: production migration, release, live telemetry verification, and financial integration remain**. Updated 2026-10-23.
+
+## 2026-10-23 current release sequence
+
+This section supersedes older checkpoint statements about credentials, restore access, and the release candidate. Historical entries below remain evidence for their recorded dates, not current activation instructions. Detailed evidence is in architecture audit checkpoints 23.56–23.62.
+
+- Work continues only in `codex/sparkmeter-telemetry-ownership-recovery`, the isolated restored-main worktree. The primary checkout's unrelated changes are preserved. Last verified main was `c1b68e84`; it is already in this branch's ancestry. Recheck current main and inspect the final OEM-only diff before release; cached ancestry is not proof against later production changes.
+- PR #198 contains the ownership-quarantine recovery. The last remotely verified head was `70f2a75f`: eleven checks passed, one isolated API integrity job was skipped, and preview health returned HTTP 200. Later local audit commits have no remote verification. A skipped job is not a passing API assertion.
+- Restore migration execution, exact-owner/wrong-owner transactional checks, cleanup, and rollback passed. Production's ownership-quarantine migration remains unapplied. The last production check showed the installation in `draft`, with zero telemetry readings and quarantine rows. Earlier zero-credential observations predate later provisioning and must not be treated as current facts without a fresh authorized check.
+- Supabase and GitHub origin access were denied by browser policy. The owner deferred resolving access while independent local work proceeds. Do not use another interface to circumvent those denials. No migration, merge, production promotion, or activation is implied by passing local checks.
+
+### Read-only telemetry release gates
+
+1. Restore authorized release access. Recheck current main, PR head, CI, deployment commit, database identity, installation configuration, credentials metadata, and existing telemetry counts. Never print decrypted credentials.
+2. Apply only the reviewed `20261021120000_oem_telemetry_ownership_quarantine.sql` to Beverly production after confirming its prerequisites and current function shape. Verify the ownership trigger, restricted RPC privileges, and new quarantine branch/index. Its restore rehearsal does not substitute for production verification.
+3. Release the reviewed OEM change while preserving newer production commits. Verify all affected checks and the deployed revision. Use the rollback script only after reviewing its effects and confirming the original strict ownership behavior is appropriate. It restores the previous RPC and retains stored readings/quarantine; it does not undo a release or change installation status.
+4. Run the authorized one-site, one-date telemetry canary. Record the starting installation state and restore it in a `finally` path. Prove valid readings persist, mismatched ownership is quarantined, and the completed checkpoint has `has_more=false`. Any quarantine requires review before general activation.
+5. Replay the same partition and compare reading identities, counts, quarantine evidence, and checkpoint. A completed HTTP request alone does not prove idempotency. Verify authorized scoped API/UI reads and unrelated-actor denial against deployed data.
+6. Enable scheduled read-only synchronization only after those checks pass. Observe the first scheduled run and document recovery. Requests are bounded to twenty pages and recent dates; page-budget failures require explicit site partition replay. Older historical backfill is not implemented by the seven-day replay endpoint.
+
+### Financial features still require implementation
+
+- SparkMeter payment translation and a single-attempt canary policy exist, but production wallet dispatch and payment reconciliation are not connected. Full Beverly financial feature parity is not delivered by telemetry activation.
+- Support ticket CH-82160 confirms no separate Koios payment sandbox. Prepare the provider-recommended assigned test meter/customer, separate low-balance sales account, and a token restricted to that account. No new test target or token is inferred from an existing customer name.
+- Obtain engineering's duplicate external-ID behavior and payment-write limits. Implement and test provider-confirmed lookup/reconciliation before connecting dispatch. Ambiguous outcomes retain holds for review; never infer safe payment retries from Calinmeter token-task behavior.
+- The NGN 100 ceiling limits a separately confirmed test; it does not authorize an unspecified transaction. Unknown energy semantics and physical offline cutoff remain explicitly unverified.
+
+Independent local checks can verify code, contracts, types, and builds. They cannot close production database, deployment, live-data, financial-contract, or physical-meter gates.
 
 ## 2026-10-19 release investigation
 
