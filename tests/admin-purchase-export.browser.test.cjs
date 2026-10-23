@@ -110,9 +110,11 @@ function startServer() {
     await dialog.getByRole("button", { name: "Continue" }).click();
     await dialog.getByRole("button", { name: "Continue" }).click();
     await dialog.getByRole("radio", { name: "One CSV per day, zipped" }).check();
+    await dialog.getByRole("button", { name: "Prepare CSV" }).click();
+    assert.match(await dialog.getByRole("status").innerText(), /records ready/);
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      dialog.getByRole("button", { name: "Export CSV" }).click(),
+      dialog.getByRole("link", { name: "Download ZIP" }).click(),
     ]);
     assert.match(download.suggestedFilename(), /beverly-admin-purchases-daily-.*\.zip$/);
     const archive = fs.readFileSync(await download.path());
@@ -120,12 +122,13 @@ function startServer() {
     assert.match(archive.toString("utf8"), /beverly-admin-purchases-2026-10-20\.csv/);
     assert.ok(!archive.toString("utf8").includes("M3"), "customer purchase must not leak into vendor archive");
     assert.ok(requests.some((query) => query.includes("actorType=vendor") && query.includes("actorId=v1")), "export request must apply selected actor");
+    await dialog.getByRole("button", { name: "Close export builder" }).click();
     await page.locator(".bw-export-wizard-trigger").click();
     await dialog.getByLabel("Transaction status").selectOption("failed");
     await dialog.getByRole("button", { name: "Continue" }).click();
     await dialog.getByRole("button", { name: "Continue" }).click();
     await dialog.getByRole("button", { name: "Continue" }).click();
-    await dialog.getByRole("button", { name: "Export CSV" }).click();
+    await dialog.getByRole("button", { name: "Prepare CSV" }).click();
     assert.match(await dialog.getByRole("status").innerText(), /No records match these filters/);
     assert.equal(await dialog.getByRole("heading", { name: "Choose record scope" }).count(), 1, "empty export must return to editable scope");
     await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -136,9 +139,10 @@ function startServer() {
     await meterDialog.getByRole("button", { name: "Continue" }).click();
     await meterDialog.getByRole("button", { name: "Continue" }).click();
     await meterDialog.getByRole("button", { name: "Continue" }).click();
+    await meterDialog.getByRole("button", { name: "Prepare CSV" }).click();
     const [meterDownload] = await Promise.all([
       page.waitForEvent("download"),
-      meterDialog.getByRole("button", { name: "Export CSV" }).click(),
+      meterDialog.getByRole("link", { name: "Download CSV" }).click(),
     ]);
     const meterCsv = fs.readFileSync(await meterDownload.path(), "utf8");
     assert.match(meterCsv, /ORDER-FIRST/, "first meter page must export");
@@ -149,9 +153,10 @@ function startServer() {
     await walletDialog.getByRole("button", { name: "Continue" }).click();
     await walletDialog.getByRole("button", { name: "Continue" }).click();
     await walletDialog.getByRole("button", { name: "Continue" }).click();
+    await walletDialog.getByRole("button", { name: "Prepare CSV" }).click();
     const [walletDownload] = await Promise.all([
       page.waitForEvent("download"),
-      walletDialog.getByRole("button", { name: "Export CSV" }).click(),
+      walletDialog.getByRole("link", { name: "Download CSV" }).click(),
     ]);
     const walletCsv = fs.readFileSync(await walletDownload.path(), "utf8");
     assert.match(walletCsv, /w1/, "first wallet page must export");
