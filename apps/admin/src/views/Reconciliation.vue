@@ -1,8 +1,18 @@
 ﻿<template>
   <AppShell title="Reconciliation">
     <div class="bw-filter-bar">
-      <button class="bw-btn bw-btn-sm" :disabled="!runs.length" @click="exportCsvRows">Export CSV</button>
-      <button class="bw-btn bw-btn-sm" :disabled="!runs.length" @click="exportPdfDoc">PDF</button>
+      <WalletExportWizard
+        :rows="runs"
+        :columns="exportColumns"
+        filename="reconciliation-runs"
+        title="Reconciliation Runs"
+        subtitle="Daily ledger versus gateway reconciliation"
+        :loading="loading"
+        :status-options="[{ value: 'ok', label: 'Balanced' }, { value: 'mismatch', label: 'Mismatch' }, { value: 'failed', label: 'Failed' }, { value: 'running', label: 'Running' }]"
+        :date-value="(row: any) => row.run_date"
+        :resolve-rows="resolveExportRows"
+        allow-daily-csv-archive
+      />
       <button class="bw-btn bw-btn-primary" :disabled="running" @click="runNow">
         {{ running ? 'Running…' : 'Run Now' }}
       </button>
@@ -104,7 +114,9 @@
 import { ref, computed, onMounted } from 'vue';
 import { api, naira } from '../lib/api';
 import AppShell from '../components/AppShell.vue';
-import { exportCsv, printPdf } from '../lib/export';
+import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
+import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
+import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 
 const runs     = ref<any[]>([]);
 const loading  = ref(false);
@@ -160,8 +172,7 @@ function statusClass(s: string) {
 
 function fmtDate(s: string) { return s ? new Date(s).toLocaleString() : 'â€”'; }
 
-function exportCsvRows() {
-  exportCsv('reconciliation-runs', runs.value, [
+const exportColumns: WalletExportColumn<any>[] = [
     { key: 'run_date', header: 'Run Date', value: (r) => r.run_date },
     { key: 'status', header: 'Status', value: (r) => r.status },
     { key: 'db_total', header: 'DB Total (â‚¦)', value: (r) => (r.db_total_minor ?? 0) / 100 },
@@ -169,26 +180,25 @@ function exportCsvRows() {
     { key: 'mismatch', header: 'Mismatch (â‚¦)', value: (r) => (r.mismatch_minor ?? 0) / 100 },
     { key: 'notes', header: 'Notes', value: (r) => r.notes ?? '' },
     { key: 'created_at', header: 'Created', value: (r) => r.created_at },
-  ]);
-}
+  ];
 
-function exportPdfDoc() {
-  printPdf({
-    title: 'Reconciliation Runs',
-    subtitle: 'Daily ledger vs. gateway reconciliation',
-    meta: [
-      { label: 'Runs', value: String(runs.value.length) },
-      { label: 'With mismatch', value: String(runs.value.filter((r) => Number(r.mismatch_minor) > 0).length) },
-    ],
-    tables: [{
-      title: 'Runs',
-      columns: ['Run Date', 'Status', 'DB Total', 'Gateway Total', 'Mismatch'],
-      rows: runs.value.map((r) => [
-        r.run_date ?? 'â€”', r.status, naira(r.db_total_minor), naira(r.gateway_total_minor),
-        Number(r.mismatch_minor) > 0 ? naira(r.mismatch_minor) : 'â€”',
-      ]),
-    }],
-  });
+async function resolveExportRows(selection: WalletExportSelection): Promise<any[]> {
+  const rows: any[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+  while (true) {
+    const params = new URLSearchParams({ limit: '200' });
+    if (cursor) params.set('cursor', cursor);
+    const result: { runs: any[]; nextCursor: string | null } = await api.get(`/api/v1/admin/reconciliation?${params}`);
+    rows.push(...(result.runs ?? []));
+    cursor = result.nextCursor;
+    if (!cursor) break;
+    if (seenCursors.has(cursor)) throw new Error('Export pagination stalled. No partial file was created.');
+    seenCursors.add(cursor);
+  }
+  return rows.filter((row) => (!selection.status || row.status === selection.status)
+    && (!selection.since || row.run_date >= selection.since)
+    && (!selection.until || row.run_date <= selection.until));
 }
 
 onMounted(load);

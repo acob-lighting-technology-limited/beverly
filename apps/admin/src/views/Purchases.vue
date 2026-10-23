@@ -26,7 +26,7 @@ import WalletRowActions from '@beverly/tokens/WalletRowActions.vue';
 import WalletTablePagination from '@beverly/tokens/WalletTablePagination.vue';
 import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
 import type { ActionItem } from '@beverly/tokens/WalletRowActions.vue';
-import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
+import type { WalletExportOption, WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import { api, naira, shortDate, ApiError } from '../lib/api';
 import { printReceipt, purchaseReceipt, viewReceipt } from '../lib/receipts';
@@ -152,17 +152,19 @@ const activeFilterCount = computed(() => [
 ].filter(Boolean).length);
 const stationOptions = ref<{ stationId: string; name: string; oemName: string | null }[]>([]);
 const purchaseStatusOptions = [
-    { value: 'delivered', label: 'Successful transactions' },
+    { value: 'created', label: 'Created' },
+    { value: 'delivered', label: 'Delivered' },
     { value: 'failed', label: 'Failed transactions' },
     { value: 'hold_active', label: 'Hold active' },
     { value: 'dispatching', label: 'Dispatching' },
+    { value: 'delivery_pending_review', label: 'Pending review' },
     { value: 'reversed', label: 'Reversed' },
 ];
 const purchaseExportColumns: WalletExportColumn<Purchase>[] = [
     { key: 'id', header: 'Transaction ID', value: (p) => p.id },
     { key: 'created_at', header: 'When', value: (p) => p.created_at },
-    { key: 'vended_by', header: 'Vendor Name', value: (p) => p.vended_by_name ?? p.vended_by ?? '' },
-    { key: 'vendor_business', header: 'Vendor Business', value: (p) => p.vendor_business_name ?? '' },
+    { key: 'vended_by', header: 'Vendor Name', value: (p) => p.vended_by_name ?? p.vended_by ?? '', actorTypes: ['vendor'] },
+    { key: 'vendor_business', header: 'Vendor Business', value: (p) => p.vendor_business_name ?? '', actorTypes: ['vendor'] },
     { key: 'buyer', header: 'Customer', value: (p) => p.customer_name ?? '' },
     { key: 'meter_id', header: 'Meter', value: (p) => p.meter_id },
     { key: 'meter_type', header: 'Phase', value: (p) => meterTypeLabel(p.meter_type) },
@@ -175,11 +177,11 @@ const purchaseExportColumns: WalletExportColumn<Purchase>[] = [
     { key: 'units_kwh', header: 'Units (kWh)', value: (p) => p.units_kwh ?? '' },
     { key: 'status', header: 'Status', value: (p) => p.status },
 ];
-const purchaseActorOptions = ref<{ value: string; label: string }[]>([]);
+const purchaseActorOptions = ref<WalletExportOption[]>([]);
 
 async function loadPurchaseActorOptions() {
     try {
-        const result = await api.get<{ actors: { value: string; label: string }[] }>('/api/v1/admin/purchases/actors');
+        const result = await api.get<{ actors: WalletExportOption[] }>('/api/v1/admin/purchases/actors');
         purchaseActorOptions.value = result.actors ?? [];
     } catch (e: any) {
         banner.value = { tone: 'error', text: e?.message ?? 'Could not load purchase accounts.' };
@@ -202,8 +204,8 @@ function purchaseFilterParams() {
     if (fStation.value) params.set('station', fStation.value);
     if (fMeterType.value) params.set('meterType', fMeterType.value);
     if (fQ.value.trim()) params.set('q', fQ.value.trim());
-    if (fSince.value) params.set('since', new Date(fSince.value).toISOString());
-    if (fUntil.value) params.set('until', new Date(fUntil.value).toISOString());
+    if (fSince.value) params.set('since', new Date(`${fSince.value}T00:00:00`).toISOString());
+    if (fUntil.value) params.set('until', new Date(`${fUntil.value}T23:59:59.999`).toISOString());
     return params;
 }
 
@@ -418,6 +420,7 @@ async function resolvePurchaseExportRows(selection: WalletExportSelection): Prom
         params.set('limit', '500');
         if (selection.status) params.set('status', selection.status);
         if (selection.station) params.set('station', selection.station);
+        if (selection.actorType) params.set('actorType', selection.actorType);
         if (selection.actor) {
             const [actorType, actorId] = selection.actor.split(':', 2);
             if (actorType && actorId) {
@@ -513,6 +516,7 @@ watch([fStatus, fActorType], () => loadList());
             :status-options="purchaseStatusOptions"
             :station-options="stationOptions.map(item => ({ value: item.stationId, label: `${item.name || item.stationId} · ${item.stationId}` }))"
             :actor-options="purchaseActorOptions"
+            show-actor-type-selector
             :initial-status="fStatus"
             :initial-station="fStation"
             :initial-since="fSince ? fSince.slice(0, 10) : ''"
@@ -520,15 +524,16 @@ watch([fStatus, fActorType], () => loadList());
             :date-value="(row: Purchase) => row.created_at"
             :status-value="(row: Purchase) => row.status"
             :station-value="(row: Purchase) => row.station_id"
-            :actor-value="(row: Purchase) => row.actor_id"
+            :actor-value="(row: Purchase) => `${row.actor_type}:${row.actor_id}`"
             :resolve-rows="resolvePurchaseExportRows"
+            allow-daily-csv-archive
           />
         </div>
       </div>
 
       <div v-if="filtersOpen" id="purchase-filters" class="purchase-filter-panel">
         <div class="filter-grid">
-          <div><label class="bw-label">Status</label><select class="bw-input" v-model="fStatus"><option value="">All</option><option value="created">Created</option><option value="hold_active">Hold active</option><option value="processing">Processing</option><option value="delivered">Delivered</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="refunded">Refunded</option></select></div>
+          <div><label class="bw-label">Status</label><select class="bw-input" v-model="fStatus"><option value="">All</option><option v-for="option in purchaseStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></div>
           <div><label class="bw-label">Actor</label><select class="bw-input" v-model="fActorType"><option value="">All</option><option value="vendor">Vendor</option><option value="customer">Customer</option></select></div>
           <div><label class="bw-label">Station</label><select class="bw-input bw-mono" v-model="fStation"><option value="">All</option><option v-for="station in stationOptions" :key="station.stationId" :value="station.stationId">{{ station.name || station.stationId }}{{ station.oemName ? ` · ${station.oemName}` : '' }}</option></select></div>
           <div><label class="bw-label">Phase</label><select class="bw-input" v-model="fMeterType"><option value="">All</option><option value="single_phase">Single Phase</option><option value="three_phase">Three Phase</option></select></div>

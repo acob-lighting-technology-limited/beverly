@@ -19,10 +19,12 @@ withDefaults(defineProps<{
   dateValue?: (row: T) => string | null | undefined;
   statusValue?: (row: T) => string | null | undefined;
   stationValue?: (row: T) => string | null | undefined;
+  allowDailyCsvArchive?: boolean;
   resolveRows?: (selection: WalletExportSelection) => Promise<T[]>;
 }>(), {
   subtitle: '', meta: () => [], loading: false, label: 'Export', formats: () => ['csv', 'pdf'],
   statusOptions: () => [], stationOptions: () => [], statusLabel: 'Status',
+  allowDailyCsvArchive: false,
 });
 
 const emit = defineEmits<{
@@ -48,6 +50,7 @@ const emit = defineEmits<{
     :date-value="dateValue"
     :status-value="statusValue"
     :station-value="stationValue"
+    :allow-daily-csv-archive="allowDailyCsvArchive"
     :resolve-rows="resolveRows"
     hover-title="Build a tailored report"
     hover-description="Choose the fields for this page."
