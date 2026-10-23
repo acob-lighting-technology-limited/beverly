@@ -2177,3 +2177,17 @@ Phase 1 may begin against the confirmed public seams: adapter contract, gateway 
 - A read-only production SQL query confirmed installation `53f12390-74f7-40b3-b1db-e907c256986d` remains `draft`. It has zero telemetry readings and zero quarantine rows. No production mutation occurred.
 - The signed-in Supabase account is `d.abdulsamad@org.acoblighting.com`. Its organization list excludes the restore organization. The restore SQL editor redirected away before any query ran. Restore migration and rollback rehearsal remains blocked by membership access.
 - Ticket CH-82160 has no newer reply. Duplicate external-ID behavior and payment-write limits remain unconfirmed. Financial dispatch stays disabled.
+
+### 23.59 Restore migration and rollback rehearsal (2026-10-23)
+
+- The invited account gained restore-project SQL access. A read-only query confirmed the OEM installation, inventory, telemetry, quarantine, and cursor objects exist. The dashboard session later expired; a separately authorized FrostGraphix session completed the rollback verification.
+- The proposed telemetry ownership-quarantine migration executed successfully on the restore project only. A transaction temporarily activated the restore sandbox installation, submitted one exact-ownership reading and one wrong-customer reading, and asserted one persisted reading, one quarantine record, and one checkpoint. The transaction rolled back. A follow-up query confirmed the installation remained `draft` and all synthetic rows and cursor were absent.
+- The first rollback attempt coincided with dashboard sign-out and did not execute. A second rollback completed successfully. Read-only verification returned `false` for both the migration index and quarantine branch in the page RPC; the installation remained `draft`. The restore project is back at its pre-rehearsal function shape. No production database mutation occurred.
+- This rehearsal proves SQL execution and reversal against the restore schema. It does not prove the deployed application, live SparkMeter ingestion, ownership coverage for an entire page, or financial-write safety. Keep the production installation `draft` until the proposed migration passes release checks and a guarded telemetry canary proves persistence, checkpoint replay, and scoped downstream reads.
+
+### 23.60 Restored-main release reconciliation (2026-10-23)
+
+- Fetched restored `origin/main` at `c1b68e84` and merged it into the isolated OEM branch as `fa58a62f`. The merge was clean. The main-side production wallet changes did not overlap the OEM telemetry files. The dirty primary checkout was not changed.
+- On Node 24, `npm run test:oem`, `npm run typecheck`, `npm run test`, `npm --prefix backend/wallet test`, and `npm run build` passed. The wallet suite reported 100 files and 698 tests. The full root test needed sandbox escalation for temporary-file writes; it passed after that environmental restriction was lifted.
+- On Node 22.23.4, `npm run build` passed all six build targets, and `npm --prefix backend/wallet test` passed 100 files and 698 tests. These local results do not establish remote CI, production migration, or live telemetry success.
+- Release gate remains closed. Push and remote checks, production migration, a guarded one-site telemetry canary, checkpoint replay, and scoped downstream reads remain unverified. Keep the installation `draft`; keep financial writes disabled.
