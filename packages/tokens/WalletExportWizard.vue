@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="T extends Record<string, any>">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { exportCsv, exportCsvByDayZip, printPdf, type WalletExportColumn, type WalletExportMeta } from './wallet-export';
+import { buildDailyCsvZip, exportTimestamp, printPdf, rowsToCsv, type WalletExportColumn, type WalletExportMeta } from './wallet-export';
 import type { WalletExportOption, WalletExportSelection } from './wallet-export-wizard';
 
 const props = withDefaults(defineProps<{
@@ -71,6 +71,10 @@ const open = ref(false);
 const step = ref(1);
 const busy = ref(false);
 const message = ref('');
+const downloadUrl = ref('');
+const downloadFilename = ref('');
+const preparedCount = ref(0);
+const preparedSelection = ref<WalletExportSelection | null>(null);
 const format = ref<'csv' | 'pdf'>(props.formats[0] ?? 'pdf');
 const csvDelivery = ref<'single' | 'daily-zip'>('single');
 const since = ref(props.initialSince);
@@ -108,6 +112,7 @@ const scopeSummary = computed(() => {
 });
 
 function reset() {
+  clearDownload();
   step.value = 1;
   format.value = props.formats[0] ?? 'pdf';
   csvDelivery.value = 'single';
@@ -130,7 +135,28 @@ function show() {
 }
 
 function close() {
-  if (!busy.value) open.value = false;
+  if (!busy.value) {
+    open.value = false;
+    clearDownload();
+  }
+}
+
+function clearDownload() {
+  if (downloadUrl.value) URL.revokeObjectURL(downloadUrl.value);
+  downloadUrl.value = '';
+  downloadFilename.value = '';
+  preparedSelection.value = null;
+}
+
+function goBack() {
+  clearDownload();
+  message.value = '';
+  step.value--;
+}
+
+function onDownload() {
+  message.value = 'Download requested. Check your browser downloads.';
+  if (preparedSelection.value) emit('success', { format: 'csv', count: preparedCount.value, selection: preparedSelection.value });
 }
 
 function selectActorType(value: '' | 'vendor' | 'customer') {
@@ -203,14 +229,23 @@ async function run() {
       { label: 'Period', value: since.value || until.value ? `${since.value || 'First record'} to ${until.value || 'Latest record'}` : props.resolveRows ? 'All dates' : 'All loaded dates' },
       { label: 'Records', value: String(exportRows.length) },
     ];
-    if (format.value === 'csv' && csvDelivery.value === 'daily-zip') {
-      if (!props.dateValue) throw new Error('Daily exports require dated records.');
-      exportCsvByDayZip(props.filename, exportRows, chosenColumns.value, props.dateValue);
-    } else if (format.value === 'csv') exportCsv(props.filename, exportRows, chosenColumns.value);
-    else printPdf({ title: props.title, subtitle: props.subtitle, rows: exportRows, columns: chosenColumns.value, meta: scopeMeta });
-    message.value = `${exportRows.length} records exported.`;
-    emit('success', { format: format.value, count: exportRows.length, selection: currentSelection });
-    open.value = false;
+    if (format.value === 'csv') {
+      const daily = csvDelivery.value === 'daily-zip';
+      if (daily && !props.dateValue) throw new Error('Daily exports require dated records.');
+      const blob = daily
+        ? new Blob([buildDailyCsvZip(props.filename, exportRows, chosenColumns.value, props.dateValue!)], { type: 'application/zip' })
+        : new Blob(['\uFEFF' + rowsToCsv(exportRows, chosenColumns.value)], { type: 'text/csv;charset=utf-8;' });
+      clearDownload();
+      downloadFilename.value = `${props.filename}${daily ? '-daily' : ''}-${exportTimestamp()}.${daily ? 'zip' : 'csv'}`;
+      downloadUrl.value = URL.createObjectURL(blob);
+      preparedCount.value = exportRows.length;
+      preparedSelection.value = currentSelection;
+      message.value = `${exportRows.length} records ready. Select Download ${daily ? 'ZIP' : 'CSV'}.`;
+    } else {
+      printPdf({ title: props.title, subtitle: props.subtitle, rows: exportRows, columns: chosenColumns.value, meta: scopeMeta });
+      emit('success', { format: 'pdf', count: exportRows.length, selection: currentSelection });
+      close();
+    }
   } catch (cause) {
     const error = cause instanceof Error ? cause : new Error('Export failed.');
     message.value = error.message;
@@ -232,7 +267,7 @@ watch(actor, () => {
 });
 
 onMounted(() => document.addEventListener('keydown', onKeydown));
-onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
+onBeforeUnmount(() => { document.removeEventListener('keydown', onKeydown); clearDownload(); });
 </script>
 
 <template>
@@ -330,9 +365,10 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKeydown));
 
             <p v-if="message" class="bw-export-message" role="status">{{ message }}</p>
             <footer class="bw-export-dialog-actions">
-              <button type="button" class="bw-btn" @click="step === 1 ? close() : step--">{{ step === 1 ? 'Cancel' : 'Back' }}</button>
-              <button v-if="step < 3 || (step === 3 && hasDeliveryStep)" type="button" class="bw-btn primary" :disabled="step === 2 && !chosenColumns.length" @click="message = ''; step++">Continue</button>
-              <button v-else type="button" class="bw-btn primary" :disabled="busy || !chosenColumns.length" @click="run">{{ busy ? 'Preparing…' : `Export ${format.toUpperCase()}` }}</button>
+              <button type="button" class="bw-btn" @click="step === 1 ? close() : goBack()">{{ step === 1 ? 'Cancel' : 'Back' }}</button>
+              <a v-if="downloadUrl" class="bw-btn primary" :href="downloadUrl" :download="downloadFilename" @click="onDownload">Download {{ csvDelivery === 'daily-zip' ? 'ZIP' : 'CSV' }}</a>
+              <button v-else-if="step < 3 || (step === 3 && hasDeliveryStep)" type="button" class="bw-btn primary" :disabled="step === 2 && !chosenColumns.length" @click="message = ''; step++">Continue</button>
+              <button v-else type="button" class="bw-btn primary" :disabled="busy || !chosenColumns.length" @click="run">{{ busy ? 'Preparing…' : `Prepare ${format.toUpperCase()}` }}</button>
             </footer>
           </section>
         </div>
