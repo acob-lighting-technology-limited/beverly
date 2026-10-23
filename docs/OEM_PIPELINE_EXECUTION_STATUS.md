@@ -22,9 +22,10 @@ This section supersedes older checkpoint statements about credentials, restore a
 
 ### Financial features still require implementation
 
+- Current payment specification: [`SPARKMETER_PAYMENT_CONTRACT.md`](SPARKMETER_PAYMENT_CONTRACT.md). Authenticated Koios v1 documentation rechecked on October 23 confirms the customer-scoped create request, organization-unique caller reference, reference lookup, processed-payment evidence, and reversal route. The documented 429 example mentions 500 requests/minute; actual write-rate scope and duplicate-response timing remain unconfirmed.
 - SparkMeter payment translation and a single-attempt canary policy exist, but production wallet dispatch and payment reconciliation are not connected. Full Beverly financial feature parity is not delivered by telemetry activation.
 - Support ticket CH-82160 confirms no separate Koios payment sandbox. Prepare the provider-recommended assigned test meter/customer, separate low-balance sales account, and a token restricted to that account. No new test target or token is inferred from an existing customer name.
-- Obtain engineering's duplicate external-ID behavior and payment-write limits. Implement and test provider-confirmed lookup/reconciliation before connecting dispatch. Ambiguous outcomes retain holds for review; never infer safe payment retries from Calinmeter token-task behavior.
+- Implement and test provider-confirmed lookup/reconciliation before connecting dispatch. A single-attempt design can retain ambiguous holds and use read-only lookup without assuming safe POST retries. Engineering's duplicate external-ID behavior, delayed-visibility guarantees, and payment-write limits remain required before adding automatic financial retry. Never infer those guarantees from Calinmeter token-task behavior.
 - The NGN 100 ceiling limits a separately confirmed test; it does not authorize an unspecified transaction. Unknown energy semantics and physical offline cutoff remain explicitly unverified.
 
 Independent local checks can verify code, contracts, types, and builds. They cannot close production database, deployment, live-data, financial-contract, or physical-meter gates.

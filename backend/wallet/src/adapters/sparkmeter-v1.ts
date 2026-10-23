@@ -197,18 +197,25 @@ export function buildSparkMeterPaymentRequest(input: SparkMeterPaymentInput): Sp
 }
 
 /** Normalize only provider-confirmed Koios v1 payment evidence. */
-export function parseSparkMeterPaymentResponse(statusCode: number, payload: unknown): VendOutcome {
+export function parseSparkMeterPaymentResponse(
+    statusCode: number,
+    payload: unknown,
+    expected?: SparkMeterPaymentInput,
+): VendOutcome {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         return { status: 'unknown' };
     }
     const envelope = payload as Record<string, unknown>;
-    if (statusCode === 400 && Array.isArray(envelope.errors)) {
+    if (statusCode === 400 && envelope.data === null
+        && Array.isArray(envelope.errors) && envelope.errors.length === 1) {
         const error = envelope.errors[0];
         if (error && typeof error === 'object' && !Array.isArray(error)) {
             const record = error as Record<string, unknown>;
             const title = String(record.title ?? '').trim();
             const details = String(record.details ?? '').trim();
-            if (title) {
+            // Only the documented validation rejection proves this request did not pay.
+            // Duplicate-reference errors require lookup, never a wallet hold release.
+            if (title === 'Unknown parameter') {
                 return {
                     status: 'confirmed_failure',
                     reason: details ? `${title}: ${details}` : title,
@@ -216,12 +223,32 @@ export function parseSparkMeterPaymentResponse(statusCode: number, payload: unkn
             }
         }
     }
-    if (statusCode !== 201) return { status: 'unknown' };
+    if (![200, 201].includes(statusCode) || !expected
+        || !Array.isArray(envelope.errors) || envelope.errors.length !== 0) return { status: 'unknown' };
     const data = envelope.data;
     if (!data || typeof data !== 'object' || Array.isArray(data)) return { status: 'unknown' };
     const payment = data as Record<string, unknown>;
-    const providerReference = String(payment.external_id ?? '').trim();
-    if (payment.status !== 'processed' || !providerReference) return { status: 'unknown' };
+    let request: SparkMeterPaymentRequest;
+    try {
+        request = buildSparkMeterPaymentRequest(expected);
+    } catch {
+        return { status: 'unknown' };
+    }
+    const amount = payment.amount;
+    if (!amount || typeof amount !== 'object' || Array.isArray(amount)) return { status: 'unknown' };
+    const money = amount as Record<string, unknown>;
+    // Compare decimal evidence as integer minor units; never round provider money.
+    const decimal = typeof money.value === 'string' && money.value.length <= 32
+        ? /^(0|[1-9]\d*)(?:\.(\d{1,2}))?$/.exec(money.value) : null;
+    const amountMinor = decimal ? BigInt(decimal[1]) * 100n + BigInt((decimal[2] ?? '').padEnd(2, '0')) : null;
+    const providerReference = payment.external_id;
+    const paymentId = typeof payment.id === 'string'
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.id);
+    if (payment.status !== 'processed' || !paymentId
+        || providerReference !== request.body.external_id
+        || payment.recipient_id !== expected.externalCustomerId.trim()
+        || money.currency !== expected.settlementCurrency.trim().toUpperCase()
+        || amountMinor !== BigInt(expected.amountMinor)) return { status: 'unknown' };
     return { status: 'confirmed_success', providerReference };
 }
 import type { VendOutcome } from '@beverly/oem-contracts';
