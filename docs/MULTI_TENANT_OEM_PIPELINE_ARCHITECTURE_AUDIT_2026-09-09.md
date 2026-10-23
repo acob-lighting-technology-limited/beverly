@@ -2191,3 +2191,9 @@ Phase 1 may begin against the confirmed public seams: adapter contract, gateway 
 - On Node 24, `npm run test:oem`, `npm run typecheck`, `npm run test`, `npm --prefix backend/wallet test`, and `npm run build` passed. The wallet suite reported 100 files and 698 tests. The full root test needed sandbox escalation for temporary-file writes; it passed after that environmental restriction was lifted.
 - On Node 22.23.4, `npm run build` passed all six build targets, and `npm --prefix backend/wallet test` passed 100 files and 698 tests. These local results do not establish remote CI, production migration, or live telemetry success.
 - Release gate remains closed. Push and remote checks, production migration, a guarded one-site telemetry canary, checkpoint replay, and scoped downstream reads remain unverified. Keep the installation `draft`; keep financial writes disabled.
+
+### 23.61 Remote checks and release access (2026-10-23)
+
+- Commit `70f2a75f` was pushed to draft PR #198. GitHub reported 11 successful checks, one skipped isolated API integrity check, no merge conflicts, and a ready Vercel Preview. The protected preview `/api/v1/health` returned HTTP 200. Node 22.23.4 root typecheck and OEM contracts also passed locally.
+- Read-only production SQL confirmed the telemetry page RPC exists but the proposed ownership-quarantine index does not. The production migration remains unapplied. No production database mutation or new telemetry canary occurred.
+- GitHub browser authorization was subsequently denied while preparing the reviewed release. Do not bypass that denial through another interface. PR #198 remains draft; the production installation remains `draft`. Restore GitHub access before review and merge. Then migrate production, run the guarded canary, verify replay and scoped reads, and retain financial-write restrictions.
