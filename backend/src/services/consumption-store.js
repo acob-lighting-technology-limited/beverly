@@ -106,8 +106,8 @@ function rowToRecord(row, requestStation = "") {
     customer_id: String(row.customerId || ""),
     customer_name: String(row.customerName || row.name || ""),
     reading_date: readingDate,
-    total1: Number.isFinite(Number(row.total1)) ? Number(row.total1) : null,
-    remain1: Number.isFinite(Number(row.remain1)) ? Number(row.remain1) : null,
+    total1: numericOrNull(row.total1),
+    remain1: numericOrNull(row.remain1),
     captured_at: new Date().toISOString(),
     ...signalColumnsFromRow(row, stationId),
   };
@@ -164,9 +164,19 @@ async function writeDailyMeterRows({ pathname, requestPayload: payload, response
   const rows = collectionRowsFromPayload(responsePayload);
   if (!rows.length) return { stored: 0 };
 
-  const records = rows
-    .map((row) => rowToRecord(row, requestStation))
-    .filter(Boolean);
+  const unique = new Map();
+  for (const row of rows) {
+    const record = rowToRecord(row, requestStation);
+    if (!record) continue;
+    const key = JSON.stringify([record.station_id, record.meter_id, record.reading_date]);
+    const previous = unique.get(key);
+    if (previous && previous.record.total1 !== record.total1
+      && (!row.updateDate || !previous.source.updateDate)) {
+      throw new Error("Conflicting source readings require review");
+    }
+    if (!previous || String(row.updateDate || "") >= String(previous.source.updateDate || "")) unique.set(key, { record, source: row });
+  }
+  const records = [...unique.values()].map(({ record }) => record);
   if (!records.length) return { stored: 0 };
 
   for (let index = 0; index < records.length; index += 500) {
@@ -433,7 +443,7 @@ async function readDailyMeterRows({ pathname, requestPayload: payload }) {
       code: 0,
       msg: "success",
       reason: "success",
-      data: { total, data: rows },
+      data: { total, data: rows, freshness: await consumptionSyncHealth([stationId]) },
       result: { total, data: rows },
       _proxy: {
         source: "supabase-consumption",
@@ -887,7 +897,7 @@ function addDaysIso(day, offset) {
 // If you change job 18's INTERVAL, change this too -- they are two halves of one policy,
 // and a mismatch makes the drill-down either claim data is archived when it is still
 // live, or silently return a short series with no explanation.
-const RAW_HOT_WINDOW_DAYS = Number(process.env.RAW_HOT_WINDOW_DAYS || 90);
+const RAW_HOT_WINDOW_DAYS = Number(process.env.RAW_HOT_WINDOW_DAYS || 60);
 
 /**
  * Describes how much of a requested range falls outside the raw hot window.

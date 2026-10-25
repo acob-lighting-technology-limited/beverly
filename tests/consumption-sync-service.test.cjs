@@ -1,345 +1,147 @@
 "use strict";
-
 const assert = require("node:assert/strict");
-
 process.env.SESSION_STORE_MODE = "supabase";
 process.env.SUPABASE_URL = "https://example.supabase.co";
-process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
-process.env.LIVE_API_BASE_URL = "https://live.example.test";
-process.env.LIVE_API_BEARER_TOKEN = "live-token";
-process.env.CONSUMPTION_SYNC_LOOKBACK_DAYS = "0";
-process.env.DATABASE_QUOTA_MB = "500";
-
+process.env.SUPABASE_SERVICE_ROLE_KEY = "test-only";
+process.env.LIVE_API_BASE_URL = "https://source.test";
+process.env.DATABASE_QUOTA_MB = "8000";
+process.env.CONSUMPTION_SYNC_RETRIES = "1";
 const supabase = require("../backend/src/services/supabase-service");
-const originalFetch = global.fetch;
-const originalRestRequest = supabase.restRequest;
-const originalRestRequestWithResponse = supabase.restRequestWithResponse;
-
-const writes = [];
-const liveCalls = [];
-const rpcCalls = [];
-
-function responseWithCount(total, body = [{ id: "row" }]) {
-  return {
-    response: {
-      headers: {
-        get(name) {
-          return String(name).toLowerCase() === "content-range" ? `0-0/${total}` : "";
-        },
-      },
-    },
-    body,
-  };
-}
-
+const original = { fetch: global.fetch, rest: supabase.restRequest, read: supabase.restRequestWithResponse };
+const states = new Map(), writes = [], calls = [];
+let pages = [], businessCode = 0, aggregateFailure = false, writeFailure = false, lostLease = false, aggregateFailuresRemaining = 0, aggregateCalls = 0, quotaBytes = 409783443;
+const empty = { response: { status: 200, headers: { get: () => "0-0/0" } }, body: [] };
+function reset() { states.clear(); writes.length = 0; calls.length = 0; pages = []; businessCode = 0; aggregateFailure = false; writeFailure = false; lostLease = false; aggregateFailuresRemaining = 0; aggregateCalls = 0; quotaBytes = 409783443; }
+function row(meterId, day, stationId = "TUNGA") { return { stationId, meterId, currentDate: day, total1: 100 }; }
+supabase.restRequest = async (pathname, options = {}) => {
+  writes.push({ pathname, body: options.body });
+  const body = options.body;
+  if (writeFailure && pathname.startsWith("/daily_meter_readings?")) throw new Error("Storage write failed");
+  if (pathname === "/rpc/consumption_database_usage") return { bytes: quotaBytes };
+  if (pathname === "/rpc/claim_consumption_sync_station") return "TUNGA";
+  if (pathname === "/rpc/acquire_consumption_sync_station") {
+    const state = states.get(body.p_station_id) || {};
+    if (state.busy) return { acquired: false };
+    state.busy = true; state.owner = body.p_owner;
+    states.set(body.p_station_id, state);
+    return { acquired: true, state: { ...state } };
+  }
+  if (pathname === "/rpc/checkpoint_consumption_sync_station") {
+    const state = states.get(body.p_station_id);
+    if (!state || state.owner !== body.p_owner || (lostLease && body.p_outcome)) return false;
+    state.scan_progress = body.p_progress;
+    if (body.p_outcome) { Object.assign(state, body.p_outcome); state.busy = false; }
+    return true;
+  }
+  return [];
+};
+supabase.restRequestWithResponse = async (pathname) => {
+  if (pathname.includes("refresh_meter_reading_aggregates")) {
+    aggregateCalls += 1;
+    if (aggregateFailure) throw new Error("Aggregate failed");
+    if (aggregateFailuresRemaining > 0) { aggregateFailuresRemaining -= 1; throw new Error("Aggregate retry needed"); }
+    return empty;
+  }
+  if (pathname.includes("order=reading_date.desc")) return { ...empty, body: [{ reading_date: "2026-10-24" }] };
+  return empty;
+};
+global.fetch = async (url, init) => {
+  const payload = JSON.parse(init.body); calls.push({ url, ...payload });
+  if (url.endsWith("/api/station/read")) return { ok: true, json: async () => ({ code: 0, result: { data: ["ADMIN", "TUNGA", "UMAISHA", "OGUFA", "KYAKALE", "MUSHA", "OFEMILI"].map(stationId => ({ stationId })) } }) };
+  const data = (pages[payload.pageNumber - 1] || []).map(r => ({ ...r, stationId: r.stationId === "AUTO" ? payload.stationId : r.stationId }));
+  return { ok: true, status: 200, json: async () => ({ code: businessCode, reason: businessCode ? "Source rejected request" : "success", result: { data, total: pages.flat().length } }) };
+};
 (async () => {
-  supabase.restRequest = async (pathname, options = {}) => {
-    writes.push({ pathname, options });
-    if (pathname === "/rpc/consumption_database_usage") return { megabytes: 300, bytes: 314572800 };
-    return [];
-  };
+  const { runConsumptionSync, runScheduledConsumptionSync, syncWindow, databaseQuotaState } = require("../backend/src/services/consumption-sync-service");
+  const input = { stations: "TUNGA", from: "2026-10-21", to: "2026-10-24", pageSize: 2, maxPages: 10, stationAttempts: 1, retries: 1 };
+  assert.equal(syncWindow("incremental", { latestReadingDate: "2026-10-24" }, { to: "2026-10-25" }).from, "2026-10-17");
+  assert.equal(syncWindow("incremental", { latestReadingDate: "2026-10-24" }, { from: "2026-10-21", to: "2026-10-25" }).from, "2026-10-21");
+  assert.equal(syncWindow("backfill", {}, { from: "2020-01-01", to: "2026-10-25" }).from, "2026-08-26");
 
-  supabase.restRequestWithResponse = async (pathname) => {
-    rpcCalls.push(pathname);
-    if (pathname.includes("select=id")) return responseWithCount(2);
-    if (pathname.includes("order=reading_date.asc")) return responseWithCount(1, [{ reading_date: "2026-05-01" }]);
-    if (pathname.includes("order=reading_date.desc")) return responseWithCount(1, [{ reading_date: "2026-05-10" }]);
-    return responseWithCount(0, []);
-  };
+  reset();
+  pages = [[row("OLD", "2015-01-01"), row("OLDER", "2014-01-01")], [row("M1", "2026-10-23")]];
+  const unordered = await runConsumptionSync(input);
+  assert.equal(unordered.ok, true);
+  assert.equal(unordered.storedRows, 1, "old dates must not stop later eligible pages");
+  assert.equal(unordered.stations[0].verification, "observed_only");
+  assert.equal(unordered.stations[0].verifiedCompleteThrough, null);
+  assert.equal(states.get("TUNGA").observed_through, "2026-10-24");
+  assert(calls.some(c => c.pageNumber === 2));
+  assert.deepEqual(calls.find(c => c.pageNumber === 1).currentDateRange, ["2026-10-21", "2026-10-24"]);
 
-  global.fetch = async (url, init) => {
-    const payload = JSON.parse(String(init.body || "{}"));
-    liveCalls.push({ url, payload });
-    assert.equal(url, "https://live.example.test/api/DailyDataMeter/read");
-    assert.equal(init.headers.Authorization, "Bearer live-token");
-    const pageRows = payload.pageNumber === 1
-      ? [
-          { stationId: payload.stationId, meterId: "M-1", customerId: "C-1", currentDate: payload.FROM, total1: 100 },
-          { stationId: payload.stationId, meterId: "M-2", customerId: "C-2", currentDate: payload.FROM, total1: 200 },
-        ]
-      : [
-          { stationId: payload.stationId, meterId: "M-3", customerId: "C-3", currentDate: payload.TO, total1: 300 },
-        ];
-    return {
-      ok: true,
-      status: 200,
-      async json() {
-        return {
-          code: 0,
-          result: {
-            total: 3,
-            data: pageRows,
-          },
-        };
-      },
-    };
-  };
+  reset();
+  pages = Array.from({ length: 12 }, (_, i) => [row(`M${i}A`, "2026-10-22"), row(`M${i}B`, "2026-10-23")]);
+  const partial = await runConsumptionSync({ ...input, maxPages: 10 });
+  assert.equal(partial.ok, false);
+  assert.equal(partial.stations[0].pagesFetched, 10, "no hidden eight-page limit");
+  assert.equal(states.get("TUNGA").scan_progress.nextPage, 11);
+  calls.length = 0;
+  const resumed = await runConsumptionSync({ ...input, maxPages: 10 });
+  assert.equal(calls[0].pageNumber, 10, "replay committed boundary, never restart at page one");
+  assert.equal(resumed.ok, true);
+  assert.equal(states.get("TUNGA").scan_progress, null);
 
-  const { databaseQuotaState, runConsumptionSync, runScheduledConsumptionSync, stationAttemptsForMode, syncWindow } = require("../backend/src/services/consumption-sync-service");
+  reset();
+  businessCode = 500;
+  const businessFailure = await runConsumptionSync(input);
+  assert.equal(businessFailure.failedStations, 1);
+  assert.equal(states.get("TUNGA").last_status, "failed");
+  assert(!writes.some(w => w.pathname.startsWith("/daily_meter_readings?")));
 
-  supabase.restRequest = async (pathname) => {
-    if (pathname === "/rpc/consumption_database_usage") return { megabytes: 357.63, bytes: 375000000 };
-    return [];
-  };
-  const decimalQuota = await databaseQuotaState({ databaseQuotaMb: 500 }, "backfill");
-  assert.equal(decimalQuota.usedPercent, 75, "quota percentages must match decimal provider limits");
-  assert.equal(decimalQuota.quotaPaused, true, "backfills must pause at seventy-five percent");
-  supabase.restRequest = async (pathname, options = {}) => {
-    writes.push({ pathname, options });
-    if (pathname === "/rpc/consumption_database_usage") return { megabytes: 300, bytes: 314572800 };
-    return [];
-  };
+  reset();
+  pages = [[row("M1", "2026-10-22")]]; aggregateFailure = true;
+  const failedAggregate = await runConsumptionSync(input);
+  assert.equal(failedAggregate.ok, false);
+  assert.equal(states.get("TUNGA").last_status, "failed");
+  assert.match(states.get("TUNGA").last_error, /Aggregate/);
 
-  const incrementalWindow = syncWindow("incremental", { latestReadingDate: "2026-05-10" }, { to: "2026-05-12" });
-  assert.equal(incrementalWindow.from, "2026-05-10");
-  assert.equal(incrementalWindow.reason, "latest_reading");
+  reset();
+  pages = [[row("RETRY", "2026-10-22")]];
+  aggregateFailuresRemaining = 1;
+  const aggregateRetry = await runConsumptionSync({ ...input, stationAttempts: 2 });
+  assert.equal(aggregateRetry.ok, true);
+  assert.equal(aggregateFailuresRemaining, 0);
+  assert.equal(aggregateCalls, 2, "failed aggregates must run again even after source exhaustion");
+  assert.equal(states.get("TUNGA").last_status, "succeeded");
 
-  const backfillWindow = syncWindow("backfill", {}, { from: "2025-01-01", to: "2026-05-12" });
-  assert.equal(backfillWindow.from, "2026-02-01");
-  assert.equal(backfillWindow.reason, "hot_backfill");
-  assert.equal(stationAttemptsForMode("backfill", {}), 3);
-  const emptyWindow = syncWindow("incremental", {}, { from: "2025-01-01", to: "2026-05-12" });
-  assert.equal(emptyWindow.from, "2026-02-01", "empty stations must bridge the retention month");
-  assert.equal(emptyWindow.reason, "empty_station");
+  reset();
+  pages = [[row("DUP", "2026-10-22"), row("DUP", "2026-10-22")]];
+  const duplicate = await runConsumptionSync(input);
+  assert.equal(duplicate.storedRows, 1);
+  assert.equal(writes.find(w => w.pathname.startsWith("/daily_meter_readings?")).body.length, 1);
 
-  const incremental = await runConsumptionSync({
-    mode: "incremental",
-    stations: "TUNGA",
-    to: "2026-05-12",
-    pageSize: 2,
-    maxPages: 4,
-  });
-  assert.equal(incremental.ok, true);
-  assert.equal(incremental.mode, "incremental");
-  assert.equal(incremental.storedRows, 3);
-  assert.equal(liveCalls[0].payload.FROM, "2026-05-10");
-  assert.equal(liveCalls[0].payload.TO, "2026-05-12");
-  assert(writes.some((write) => write.pathname.includes("/daily_meter_readings?on_conflict=station_id,meter_id,reading_date")));
-  assert(writes.some((write) => write.pathname === "/consumption_sync_runs"), "sync must record durable run starts");
-  assert(writes.some((write) => write.pathname.includes("/consumption_sync_runs?id=eq.")), "sync must record durable run outcomes");
-  assert(writes.some((write) => write.pathname.includes("/consumption_sync_station_state?on_conflict=station_id")), "sync must persist station cursors");
-  assert(rpcCalls.includes("/rpc/refresh_meter_reading_aggregates_for_station"), "sync must refresh station aggregates");
+  reset();
+  pages = [[row("M1", "2026-10-22")]]; writeFailure = true;
+  const failedWrite = await runConsumptionSync(input);
+  assert.equal(failedWrite.failedStations, 1);
+  assert.equal(states.get("TUNGA").scan_progress, null);
+  assert.equal(states.get("TUNGA").observed_through, null);
 
-  liveCalls.length = 0;
-  const scheduledTarget = await runScheduledConsumptionSync({
-    mode: "incremental", stations: "TUNGA", to: "2026-05-12", pageSize: 2, maxPages: 4, maxStations: 4,
-  });
-  assert.equal(scheduledTarget.runs, 1, "an explicitly targeted station must run once");
-  assert.equal(scheduledTarget.syncedStations, 1);
+  reset(); lostLease = true;
+  await assert.rejects(runConsumptionSync(input), /lease lost/);
+  assert(!writes.some(w => w.pathname.startsWith("/consumption_sync_runs?id=") && w.body.status === "succeeded"));
 
-  liveCalls.length = 0;
-  writes.length = 0;
-  const backfill = await runConsumptionSync({
-    mode: "backfill",
-    stations: "TUNGA",
-    from: "2025-01-01",
-    to: "2026-05-12",
-    pageSize: 2,
-    maxPages: 1,
-  });
-  assert.equal(backfill.mode, "backfill");
-  assert.equal(liveCalls[0].payload.FROM, "2026-02-01");
-  assert.equal(backfill.storedRows, 2);
-  assert.equal(backfill.partialStations, 1);
-  assert.equal(backfill.ok, false, "partial syncs must not report completion");
-  const partialRun = writes.find((write) => write.pathname.includes("/consumption_sync_runs?id=eq."));
-  assert.equal(partialRun.options.body.status, "partial", "page-limited runs must stay partial");
-  assert.equal(partialRun.options.body.attempts, 1, "durable runs must store used attempts");
-  const partialStart = writes.find((write) => write.pathname === "/consumption_sync_runs");
-  const partialState = writes.find((write) => write.pathname.includes("/consumption_sync_station_state?on_conflict=station_id"));
-  assert.equal(
-    partialState.options.body.last_started_at,
-    partialStart.options.body.started_at,
-    "station state must retain the actual start time"
-  );
+  reset();
+  states.set("TUNGA", { busy: true });
+  const leased = await runConsumptionSync(input);
+  assert.equal(leased.failedStations, 1);
+  assert(!calls.some(c => c.url.endsWith("/api/DailyDataMeter/read")));
 
-  let failedOnce = false;
-  global.fetch = async (url, init) => {
-    const payload = JSON.parse(String(init.body || "{}"));
-    liveCalls.push({ url, payload });
-    if (!failedOnce) {
-      failedOnce = true;
-      throw new TypeError("fetch failed");
-    }
-    return {
-      ok: true,
-      status: 200,
-      async json() {
-        return {
-          code: 0,
-          result: {
-            total: 1,
-            data: [{ stationId: payload.stationId, meterId: "M-9", customerId: "C-9", currentDate: payload.FROM, total1: 900 }],
-          },
-        };
-      },
-    };
-  };
-  const retried = await runConsumptionSync({
-    mode: "backfill",
-    stations: "KYAKALE",
-    from: "2025-01-01",
-    to: "2026-05-12",
-    pageSize: 2,
-    maxPages: 1,
-    stationAttempts: 2,
-  });
-  assert.equal(retried.ok, true);
-  assert.equal(retried.syncedStations, 1);
+  reset();
+  const scheduled = await runScheduledConsumptionSync({ from: "2026-10-21", to: "2026-10-24", maxPages: 2 });
+  assert.equal(scheduled.visitedStations, 6);
+  assert.equal(scheduled.runs, 6);
+  assert.equal(new Set(calls.filter(c => c.url.endsWith("/api/DailyDataMeter/read")).map(c => c.stationId)).size, 6);
+  assert(!states.has("ADMIN"));
 
-  liveCalls.length = 0;
-  writes.length = 0;
-  global.fetch = async (url, init) => {
-    const payload = JSON.parse(String(init.body || "{}"));
-    liveCalls.push({ url, payload });
-    return {
-      ok: true,
-      status: 200,
-      async json() {
-        return {
-          code: 0,
-          result: {
-            total: 4,
-            data: [
-              { stationId: payload.stationId, meterId: "M-OLD", currentDate: "2026-05-09", total1: 10 },
-              { stationId: payload.stationId, meterId: "M-IN", currentDate: "2026-05-11", total1: 20 },
-              { stationId: "TUNGA", meterId: "M-WRONG", currentDate: "2026-05-11", total1: 25 },
-              { stationId: payload.stationId, meterId: "M-FUTURE", currentDate: "2026-05-13", total1: 30 },
-            ],
-          },
-        };
-      },
-    };
-  };
-  const bounded = await runConsumptionSync({
-    mode: "incremental",
-    stations: "OFEMILI",
-    from: "2026-05-10",
-    to: "2026-05-12",
-    pageSize: 4,
-    maxPages: 1,
-  });
-  const readingWrite = writes.find((write) => write.pathname.includes("/daily_meter_readings?"));
-  assert.equal(bounded.storedRows, 1, "sync must store only requested dates");
-  assert.deepEqual(readingWrite.options.body.map((row) => row.reading_date), ["2026-05-11"]);
-
-  liveCalls.length = 0;
-  writes.length = 0;
-  global.fetch = async (url, init) => {
-    const payload = JSON.parse(String(init.body || "{}"));
-    liveCalls.push({ url, payload });
-    return {
-      ok: true,
-      status: 200,
-      async json() {
-        return {
-          code: 0,
-          result: {
-            total: 100,
-            data: [
-              { stationId: payload.stationId, meterId: "M-IN", currentDate: "2026-05-10", total1: 20 },
-              { stationId: payload.stationId, meterId: "M-OLD-1", currentDate: "2026-05-09", total1: 10 },
-              { stationId: payload.stationId, meterId: "M-OLD-2", currentDate: "2026-05-08", total1: 5 },
-            ],
-          },
-        };
-      },
-    };
-  };
-  const cursorStopped = await runConsumptionSync({
-    mode: "incremental",
-    stations: "OFEMILI",
-    from: "2026-05-10",
-    to: "2026-05-12",
-    pageSize: 3,
-    maxPages: 4,
-  });
-  assert.equal(liveCalls.length, 1, "sync must stop after crossing its cursor");
-  assert.equal(cursorStopped.stations[0].stopReason, "cursor_crossed");
-
-  liveCalls.length = 0;
-  writes.length = 0;
-  supabase.restRequest = async (pathname, options = {}) => {
-    writes.push({ pathname, options });
-    if (pathname === "/rpc/consumption_database_usage") return { megabytes: 300, bytes: 314572800 };
-    if (pathname === "/rpc/claim_consumption_sync_station") return "OFEMILI";
-    return [];
-  };
-  global.fetch = async (url, init) => {
-    const payload = JSON.parse(String(init.body || "{}"));
-    liveCalls.push({ url, payload });
-    if (url.endsWith("/api/station/read")) {
-      return {
-        ok: true,
-        status: 200,
-        async json() {
-          return { code: 0, result: { data: [{ stationId: "TUNGA" }, { stationId: "OFEMILI" }] } };
-        },
-      };
-    }
-    return {
-      ok: true,
-      status: 200,
-      async json() {
-        return {
-          code: 0,
-          result: {
-            total: 1,
-            data: [{ stationId: payload.stationId, meterId: "M-CLAIMED", currentDate: "2026-05-11", total1: 40 }],
-          },
-        };
-      },
-    };
-  };
-  const claimed = await runConsumptionSync({
-    mode: "incremental",
-    from: "2026-05-10",
-    to: "2026-05-12",
-    pageSize: 10,
-  });
-  const meterCalls = liveCalls.filter((call) => call.url.endsWith("/api/DailyDataMeter/read"));
-  assert.equal(claimed.stationCount, 1, "automatic runs must isolate one station");
-  assert.deepEqual(meterCalls.map((call) => call.payload.stationId), ["OFEMILI"]);
-
-  liveCalls.length = 0;
-  await runConsumptionSync({
-    mode: "incremental",
-    stations: "OFEMILI",
-    from: "2026-05-10",
-    to: "2026-05-12",
-    pageSize: 5000,
-    maxPages: 1,
-  });
-  assert.equal(
-    liveCalls.find((call) => call.url.endsWith("/api/DailyDataMeter/read")).payload.pageSize,
-    500,
-    "sync page sizes must remain bounded"
-  );
-
-  liveCalls.length = 0;
-  writes.length = 0;
-  supabase.restRequest = async (pathname, options = {}) => {
-    writes.push({ pathname, options });
-    if (pathname === "/rpc/consumption_database_usage") return { megabytes: 357.63, bytes: 375000000 };
-    return [];
-  };
-  const quotaPaused = await runConsumptionSync({
-    mode: "backfill",
-    stations: "OFEMILI",
-    from: "2025-01-01",
-    to: "2026-05-12",
-  });
-  assert.equal(quotaPaused.quotaPaused, true, "backfills must pause at seventy-five percent");
-  assert.equal(liveCalls.filter((call) => call.url.endsWith("/api/DailyDataMeter/read")).length, 0);
-  assert(writes.some((write) => write.pathname === "/consumption_sync_runs" && write.options.body.status === "quota_paused"), "quota pauses must remain durable");
-
-  console.log(JSON.stringify({
-    status: "consumption sync service passed",
-    incrementalRows: incremental.storedRows,
-    backfillRows: backfill.storedRows,
-  }, null, 2));
-})().finally(() => {
-  global.fetch = originalFetch;
-  supabase.restRequest = originalRestRequest;
-  supabase.restRequestWithResponse = originalRestRequestWithResponse;
+  reset();
+  quotaBytes = 6500000000;
+  const paused = await runConsumptionSync(input);
+  assert.equal(paused.quotaPaused, true);
+  assert(!calls.some(c => c.url.endsWith("/api/DailyDataMeter/read")));
+  const quota = await databaseQuotaState({ databaseQuotaMb: 8000 }, "incremental");
+  assert.equal(quota.quotaPaused, true);
+  console.log("consumption sync recovery regressions passed");
+})().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
+  global.fetch = original.fetch; supabase.restRequest = original.rest; supabase.restRequestWithResponse = original.read;
 });

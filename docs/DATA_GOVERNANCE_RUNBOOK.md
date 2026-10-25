@@ -14,7 +14,7 @@ curl.exe -H "Authorization: Bearer $env:CRON_SECRET" "$env:PRODUCTION_TARGET_URL
 
 ## Retention
 
-- Hot meter readings: 90 days
+- Hot meter readings: 60 days
 - API cache: reusable responses only, maximum 64 KiB per response, one-hour expiry,
   and a 16 MiB total JSON payload budget. The daily one-day cleanup is a fallback.
 - Snapshots: 14 days

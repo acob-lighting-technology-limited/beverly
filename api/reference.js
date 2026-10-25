@@ -1153,7 +1153,7 @@ function sanitizeDailyMeterReadPayload(payload) {
     : Array.isArray(sanitized.dateRange)
       ? sanitized.dateRange
       : [sanitized.FROM ?? sanitized.from, sanitized.TO ?? sanitized.to];
-  if (range[0] && range[1]) sanitized.currentDateRange = [range[0], range[1]];
+  if (range[0] && range[1]) sanitized.currentDateRange = [String(range[0]).slice(0, 10), String(range[1]).slice(0, 10)];
   if (!sanitized.stationId && sanitized.SITE_ID) sanitized.stationId = sanitized.SITE_ID;
   delete sanitized.FROM;
   delete sanitized.TO;
@@ -5778,15 +5778,7 @@ async function handler(request, response) {
 
     if (!result) {
       result = await proxyLive(request, pathname, requestData);
-      if (result?.body?._proxy?.source === "live") {
-        await writeDailyMeterRows({
-          pathname,
-          requestPayload: requestData.parsedBody,
-          responsePayload: result.body
-        }).catch((error) => {
-          console.error("[consumption-store-write]", error instanceof Error ? error.message : String(error));
-        });
-      }
+      // Report reads never repair ingestion implicitly.
     }
 
     // --- MERGE LOCAL STATION MAPPINGS INTO /api/station/read RESPONSE ---

@@ -205,11 +205,17 @@ async function streamIntervalXlsx(options) {
   response.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
   response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   response.setHeader("X-Export-Source-Rows", String(total));
+  response.setHeader("X-Data-Completeness", "unverified");
   response.flushHeaders?.();
 
   const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: response, useStyles: true, useSharedStrings: false });
   workbook.creator = "Beverly";
   workbook.created = new Date(now);
+  const statusSheet = workbook.addWorksheet("Collection Status");
+  statusSheet.columns = [{ header: "Status", key: "status", width: 50 }, { header: "Detail", key: "detail", width: 90 }];
+  statusSheet.addRow({ status: "Source completeness unverified", detail: "Available readings only. Collection gaps may affect totals." }).commit();
+  statusSheet.addRow({ status: "Generated at", detail: new Date(now).toISOString() }).commit();
+  statusSheet.commit();
   let worksheet = null;
   let worksheetRows = 0;
   let sheetCount = 0;

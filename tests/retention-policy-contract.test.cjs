@@ -11,7 +11,7 @@ const supabase = require("../backend/src/services/supabase-service");
 
 const policy = governance.retentionPolicy();
 assert.deepEqual(policy, {
-  hotReadingDays: 90,
+  hotReadingDays: 60,
   cacheDays: 1,
   snapshotDays: 14,
   exportDays: 180,
@@ -25,8 +25,8 @@ const plan = governance.governancePlan();
 assert.equal(plan.cadence, "daily at 00:00 UTC via Vercel Cron");
 
 const vercel = JSON.parse(read("vercel.json"));
-assert.equal(vercel.env.CONSUMPTION_HOT_RETENTION_DAYS, "90");
-assert.equal(vercel.env.RAW_HOT_WINDOW_DAYS, "90");
+assert.equal(vercel.env.CONSUMPTION_HOT_RETENTION_DAYS, "60");
+assert.equal(vercel.env.RAW_HOT_WINDOW_DAYS, "60");
 assert.equal(vercel.env.DATA_GOVERNANCE_ENABLED, "true");
 assert.equal(vercel.env.CACHE_RETENTION_DAYS, "1");
 assert.equal(vercel.env.SNAPSHOT_RETENTION_DAYS, "14");
@@ -39,8 +39,8 @@ assert(vercel.crons.some((cron) => cron.path === "/api/cron/governance-daily" &&
 
 const syncService = read("backend/src/services/consumption-sync-service.js");
 const consumptionStore = read("backend/src/services/consumption-store.js");
-assert.match(syncService, /CONSUMPTION_HOT_RETENTION_DAYS, 90/);
-assert.match(consumptionStore, /RAW_HOT_WINDOW_DAYS \|\| 90/);
+assert.match(syncService, /CONSUMPTION_HOT_RETENTION_DAYS, 60/);
+assert.match(consumptionStore, /RAW_HOT_WINDOW_DAYS \|\| 60/);
 assert.doesNotMatch(consumptionStore, /20260812170000_raw_retention_120d\.sql/);
 
 const migration = read("supabase/migrations/20260914120000_retention_policy_alignment.sql");

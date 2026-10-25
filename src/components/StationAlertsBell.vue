@@ -178,8 +178,8 @@
               <dl v-if="isExpanded(alert.id)" class="station-alert-details">
                 <div><dt>Gateway</dt><dd>{{ alert.gateway }}</dd></div>
                 <div><dt>Station</dt><dd>{{ alert.station }}</dd></div>
-                <div><dt>Signal (RSSI)</dt><dd>{{ alert.rssiDbm }} dBm</dd></div>
-                <div><dt>Packet loss</dt><dd>{{ alert.packetLossPercent }}%</dd></div>
+                <div><dt>Signal (RSSI)</dt><dd>{{ alert.rssiDbm == null ? 'Unavailable' : `${alert.rssiDbm} dBm` }}</dd></div>
+                <div><dt>Packet loss</dt><dd>{{ alert.packetLossPercent == null ? 'Unavailable' : `${alert.packetLossPercent}%` }}</dd></div>
                 <div><dt>Success rate</dt><dd>{{ alert.successRate == null ? 'N/A' : `${alert.successRate}%` }}</dd></div>
                 <div><dt>Outage started</dt><dd>{{ formatAlertTime(alert.startedAt) }}</dd></div>
                 <div v-if="alert.endedAt"><dt>Back online at</dt><dd class="station-alert-online-time">{{ formatAlertTime(alert.endedAt) }}</dd></div>

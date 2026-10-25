@@ -1,6 +1,9 @@
 <template>
   <div class="table-page ddm-container">
     <div class="sr-only">Meter interval ledger</div>
+    <p class="table-command-strip" role="status">
+      {{ collectionWarning }}
+    </p>
 
     <div class="filter-toolbar ddm-toolbar" @click="closeMenus">
       <div class="ddm-toolbar-group ddm-search-group">
@@ -342,6 +345,7 @@ export default {
       pageSize: 10,
       gotoPage: "1",
       loading: false,
+      collectionWarning: "Source completeness unverified",
       sortDir: "desc",
       searchCache: {
         query: "",
@@ -417,6 +421,10 @@ export default {
         };
         if (this.searchTerm) payload.searchTerm = this.searchTerm;
         const response = await postApi("/api/DailyDataMeter/read", payload);
+        const health = response?.data?.freshness || response?.body?.data?.freshness;
+        this.collectionWarning = health?.staleCount
+          ? `${health.staleCount} stations need collection. Completeness remains unverified.`
+          : "Source completeness unverified";
         const collection = normalizeCollection(response);
         const query = this.searchTerm.trim().toLowerCase();
         let rows = collection.rows.map(normalizeDailyMeterRow);

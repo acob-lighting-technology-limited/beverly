@@ -14,7 +14,7 @@ async function consumptionSyncHealth(stationIds = [], now = new Date()) {
     .map((station) => String(station || "").trim().toUpperCase())
     .filter(Boolean))];
   const query = [
-    "select=station_id,last_status,last_success_at,cursor_date,source_latest_date,last_error",
+    "select=station_id,last_status,last_success_at,last_finished_at,cursor_date,source_latest_date,last_error,observed_through,scan_progress",
     "order=station_id.asc"
   ];
   if (normalized.length === 1) query.push(`station_id=eq.${encodeURIComponent(normalized[0])}`);
@@ -25,18 +25,23 @@ async function consumptionSyncHealth(stationIds = [], now = new Date()) {
     rows = await supabase.restRequest(`/consumption_sync_station_state?${query.join("&")}`);
   } catch (error) {
     if (/PGRST205|42P01|schema cache|does not exist/i.test(String(error?.message || error))) {
-      return { available: false, stationCount: 0, healthyCount: 0, staleCount: 0, failedCount: 0, partialCount: 0, maximumLagDays: 0, stations: [] };
+      return { available: false, completeness: "unverified", warning: "Collection status unavailable", stationCount: 0, healthyCount: 0, staleCount: 0, failedCount: 0, partialCount: 0, maximumLagDays: 0, stations: [] };
     }
     throw error;
   }
 
   const stations = (Array.isArray(rows) ? rows : []).map((row) => {
     const lagDays = dateLagDays(row.cursor_date, now);
-    const stale = lagDays === null || lagDays > 1 || row.last_status !== "succeeded";
+    const lastAttemptAge = now.getTime() - new Date(row.last_finished_at || 0).getTime();
+    const stale = lagDays === null || lagDays > 1 || row.last_status !== "succeeded" || lastAttemptAge > 2 * 3600000;
     return {
       stationId: row.station_id,
       status: row.last_status,
       lastSuccessAt: row.last_success_at,
+      lastFinishedAt: row.last_finished_at,
+      observedThrough: row.observed_through || null,
+      verifiedCompleteThrough: null,
+      pendingScan: Boolean(row.scan_progress),
       cursorDate: row.cursor_date,
       sourceLatestDate: row.source_latest_date,
       lagDays,
@@ -53,6 +58,8 @@ async function consumptionSyncHealth(stationIds = [], now = new Date()) {
   }
   return {
     available: true,
+    completeness: "unverified",
+    warning: "Source completeness unverified",
     stationCount: stations.length,
     healthyCount: stations.filter((station) => !station.stale).length,
     staleCount: stations.filter((station) => station.stale).length,

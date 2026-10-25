@@ -1848,9 +1848,9 @@ const customer: FastifyPluginAsync = async (fastify) => {
 
     fastify.put('/notifications/preferences', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
         const schema = z.object({
-            sms:    z.record(z.boolean()).optional(),
-            email:  z.record(z.boolean()).optional(),
-            in_app: z.record(z.boolean()).optional(),
+            sms:    z.record(z.string(), z.boolean()).optional(),
+            email:  z.record(z.string(), z.boolean()).optional(),
+            in_app: z.record(z.string(), z.boolean()).optional(),
         });
         let body: z.infer<typeof schema>;
         try { body = schema.parse(req.body); }
