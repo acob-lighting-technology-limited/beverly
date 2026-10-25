@@ -152,9 +152,7 @@ export async function resolveEnergyTarget(oemId?: string, stationId?: string | n
     if (oemConfig && oemConfig.baseUrl && authHeaderFromOem) {
         return { baseUrl: oemConfig.baseUrl, authHeader: authHeaderFromOem };
     }
-    if (oemId) {
-        throw new TokenEngineError('OEM energy backend not configured', 'oem_energy_not_configured');
-    }
+    if (oemId) throw new TokenEngineError('OEM energy backend not configured', 'oem_energy_not_configured');
     return {
         baseUrl: env.ENERGY_BACKEND_URL || '',
         authHeader: buildCalinmeterBearerHeader(env.ENERGY_BEARER_TOKEN),
@@ -448,6 +446,17 @@ async function lookupLocalAccountBinding(meterId: string): Promise<MeterInfo | n
     };
 }
 
+const SPARKMETER_SITE_TO_STATION: Record<string, string> = {
+    '0619f73f-922d-4ddd-afe5-901c2ae771f7': 'OTU-COSTAIN',
+    '3a1bb0d2-4521-4f24-bab9-8426d4827480': 'ADEBAYO',
+    '655ace31-6683-4521-b8ed-fcb7b32b287c': 'OLOYAN',
+    '5c2114b8-9d56-42c1-92de-6180dada42a1': 'SULE',
+    '31454d1f-6cf7-49d2-9567-eb506079ca60': 'ADEWALE',
+    'a790a744-ee49-4a3f-8995-7843439f4c6f': 'MILE-13',
+    'ca0e1988-41c8-4298-a229-1ec1c2f19585': 'AJEGUNLE',
+    'e99e124f-c0a2-4f71-b659-4cf3f7b36cba': 'ONIPANU',
+};
+
 export async function lookupOemInventoryMeter(
     meterId: string,
     oemId?: string | null,
@@ -485,11 +494,14 @@ export async function lookupOemInventoryMeter(
         .eq('status', 'active')
         .maybeSingle();
 
+    const siteKey = String(meter.site_id || '').toLowerCase();
+    const resolvedStationId = SPARKMETER_SITE_TO_STATION[siteKey] || String(meter.site_id || 'UNKNOWN');
+
     return {
         meterId: String(meter.serial || meter.external_id),
         customerId: String(customer?.external_id || meter.customer_external_id),
         customerName: String(customer?.name || `Customer ${meter.customer_external_id}`),
-        stationId: String(meter.site_id || 'UNKNOWN'),
+        stationId: resolvedStationId,
         tariffId: String(meter.tariff_id || 'RESIDENTIAL'),
         protocolVersion: null,
         communicationWay: null,
@@ -643,13 +655,54 @@ export async function listStations(opts: { force?: boolean; oemId?: string | nul
 export async function listStationDirectory(opts: { force?: boolean } = {}): Promise<StationInfo[]> {
     const { data, error } = await adminClient
         .from('oem_manufacturers')
-        .select('id')
+        .select('id, slug, display_name, vending_strategy')
         .eq('status', 'active')
         .order('display_name');
     if (error) throw new TokenEngineError(error.message, 'oem_directory_unavailable', true);
-    const owners = (data ?? []).map((row) => String(row.id || '').trim()).filter(Boolean);
-    if (!owners.length) return listStations({ force: opts.force });
-    const results = await Promise.allSettled(owners.map((oemId) => listStations({ force: opts.force, oemId })));
+    const manufacturers = data ?? [];
+    if (!manufacturers.length) return listStations({ force: opts.force });
+
+    const results = await Promise.allSettled(manufacturers.map(async (oem) => {
+        if (oem.vending_strategy === 'direct_credit') {
+            const { data: mappings } = await adminClient
+                .from('oem_station_mappings')
+                .select('station_id, community_label')
+                .eq('oem_id', oem.id)
+                .order('station_id');
+            if (mappings && mappings.length > 0) {
+                return mappings.map((m) => ({
+                    stationId: String(m.station_id || '').trim().toUpperCase(),
+                    name: String(m.community_label || m.station_id).trim() || m.station_id,
+                    remark: null,
+                    oemId: oem.id,
+                    oemSlug: oem.slug,
+                    oemName: oem.display_name,
+                    status: 'active' as const,
+                })).filter((s) => s.stationId && s.stationId !== 'ADMIN');
+            }
+        }
+        try {
+            return await listStations({ force: opts.force, oemId: oem.id });
+        } catch {
+            const { data: mappings } = await adminClient
+                .from('oem_station_mappings')
+                .select('station_id, community_label')
+                .eq('oem_id', oem.id)
+                .order('station_id');
+            if (mappings && mappings.length > 0) {
+                return mappings.map((m) => ({
+                    stationId: String(m.station_id || '').trim().toUpperCase(),
+                    name: String(m.community_label || m.station_id).trim() || m.station_id,
+                    remark: null,
+                    oemId: oem.id,
+                    oemSlug: oem.slug,
+                    oemName: oem.display_name,
+                    status: 'active' as const,
+                })).filter((s) => s.stationId && s.stationId !== 'ADMIN');
+            }
+            return [];
+        }
+    }));
     const stations = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
     if (!stations.length) {
         const fallbackStations = await listStations({ force: opts.force });

@@ -87,7 +87,7 @@ export async function executeSparkMeterVend(
         .from('oem_inventory_meters')
         .select(`
             external_id, customer_external_id, serial, tariff_id, meter_phase, site_id, oem_installation_id,
-            oem_installations(id, base_url, approved_hostnames, tenant_id, status, oem_type)
+            oem_installations(id, base_url, approved_hostnames, tenant_id, status)
         `)
         .or(`serial.eq.${input.meterId},external_id.eq.${input.meterId}`)
         .eq('status', 'active')
