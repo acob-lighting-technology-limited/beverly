@@ -209,4 +209,35 @@ describe('OEM telemetry synchronization', () => {
         )).rejects.toMatchObject({ failures: [{ installationId: target.installationId, reason: 'telemetry_site_day_budget_exceeded' }] });
         expect(fetchPage).not.toHaveBeenCalled();
     });
+
+    it('rejects dates older than seven days without backfill option', async () => {
+        await expect(runSparkMeterTelemetrySync([target], { fetchPage: vi.fn(), persistPage: vi.fn() }, {
+            date: '2026-01-01',
+        })).rejects.toThrow('OEM telemetry date outside replay window');
+    });
+
+    it('allows older historical dates when allowHistoricalBackfill or mode backfill is enabled', async () => {
+        const fetchPage = vi.fn().mockResolvedValue({ readings: [], quarantine: [], nextCursor: null, hasMore: false });
+        const persistPage = vi.fn().mockResolvedValue({ readings: 5, quarantine: 0 });
+        const result = await runSparkMeterTelemetrySync([target], { fetchPage, persistPage }, {
+            date: '2026-01-01',
+            allowHistoricalBackfill: true,
+        });
+        expect(result).toEqual({ installations: 1, pages: 1, readings: 5, quarantine: 0, failures: [] });
+        expect(fetchPage).toHaveBeenCalledWith(expect.objectContaining({ dateFrom: '2026-01-01', dateTo: '2026-01-01' }));
+
+        const resultMode = await runSparkMeterTelemetrySync([target], { fetchPage, persistPage }, {
+            date: '2025-06-15',
+            mode: 'backfill',
+        });
+        expect(resultMode.readings).toBe(5);
+    });
+
+    it('rejects backfill dates earlier than minimum supported boundary', async () => {
+        await expect(runSparkMeterTelemetrySync([target], { fetchPage: vi.fn(), persistPage: vi.fn() }, {
+            date: '2019-12-31',
+            allowHistoricalBackfill: true,
+        })).rejects.toThrow('OEM telemetry date outside replay window');
+    });
 });
+

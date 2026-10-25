@@ -72,6 +72,20 @@ export async function sweepExpiredHolds(): Promise<void> {
     if (protectedError) throw protectedError;
     // A token may exist upstream before its local order update succeeds.
     const protectedHoldIds = new Set((protectedOrders ?? []).map((row: any) => row.hold_id));
+
+    // Never release holds attached to active, dispatched, or ambiguous OEM commands
+    const { data: protectedCommands, error: oemCmdError } = await adminClient
+        .from('oem_commands')
+        .select('wallet_hold_id')
+        .in('wallet_hold_id', holdIds)
+        .in('status', ['leased', 'submitted', 'unknown', 'manual_review']);
+    if (oemCmdError) throw oemCmdError;
+    for (const cmd of protectedCommands ?? []) {
+        if (cmd.wallet_hold_id) {
+            protectedHoldIds.add(cmd.wallet_hold_id);
+        }
+    }
+
     let released = 0;
     for (const hold of stale as any[]) {
         if (protectedHoldIds.has(hold.id)) continue;
@@ -92,6 +106,194 @@ export async function sweepExpiredHolds(): Promise<void> {
     }
     console.info(`[JOB:holds] released ${released} expired holds`);
 }
+
+// ── OEM Command Reconciliation (periodic read-only lookup for ambiguous vends) ──
+export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
+    checked: number;
+    succeeded: number;
+    failed: number;
+    pendingReview: number;
+}> {
+    const { data: commands, error } = await adminClient
+        .from('oem_commands')
+        .select('id, command_type, oem_type, tenant_id, installation_id, idempotency_key, purchase_order_id, wallet_hold_id, status, attempt_count, request_payload, created_at, oem_installations(id, base_url, approved_hostnames, status)')
+        .in('status', ['submitted', 'unknown'])
+        .limit(limit);
+    if (error) throw error;
+
+    let succeeded = 0;
+    let failed = 0;
+    let pendingReview = 0;
+
+    for (const cmd of (commands ?? []) as any[]) {
+        if (cmd.oem_type !== 'sparkmeter') continue;
+        const attempts = Number(cmd.attempt_count ?? 1);
+
+        if (attempts >= 5) {
+            await adminClient
+                .from('oem_commands')
+                .update({
+                    status: 'manual_review',
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', cmd.id);
+            if (cmd.purchase_order_id) {
+                await adminClient
+                    .from('purchase_orders')
+                    .update({
+                        status: 'delivery_pending_review',
+                        delivery_state: 'oem_delivery_pending_review',
+                        failure_reason: 'OEM payment confirmation timed out; requires manual review',
+                    })
+                    .eq('id', cmd.purchase_order_id)
+                    .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
+            }
+            await adminClient.from('operations_exceptions').upsert([{
+                exception_key: `oem-command-review:${cmd.id}`,
+                category: 'oem_command_review',
+                target_type: 'oem_command',
+                target_id: cmd.id,
+                severity: 'critical',
+                status: 'open',
+                details: {
+                    purchase_order_id: cmd.purchase_order_id,
+                    wallet_hold_id: cmd.wallet_hold_id,
+                    attempts,
+                    reason: 'ambiguous_oem_command_retries_exhausted',
+                },
+                updated_at: new Date().toISOString(),
+            }], { onConflict: 'exception_key' });
+            pendingReview++;
+            continue;
+        }
+
+        try {
+            const inst = cmd.oem_installations;
+            if (!inst || inst.status !== 'active') {
+                continue;
+            }
+            const { loadInstallationCredentials } = await import('../services/oem-installation-credentials.js');
+            const credentials = await loadInstallationCredentials({
+                id: inst.id,
+                tenantId: cmd.tenant_id ?? '',
+                status: inst.status,
+            });
+            if (credentials.authStrategy !== 'api_key_pair') {
+                throw new Error('OEM credentials invalid');
+            }
+
+            const { lookupSparkMeterPayment } = await import('../services/sparkmeter-payment-client.js');
+            const outcome = await lookupSparkMeterPayment({
+                commandId: cmd.id,
+                baseUrl: inst.base_url,
+                approvedHostnames: inst.approved_hostnames,
+                apiKey: credentials.apiKey,
+                apiSecret: credentials.apiSecret,
+                externalCustomerId: cmd.request_payload?.customerId || cmd.request_payload?.customer_id || cmd.request_payload?.externalCustomerId || '',
+                amountMinor: cmd.request_payload?.amountMinor || cmd.request_payload?.expectedAmountMinor || 0,
+                currency: 'NGN',
+                settlementCurrency: 'NGN',
+            });
+
+            if (outcome.status === 'confirmed_success') {
+                await adminClient
+                    .from('oem_commands')
+                    .update({
+                        status: 'succeeded',
+                        provider_reference: outcome.providerReference,
+                        response_payload: (outcome as any).rawResponse ?? null,
+                        response_received_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', cmd.id);
+
+                if (cmd.wallet_hold_id) {
+                    const { data: hold } = await adminClient
+                        .from('wallet_holds')
+                        .select('status, wallet_id, amount_minor')
+                        .eq('id', cmd.wallet_hold_id)
+                        .maybeSingle();
+
+                    if (hold?.status === 'active') {
+                        const { captureHold } = await import('../services/ledger.js');
+                        const { ledgerKey } = await import('../services/idempotency.js');
+                        await captureHold({
+                            holdId: cmd.wallet_hold_id,
+                            entryType: 'purchase_debit',
+                            referenceType: 'purchase_order',
+                            referenceId: cmd.purchase_order_id,
+                            idempotencyKey: ledgerKey('purchase', 'capture', cmd.purchase_order_id, 'sparkmeter-reconcile'),
+                            memo: `SparkMeter Reconcile · ${cmd.id}`,
+                            createdBy: 'system',
+                        });
+                    }
+                }
+
+                if (cmd.purchase_order_id) {
+                    await adminClient
+                        .from('purchase_orders')
+                        .update({
+                            status: 'delivered',
+                            delivery_state: 'payment_processed_delivery_unconfirmed',
+                            token: null,
+                            oem_id: 'sparkmeter',
+                        })
+                        .eq('id', cmd.purchase_order_id)
+                        .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
+                }
+                succeeded++;
+            } else if (outcome.status === 'confirmed_failure') {
+                const failReason = outcome.reason || (outcome as any).message || 'OEM payment rejected';
+                await adminClient
+                    .from('oem_commands')
+                    .update({
+                        status: 'failed',
+                        error_message: failReason,
+                        response_payload: (outcome as any).rawResponse,
+                        response_received_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', cmd.id);
+
+                if (cmd.wallet_hold_id) {
+                    await adminClient.rpc('fn_release_hold', { p_hold_id: cmd.wallet_hold_id });
+                }
+
+                if (cmd.purchase_order_id) {
+                    await adminClient
+                        .from('purchase_orders')
+                        .update({
+                            status: 'failed',
+                            failure_reason: failReason,
+                        })
+                        .eq('id', cmd.purchase_order_id)
+                        .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
+                }
+                failed++;
+            } else {
+                // status === 'unknown'
+                await adminClient
+                    .from('oem_commands')
+                    .update({
+                        status: 'unknown',
+                        attempt_count: attempts + 1,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', cmd.id);
+            }
+        } catch (error) {
+            console.error(`[JOB:oem-command-reconcile] failed for ${cmd.id}:`, error);
+        }
+    }
+
+    return {
+        checked: (commands ?? []).length,
+        succeeded,
+        failed,
+        pendingReview,
+    };
+}
+
 
 // A captured debit without a locally persisted token must never look like an
 // active hold or a delivered purchase. Keep it visible for evidence review.

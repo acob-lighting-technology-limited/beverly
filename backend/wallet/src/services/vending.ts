@@ -208,6 +208,28 @@ async function vendorPurchaseImpl(input: VendorPurchaseInput): Promise<VendorPur
         throw e;
     }
 
+    if (meter.oemId === 'sparkmeter') {
+        const { executeSparkMeterVend } = await import('./sparkmeter-vending.js');
+        const vendRes = await executeSparkMeterVend({
+            actorType: 'vendor',
+            actorId: input.vendorOrganizationId,
+            userId: input.vendorUserId,
+            walletId: wallet.id,
+            meterId: meter.meterId,
+            amountMinor: input.amountMinor,
+            clientIdempotencyKey: input.clientIdempotencyKey,
+            customerName: meter.customerName,
+        });
+        return {
+            purchaseOrder: vendRes.purchaseOrder,
+            token: null,
+            units: vendRes.units,
+            remoteTaskId: null,
+            receiptId: vendRes.receiptId,
+            ledgerEntryId: null,
+        };
+    }
+
     try {
         assertStationVendAllowed(input.vendorStationId, meter.stationId);
     } catch (error) {

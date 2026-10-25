@@ -3,6 +3,7 @@ import {
     buildSparkMeterProductionCanaryPlan,
     buildSparkMeterAuthHeaders,
     buildSparkMeterPaymentRequest,
+    buildSparkMeterPaymentLookupRequest,
     evaluateSparkMeterCreditSafety,
     parseSparkMeterPaymentResponse,
 } from '../sparkmeter-v1.js';
@@ -305,4 +306,47 @@ describe('SparkMeter Koios v1 adapter', () => {
             errors: [], data: { external_id: 'command', status: 'processed' },
         })).toEqual({ status: 'unknown' });
     });
+
+    it('builds documented payment lookup request by external ID', () => {
+        expect(buildSparkMeterPaymentLookupRequest('cmd-123')).toEqual({
+            method: 'GET',
+            path: '/api/v1/payments?external_id=cmd-123',
+        });
+        expect(() => buildSparkMeterPaymentLookupRequest('')).toThrow('SparkMeter lookup command is required');
+    });
+
+    it('confirms exact payment when lookup returns an array containing one matching record', () => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: [{
+                id: '3fa85f64-5717-4562-b3fc-2c963f66afa6', recipient_id: 'customer',
+                amount: { value: '100.00', currency: 'NGN' },
+                external_id: 'command-xyz', status: 'processed',
+            }],
+        }, {
+            commandId: 'command-xyz', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'customer',
+        })).toEqual({ status: 'confirmed_success', providerReference: 'command-xyz' });
+    });
+
+    it('keeps empty array lookup response unknown without releasing hold', () => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: [],
+        }, {
+            commandId: 'command-xyz', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'customer',
+        })).toEqual({ status: 'unknown' });
+    });
+
+    it('keeps multi-record array lookup response unknown', () => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: [
+                { id: '3fa85f64-5717-4562-b3fc-2c963f66afa6', external_id: 'command-xyz', status: 'processed' },
+                { id: '9fa85f64-5717-4562-b3fc-2c963f66afa9', external_id: 'command-xyz', status: 'processed' },
+            ],
+        }, {
+            commandId: 'command-xyz', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'customer',
+        })).toEqual({ status: 'unknown' });
+    });
 });
+

@@ -196,6 +196,21 @@ export function buildSparkMeterPaymentRequest(input: SparkMeterPaymentInput): Sp
     };
 }
 
+export interface SparkMeterPaymentLookupRequest {
+    method: 'GET';
+    path: `/api/v1/payments?external_id=${string}`;
+}
+
+/** Build Koios v1's documented monitoring payment lookup request by external ID. */
+export function buildSparkMeterPaymentLookupRequest(commandId: string): SparkMeterPaymentLookupRequest {
+    const trimmed = String(commandId ?? '').trim();
+    if (!trimmed) throw new Error('SparkMeter lookup command is required');
+    return {
+        method: 'GET',
+        path: `/api/v1/payments?external_id=${encodeURIComponent(trimmed)}`,
+    };
+}
+
 /** Normalize only provider-confirmed Koios v1 payment evidence. */
 export function parseSparkMeterPaymentResponse(
     statusCode: number,
@@ -226,8 +241,17 @@ export function parseSparkMeterPaymentResponse(
     if (![200, 201].includes(statusCode) || !expected
         || !Array.isArray(envelope.errors) || envelope.errors.length !== 0) return { status: 'unknown' };
     const data = envelope.data;
-    if (!data || typeof data !== 'object' || Array.isArray(data)) return { status: 'unknown' };
-    const payment = data as Record<string, unknown>;
+    let payment: Record<string, unknown>;
+    if (Array.isArray(data)) {
+        if (data.length !== 1 || !data[0] || typeof data[0] !== 'object' || Array.isArray(data[0])) {
+            return { status: 'unknown' };
+        }
+        payment = data[0] as Record<string, unknown>;
+    } else if (data && typeof data === 'object') {
+        payment = data as Record<string, unknown>;
+    } else {
+        return { status: 'unknown' };
+    }
     let request: SparkMeterPaymentRequest;
     try {
         request = buildSparkMeterPaymentRequest(expected);

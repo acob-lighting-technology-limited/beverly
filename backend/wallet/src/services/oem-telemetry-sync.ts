@@ -18,7 +18,12 @@ interface SyncDependencies {
     persistPage(installationId: string, mode: 'historical', scopeKey: string, page: TelemetryPage): Promise<{ readings: number; quarantine: number }>;
     wait?: (milliseconds: number) => Promise<void>;
 }
-export interface TelemetryReplayOptions { readonly date?: string; readonly site?: string }
+export interface TelemetryReplayOptions {
+    readonly date?: string;
+    readonly site?: string;
+    readonly allowHistoricalBackfill?: boolean;
+    readonly mode?: 'replay' | 'backfill';
+}
 export interface TelemetrySyncSummary {
     installations: number;
     pages: number;
@@ -41,8 +46,10 @@ export async function runSparkMeterTelemetrySync(
 ): Promise<TelemetrySyncSummary> {
     const today = new Date().toISOString().slice(0, 10);
     const date = options.date ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const isBackfill = options.allowHistoricalBackfill === true || options.mode === 'backfill';
+    const minDate = isBackfill ? '2020-01-01' : new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
     if (!z.string().date().safeParse(date).success
-        || date < new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
+        || date < minDate
         || date > today) throw new Error('OEM telemetry date outside replay window');
     if (options.site && !z.string().uuid().safeParse(options.site).success) throw new Error('OEM telemetry site outside installation');
     const site = options.site;

@@ -11,8 +11,21 @@ const state = vi.hoisted(() => ({
     orders: [] as Record<string, unknown>[],
     staleHolds: [] as Record<string, unknown>[],
     releasedHolds: [] as string[],
+    oemCommands: [] as Record<string, unknown>[],
+    oemCommandUpdates: [] as Record<string, unknown>[],
+    lookupOutcome: { status: 'confirmed_success', providerReference: 'sm-pay-123', rawResponse: { id: 'sm-pay-123' } } as any,
 }));
 
+vi.mock('../../services/sparkmeter-payment-client.js', () => ({
+    lookupSparkMeterPayment: vi.fn(async () => state.lookupOutcome),
+}));
+vi.mock('../../services/oem-installation-credentials.js', () => ({
+    loadInstallationCredentials: vi.fn(async () => ({
+        authStrategy: 'api_key_pair',
+        apiKey: 'test-api-key',
+        apiSecret: 'test-api-secret',
+    })),
+}));
 vi.mock('../../services/ledger.js', () => ({ captureHold: state.captureHold }));
 vi.mock('../../services/idempotency.js', () => ({
     ledgerKey: (...parts: string[]) => parts.join('.'),
@@ -45,13 +58,20 @@ vi.mock('../../db/supabase.js', () => ({
                         }) }),
                     }),
                     update: (payload: Record<string, unknown>) => ({
-                        eq: () => ({ in: async () => {
-                            state.deliveredUpdates.push(payload);
-                            return { error: null };
-                        }, eq: () => ({ is: () => ({ select: async () => {
-                            state.reviewUpdates.push(payload);
-                            return { data: [{ id: 'order-1' }], error: null };
-                        } }) }) }),
+                        eq: () => ({
+                            in: async () => {
+                                state.deliveredUpdates.push(payload);
+                                return { error: null };
+                            },
+                            eq: () => ({
+                                is: () => ({
+                                    select: async () => {
+                                        state.reviewUpdates.push(payload);
+                                        return { data: [{ id: 'order-1' }], error: null };
+                                    },
+                                }),
+                            }),
+                        }),
                     }),
                 };
             }
@@ -78,6 +98,28 @@ vi.mock('../../db/supabase.js', () => ({
                     },
                 };
             }
+            if (table === 'oem_commands') {
+                return {
+                    select: (_cols: string) => ({
+                        in: (_c1: string, _v1: any[]) => ({
+                            in: async (_c2: string, _v2: any[]) => ({
+                                data: state.oemCommands.map((c) => ({ wallet_hold_id: c.wallet_hold_id })),
+                                error: null,
+                            }),
+                            limit: async () => ({
+                                data: state.oemCommands,
+                                error: null,
+                            }),
+                        }),
+                    }),
+                    update: (payload: Record<string, unknown>) => ({
+                        eq: (_col: string, val: string) => {
+                            state.oemCommandUpdates.push({ id: val, ...payload });
+                            return Promise.resolve({ error: null });
+                        },
+                    }),
+                };
+            }
             throw new Error(`unexpected table ${table}`);
         },
         rpc: async (_name: string, args: { p_hold_id: string }) => {
@@ -87,7 +129,7 @@ vi.mock('../../db/supabase.js', () => ({
     },
 }));
 
-import { sweepExpiredHolds } from '../scheduler.js';
+import { sweepExpiredHolds, reconcileAmbiguousOemCommands } from '../scheduler.js';
 
 describe('purchase recovery scheduler', () => {
     beforeEach(() => {
@@ -181,4 +223,126 @@ describe('purchase recovery scheduler', () => {
         }));
         expect(state.exceptions).toContainEqual(expect.objectContaining({ category: 'purchase_token_review' }));
     });
+
+    it('never releases a hold protected by an ambiguous oem_command', async () => {
+        state.orders = [];
+        state.staleHolds = [{ id: 'hold-ambiguous' }];
+        state.oemCommands = [{ wallet_hold_id: 'hold-ambiguous', status: 'submitted' }];
+        await sweepExpiredHolds();
+        expect(state.releasedHolds).toHaveLength(0);
+    });
+
+    it('releases a stale hold when oem_command is terminal (succeeded or failed)', async () => {
+        state.orders = [];
+        state.staleHolds = [{ id: 'hold-terminal' }];
+        state.oemCommands = [];
+        await sweepExpiredHolds();
+        expect(state.releasedHolds).toContain('hold-terminal');
+    });
+
+    it('reconciles ambiguous oem command on confirmed_success by capturing hold and delivering order', async () => {
+        state.captureHold.mockResolvedValue({ id: 'ledger-1' });
+        state.oemCommands = [{
+            id: 'cmd-1',
+            oem_type: 'sparkmeter',
+            purchase_order_id: 'order-1',
+            wallet_hold_id: 'hold-1',
+            status: 'submitted',
+            attempt_count: 1,
+            installation_id: 'inst-1',
+            tenant_id: 'tenant-1',
+            request_payload: { customerId: 'cust-1', amountMinor: 1000 },
+            oem_installations: {
+                id: 'inst-1',
+                base_url: 'https://api.sparkmeter.cloud',
+                approved_hostnames: ['api.sparkmeter.cloud'],
+                status: 'active',
+            },
+        }];
+        state.lookupOutcome = {
+            status: 'confirmed_success',
+            providerReference: 'sm-pay-123',
+            rawResponse: { id: 'sm-pay-123' },
+        };
+
+        const result = await reconcileAmbiguousOemCommands();
+        expect(result.succeeded).toBe(1);
+        expect(state.captureHold).toHaveBeenCalledOnce();
+        expect(state.oemCommandUpdates).toContainEqual(expect.objectContaining({
+            id: 'cmd-1',
+            status: 'succeeded',
+            provider_reference: 'sm-pay-123',
+        }));
+        expect(state.deliveredUpdates).toContainEqual(expect.objectContaining({
+            status: 'delivered',
+            delivery_state: 'payment_processed_delivery_unconfirmed',
+        }));
+    });
+
+    it('reconciles ambiguous oem command on confirmed_failure by releasing hold and failing order', async () => {
+        state.oemCommands = [{
+            id: 'cmd-2',
+            oem_type: 'sparkmeter',
+            purchase_order_id: 'order-2',
+            wallet_hold_id: 'hold-2',
+            status: 'submitted',
+            attempt_count: 1,
+            installation_id: 'inst-1',
+            tenant_id: 'tenant-1',
+            request_payload: { customerId: 'cust-2', amountMinor: 1000 },
+            oem_installations: {
+                id: 'inst-1',
+                base_url: 'https://api.sparkmeter.cloud',
+                approved_hostnames: ['api.sparkmeter.cloud'],
+                status: 'active',
+            },
+        }];
+        state.lookupOutcome = {
+            status: 'confirmed_failure',
+            reason: 'Customer not found',
+            rawResponse: { error: 'not_found' },
+        };
+
+        const result = await reconcileAmbiguousOemCommands();
+        expect(result.failed).toBe(1);
+        expect(state.releasedHolds).toContain('hold-2');
+        expect(state.oemCommandUpdates).toContainEqual(expect.objectContaining({
+            id: 'cmd-2',
+            status: 'failed',
+            error_message: 'Customer not found',
+        }));
+    });
+
+    it('escalates ambiguous oem command to manual_review after retry exhaustion', async () => {
+        state.oemCommands = [{
+            id: 'cmd-3',
+            oem_type: 'sparkmeter',
+            purchase_order_id: 'order-3',
+            wallet_hold_id: 'hold-3',
+            status: 'submitted',
+            attempt_count: 5,
+            installation_id: 'inst-1',
+            tenant_id: 'tenant-1',
+            request_payload: { customerId: 'cust-3', amountMinor: 1000 },
+            oem_installations: {
+                id: 'inst-1',
+                base_url: 'https://api.sparkmeter.cloud',
+                approved_hostnames: ['api.sparkmeter.cloud'],
+                status: 'active',
+            },
+        }];
+        state.lookupOutcome = { status: 'unknown' };
+
+        const result = await reconcileAmbiguousOemCommands();
+        expect(result.pendingReview).toBe(1);
+        expect(state.oemCommandUpdates).toContainEqual(expect.objectContaining({
+            id: 'cmd-3',
+            status: 'manual_review',
+        }));
+        expect(state.exceptions).toContainEqual(expect.objectContaining({
+            category: 'oem_command_review',
+            target_id: 'cmd-3',
+        }));
+    });
 });
+
