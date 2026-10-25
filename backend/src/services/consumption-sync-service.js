@@ -418,7 +418,7 @@ async function runConsumptionSync(input = {}) {
       attemptsUsed = attempt;
       try {
         stationResult = await syncStation(stationId, statsByStation.get(stationId), { ...input, mode, owner, progress, onProgress: (saved) => { progress = saved; } });
-        if (stationResult.storedRows > 0) {
+        if (stationResult.storedRows > 0 || stationResult.complete) {
           stationResult.aggregateRefresh = await refreshMeterReadingAggregates([stationId]);
         }
         break;

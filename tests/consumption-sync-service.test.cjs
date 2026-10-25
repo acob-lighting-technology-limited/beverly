@@ -9,9 +9,9 @@ process.env.CONSUMPTION_SYNC_RETRIES = "1";
 const supabase = require("../backend/src/services/supabase-service");
 const original = { fetch: global.fetch, rest: supabase.restRequest, read: supabase.restRequestWithResponse };
 const states = new Map(), writes = [], calls = [];
-let pages = [], businessCode = 0, aggregateFailure = false, writeFailure = false, lostLease = false, quotaBytes = 409783443;
+let pages = [], businessCode = 0, aggregateFailure = false, writeFailure = false, lostLease = false, aggregateFailuresRemaining = 0, aggregateCalls = 0, quotaBytes = 409783443;
 const empty = { response: { status: 200, headers: { get: () => "0-0/0" } }, body: [] };
-function reset() { states.clear(); writes.length = 0; calls.length = 0; pages = []; businessCode = 0; aggregateFailure = false; writeFailure = false; lostLease = false; quotaBytes = 409783443; }
+function reset() { states.clear(); writes.length = 0; calls.length = 0; pages = []; businessCode = 0; aggregateFailure = false; writeFailure = false; lostLease = false; aggregateFailuresRemaining = 0; aggregateCalls = 0; quotaBytes = 409783443; }
 function row(meterId, day, stationId = "TUNGA") { return { stationId, meterId, currentDate: day, total1: 100 }; }
 supabase.restRequest = async (pathname, options = {}) => {
   writes.push({ pathname, body: options.body });
@@ -37,7 +37,9 @@ supabase.restRequest = async (pathname, options = {}) => {
 };
 supabase.restRequestWithResponse = async (pathname) => {
   if (pathname.includes("refresh_meter_reading_aggregates")) {
+    aggregateCalls += 1;
     if (aggregateFailure) throw new Error("Aggregate failed");
+    if (aggregateFailuresRemaining > 0) { aggregateFailuresRemaining -= 1; throw new Error("Aggregate retry needed"); }
     return empty;
   }
   if (pathname.includes("order=reading_date.desc")) return { ...empty, body: [{ reading_date: "2026-10-24" }] };
@@ -92,6 +94,15 @@ global.fetch = async (url, init) => {
   assert.equal(failedAggregate.ok, false);
   assert.equal(states.get("TUNGA").last_status, "failed");
   assert.match(states.get("TUNGA").last_error, /Aggregate/);
+
+  reset();
+  pages = [[row("RETRY", "2026-10-22")]];
+  aggregateFailuresRemaining = 1;
+  const aggregateRetry = await runConsumptionSync({ ...input, stationAttempts: 2 });
+  assert.equal(aggregateRetry.ok, true);
+  assert.equal(aggregateFailuresRemaining, 0);
+  assert.equal(aggregateCalls, 2, "failed aggregates must run again even after source exhaustion");
+  assert.equal(states.get("TUNGA").last_status, "succeeded");
 
   reset();
   pages = [[row("DUP", "2026-10-22"), row("DUP", "2026-10-22")]];
