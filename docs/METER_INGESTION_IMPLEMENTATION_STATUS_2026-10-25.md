@@ -76,7 +76,17 @@ Evidence directory: `tmp/meter-recovery/`.
 - Browser suite passed after completed builds.
 - Hardening checks passed: sixteen of sixteen.
 
-Production deployment and recovery remain pending.
+Production database migrations are now applied.
+Runtime deployment and recovery remain pending.
+Hourly dispatch remains inactive pending verification.
+
+CI exposed additional dependency vulnerabilities.
+Zod and Puppeteer received patched versions.
+Zod record schemas preserve string keys.
+Fast-uri overrides now select patched releases.
+Wallet runtime tests passed after upgrading.
+PDF browser compatibility passed after upgrading.
+Dependency security checks now pass locally.
 Release evidence must update this document.
 
 ## Remaining external verification
