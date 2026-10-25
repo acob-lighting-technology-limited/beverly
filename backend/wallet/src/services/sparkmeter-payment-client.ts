@@ -64,9 +64,9 @@ export async function submitSparkMeterPayment(
         return lookupSparkMeterPayment(input, deps);
     }
 
-    if (response.status === 201) {
+    if (response.status === 201 || response.status === 200) {
         const payload = await response.json().catch(() => null);
-        const outcome = parseSparkMeterPaymentResponse(201, payload, input);
+        const outcome = parseSparkMeterPaymentResponse(response.status, payload, input);
         if (outcome.status === 'confirmed_success') return outcome;
         return lookupSparkMeterPayment(input, deps);
     }

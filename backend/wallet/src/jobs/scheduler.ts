@@ -116,7 +116,7 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
 }> {
     const { data: commands, error } = await adminClient
         .from('oem_commands')
-        .select('id, command_type, oem_type, tenant_id, installation_id, idempotency_key, purchase_order_id, wallet_hold_id, status, attempt_count, request_payload, created_at, oem_installations(id, base_url, approved_hostnames, status)')
+        .select('id, oem_installation_id, operation_key, idempotency_key, canonical_request, status, attempt_count, created_at, oem_installations(id, base_url, approved_hostnames, status, tenant_id)')
         .in('status', ['submitted', 'unknown'])
         .limit(limit);
     if (error) throw error;
@@ -126,8 +126,13 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
     let pendingReview = 0;
 
     for (const cmd of (commands ?? []) as any[]) {
-        if (cmd.oem_type !== 'sparkmeter') continue;
+        if (cmd.oem_type && cmd.oem_type !== 'sparkmeter') continue;
+        if (cmd.operation_key && !cmd.operation_key.startsWith('vending.')) continue;
         const attempts = Number(cmd.attempt_count ?? 1);
+        const poId = cmd.purchase_order_id || cmd.canonical_request?.commandId;
+        const holdId = cmd.wallet_hold_id || cmd.canonical_request?.holdId;
+        const customerId = cmd.request_payload?.customerId || cmd.canonical_request?.customerId || cmd.canonical_request?.externalCustomerId || '';
+        const amountMinor = cmd.request_payload?.amountMinor || cmd.canonical_request?.amountMinor || 0;
 
         if (attempts >= 5) {
             await adminClient
@@ -137,7 +142,7 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                     updated_at: new Date().toISOString(),
                 })
                 .eq('id', cmd.id);
-            if (cmd.purchase_order_id) {
+            if (poId) {
                 await adminClient
                     .from('purchase_orders')
                     .update({
@@ -145,7 +150,7 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                         delivery_state: 'oem_delivery_pending_review',
                         failure_reason: 'OEM payment confirmation timed out; requires manual review',
                     })
-                    .eq('id', cmd.purchase_order_id)
+                    .eq('id', poId)
                     .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
             }
             await adminClient.from('operations_exceptions').upsert([{
@@ -156,8 +161,8 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                 severity: 'critical',
                 status: 'open',
                 details: {
-                    purchase_order_id: cmd.purchase_order_id,
-                    wallet_hold_id: cmd.wallet_hold_id,
+                    purchase_order_id: poId,
+                    wallet_hold_id: holdId,
                     attempts,
                     reason: 'ambiguous_oem_command_retries_exhausted',
                 },
@@ -175,7 +180,7 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
             const { loadInstallationCredentials } = await import('../services/oem-installation-credentials.js');
             const credentials = await loadInstallationCredentials({
                 id: inst.id,
-                tenantId: cmd.tenant_id ?? '',
+                tenantId: cmd.tenant_id ?? inst.tenant_id ?? '',
                 status: inst.status,
             });
             if (credentials.authStrategy !== 'api_key_pair') {
@@ -189,8 +194,8 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                 approvedHostnames: inst.approved_hostnames,
                 apiKey: credentials.apiKey,
                 apiSecret: credentials.apiSecret,
-                externalCustomerId: cmd.request_payload?.customerId || cmd.request_payload?.customer_id || cmd.request_payload?.externalCustomerId || '',
-                amountMinor: cmd.request_payload?.amountMinor || cmd.request_payload?.expectedAmountMinor || 0,
+                externalCustomerId: customerId,
+                amountMinor,
                 currency: 'NGN',
                 settlementCurrency: 'NGN',
             });
@@ -207,38 +212,38 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                     })
                     .eq('id', cmd.id);
 
-                if (cmd.wallet_hold_id) {
+                if (holdId) {
                     const { data: hold } = await adminClient
                         .from('wallet_holds')
                         .select('status, wallet_id, amount_minor')
-                        .eq('id', cmd.wallet_hold_id)
+                        .eq('id', holdId)
                         .maybeSingle();
 
                     if (hold?.status === 'active') {
                         const { captureHold } = await import('../services/ledger.js');
                         const { ledgerKey } = await import('../services/idempotency.js');
                         await captureHold({
-                            holdId: cmd.wallet_hold_id,
+                            holdId,
                             entryType: 'purchase_debit',
                             referenceType: 'purchase_order',
-                            referenceId: cmd.purchase_order_id,
-                            idempotencyKey: ledgerKey('purchase', 'capture', cmd.purchase_order_id, 'sparkmeter-reconcile'),
+                            referenceId: poId,
+                            idempotencyKey: ledgerKey('purchase', 'capture', poId, 'sparkmeter-reconcile'),
                             memo: `SparkMeter Reconcile · ${cmd.id}`,
                             createdBy: 'system',
                         });
                     }
                 }
 
-                if (cmd.purchase_order_id) {
+                if (poId) {
                     await adminClient
                         .from('purchase_orders')
                         .update({
                             status: 'delivered',
                             delivery_state: 'payment_processed_delivery_unconfirmed',
                             token: null,
-                            oem_id: 'sparkmeter',
+                            oem_id: 'e1532892-e09d-44f9-a9cb-b99b5c9ebecf',
                         })
-                        .eq('id', cmd.purchase_order_id)
+                        .eq('id', poId)
                         .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
                 }
                 succeeded++;
@@ -255,18 +260,18 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                     })
                     .eq('id', cmd.id);
 
-                if (cmd.wallet_hold_id) {
-                    await adminClient.rpc('fn_release_hold', { p_hold_id: cmd.wallet_hold_id });
+                if (holdId) {
+                    await adminClient.rpc('fn_release_hold', { p_hold_id: holdId });
                 }
 
-                if (cmd.purchase_order_id) {
+                if (poId) {
                     await adminClient
                         .from('purchase_orders')
                         .update({
                             status: 'failed',
                             failure_reason: failReason,
                         })
-                        .eq('id', cmd.purchase_order_id)
+                        .eq('id', poId)
                         .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
                 }
                 failed++;
