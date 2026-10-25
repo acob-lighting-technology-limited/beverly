@@ -126,7 +126,7 @@ jobs:
   # ── E2E tests (API layer — no browser needed) ─────────────────────────
   e2e-api:
     name: E2E API integrity tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     needs: [wallet-unit-tests]
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'e2e')
