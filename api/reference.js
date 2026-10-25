@@ -1649,8 +1649,42 @@ async function fetchUpstreamCapabilities(request) {
 async function fetchLiveStationDirectory(request) {
   const manufacturers = (await listOemManufacturers()).filter((oem) => oem.status === "active" || oem.isSeedDefault);
   const batches = await Promise.all(manufacturers.map(async (oem) => {
+    if (oem.vendingStrategy === "direct_credit") {
+      const mappings = await listOemStationMappings(oem.id, oem.slug).catch(() => []);
+      if (mappings && mappings.length > 0) {
+        return mappings.map((m) => {
+          const stationId = String(m?.stationId || m?.station_id || "").trim().toUpperCase();
+          const name = String(m?.communityLabel || m?.name || stationId).trim() || stationId;
+          return {
+            stationId,
+            name,
+            oemId: oem.id,
+            oemSlug: oem.slug,
+            oemName: oem.displayName,
+            status: "active",
+          };
+        }).filter((station) => station.stationId && station.stationId !== "ADMIN");
+      }
+    }
     const config = await oemRegistry.getOemScopedLiveConfig(oem.id);
-    if (!config && !oem.isSeedDefault) return [];
+    if (!config && !oem.isSeedDefault) {
+      const mappings = await listOemStationMappings(oem.id, oem.slug).catch(() => []);
+      if (mappings && mappings.length > 0) {
+        return mappings.map((m) => {
+          const stationId = String(m?.stationId || m?.station_id || "").trim().toUpperCase();
+          const name = String(m?.communityLabel || m?.name || stationId).trim() || stationId;
+          return {
+            stationId,
+            name,
+            oemId: oem.id,
+            oemSlug: oem.slug,
+            oemName: oem.displayName,
+            status: "active",
+          };
+        }).filter((station) => station.stationId && station.stationId !== "ADMIN");
+      }
+      return [];
+    }
     const result = await proxyLive(
       {
         method: "POST",
@@ -1662,7 +1696,24 @@ async function fetchLiveStationDirectory(request) {
       "/api/station/read",
       jsonRequestData({ pageNumber: 1, pageSize: 500 })
     );
-    if (!result || result.status >= 400) return [];
+    if (!result || result.status >= 400 || !collectionRowsFromPayload(result.body).length) {
+      const mappings = await listOemStationMappings(oem.id, oem.slug).catch(() => []);
+      if (mappings && mappings.length > 0) {
+        return mappings.map((m) => {
+          const stationId = String(m?.stationId || m?.station_id || "").trim().toUpperCase();
+          const name = String(m?.communityLabel || m?.name || stationId).trim() || stationId;
+          return {
+            stationId,
+            name,
+            oemId: oem.id,
+            oemSlug: oem.slug,
+            oemName: oem.displayName,
+            status: "active",
+          };
+        }).filter((station) => station.stationId && station.stationId !== "ADMIN");
+      }
+      return [];
+    }
     return collectionRowsFromPayload(result.body).map((row) => {
       const stationId = String(row?.stationId || row?.station_id || row?.id || "").trim().toUpperCase();
       return {

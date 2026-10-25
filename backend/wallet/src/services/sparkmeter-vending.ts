@@ -87,7 +87,7 @@ export async function executeSparkMeterVend(
         .from('oem_inventory_meters')
         .select(`
             external_id, customer_external_id, serial, tariff_id, meter_phase, site_id, oem_installation_id,
-            oem_installations(id, base_url, approved_hostnames, tenant_id, status, oem_type)
+            oem_installations(id, base_url, approved_hostnames, tenant_id, status, oem_id)
         `)
         .or(`serial.eq.${input.meterId},external_id.eq.${input.meterId}`)
         .eq('status', 'active')
@@ -149,7 +149,7 @@ export async function executeSparkMeterVend(
             status: 'created',
             idempotency_key: idemKey,
             created_by: input.userId,
-            oem_id: 'sparkmeter',
+            oem_id: installation.oem_id || 'e1532892-e09d-44f9-a9cb-b99b5c9ebecf',
         })
         .select('*')
         .single();
