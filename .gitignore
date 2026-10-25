@@ -94,4 +94,41 @@ tools/strip_row_json*.mjs
 tools/execute_*.mjs
 tools/execute_*.js
 tools/move_*.cjs
-.codex-audit/
+
+# Codex, agent scratch & audit outputs
+.codex-*
+**/.codex-*/**
+.omc/
+outputs/
+.chart-data-*/
+
+# Legacy crawl & visual comparison dumps
+source-crawl/
+replica-screenshots/
+artifacts/
+
+# Office documents, onboarding forms, and compressed archives
+*.docx
+*.xlsx
+*.pptx
+*.zip
+ACOB_Customer_Onboarding_Form*
+Beverly_*_Template.csv
+*flyer*.png
+*flyer*.html
+beverly-logo-animation*.html
+beverly-motion-showcase.html
+dashboard-replica-*.png
+source-desktop-*.png
+
+# Ad-hoc development blueprints in repository root
+BEVERLY_SUPER_AD_PROMPT.md
+audit_report.md
+implementation_plan_disadvantages_and_improvements.md
+multi_oem_gateway_disadvantages_and_mitigations.md
+multi_oem_telemetry_and_vending_gateway_blueprint.md
+sparkmeter_comprehensive_knowledge_base.md
+sparkmeter_live_platform_audit_evidence.md
+beverly_database_and_telemetry_architecture.md
+beverly_universal_oem_sparkmeter_integration_blueprint.md
+
