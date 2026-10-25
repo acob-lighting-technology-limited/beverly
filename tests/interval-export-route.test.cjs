@@ -22,7 +22,7 @@ assert.deepEqual(
   }),
   {
     lang: "en",
-    currentDateRange: ["2026-07-07T00:00:00.000Z", "2026-07-14T23:59:59.999Z"],
+    currentDateRange: ["2026-07-07", "2026-07-14"],
     stationId: "TUNGA",
   },
 );
@@ -74,6 +74,7 @@ function vercelResponse(res) {
     req.on("end", () => {
       const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       upstreamPages.push(payload.pageNumber);
+      assert(payload.currentDateRange.every(day => /^\d{4}-\d{2}-\d{2}$/.test(day)), "OEM date filters require calendar days");
       const data = payload.pageNumber === 1
         ? [{ meterId: "M-1", customerName: "Ada", currentDate: "2026-07-14" }, { meterId: "M-2", customerName: "Bola", currentDate: "2026-07-14" }]
         : [{ meterId: "M-3", customerName: "Ada Two", currentDate: "2026-07-13" }];

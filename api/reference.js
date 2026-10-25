@@ -1153,7 +1153,7 @@ function sanitizeDailyMeterReadPayload(payload) {
     : Array.isArray(sanitized.dateRange)
       ? sanitized.dateRange
       : [sanitized.FROM ?? sanitized.from, sanitized.TO ?? sanitized.to];
-  if (range[0] && range[1]) sanitized.currentDateRange = [range[0], range[1]];
+  if (range[0] && range[1]) sanitized.currentDateRange = [String(range[0]).slice(0, 10), String(range[1]).slice(0, 10)];
   if (!sanitized.stationId && sanitized.SITE_ID) sanitized.stationId = sanitized.SITE_ID;
   delete sanitized.FROM;
   delete sanitized.TO;
