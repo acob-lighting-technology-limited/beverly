@@ -10,7 +10,7 @@ export class StationVendScopeError extends Error {
     }
 }
 
-const SPARKMETER_SITE_TO_STATION: Record<string, string> = {
+export const SPARKMETER_SITE_TO_STATION: Record<string, string> = {
     '0619f73f-922d-4ddd-afe5-901c2ae771f7': 'OTU-COSTAIN',
     '3a1bb0d2-4521-4f24-bab9-8426d4827480': 'ADEBAYO',
     '655ace31-6683-4521-b8ed-fcb7b32b287c': 'OLOYAN',
