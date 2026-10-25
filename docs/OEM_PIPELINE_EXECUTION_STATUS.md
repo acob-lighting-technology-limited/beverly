@@ -1,6 +1,122 @@
 # OEM pipeline execution status
 
-Status: **Incomplete: internal provisioning and deployment verification remain, alongside provider-controlled write gates**. Updated 2026-10-19.
+Status: **Incomplete: production migration, release, live telemetry verification, and financial integration remain**. Updated 2026-10-23.
+
+## 2026-10-23 current release sequence
+
+This section supersedes older checkpoint statements about credentials, restore access, and the release candidate. Historical entries below remain evidence for their recorded dates, not current activation instructions. Detailed evidence is in architecture audit checkpoints 23.56–23.62.
+
+- Work continues only in `codex/sparkmeter-telemetry-ownership-recovery`, the isolated restored-main worktree. The primary checkout's unrelated changes are preserved. Last verified main was `c1b68e84`; it is already in this branch's ancestry. Recheck current main and inspect the final OEM-only diff before release; cached ancestry is not proof against later production changes.
+- PR #198 contains the ownership-quarantine recovery. The last remotely verified head was `70f2a75f`: eleven checks passed, one isolated API integrity job was skipped, and preview health returned HTTP 200. Later local audit commits have no remote verification. A skipped job is not a passing API assertion.
+- Restore migration execution, exact-owner/wrong-owner transactional checks, cleanup, and rollback passed. Production's ownership-quarantine migration remains unapplied. The last production check showed the installation in `draft`, with zero telemetry readings and quarantine rows. Earlier zero-credential observations predate later provisioning and must not be treated as current facts without a fresh authorized check.
+- Supabase and GitHub origin access were denied by browser policy. The owner deferred resolving access while independent local work proceeds. Do not use another interface to circumvent those denials. No migration, merge, production promotion, or activation is implied by passing local checks.
+
+### Read-only telemetry release gates
+
+1. Restore authorized release access. Recheck current main, PR head, CI, deployment commit, database identity, installation configuration, credentials metadata, and existing telemetry counts. Never print decrypted credentials.
+2. Apply only the reviewed `20261021120000_oem_telemetry_ownership_quarantine.sql` to Beverly production after confirming its prerequisites and current function shape. Verify the ownership trigger, restricted RPC privileges, and new quarantine branch/index. Its restore rehearsal does not substitute for production verification.
+3. Release the reviewed OEM change while preserving newer production commits. Verify all affected checks and the deployed revision. Use the rollback script only after reviewing its effects and confirming the original strict ownership behavior is appropriate. It restores the previous RPC and retains stored readings/quarantine; it does not undo a release or change installation status.
+4. Run the authorized one-site, one-date telemetry canary. Record the starting installation state and restore it in a `finally` path. Prove valid readings persist, mismatched ownership is quarantined, and the completed checkpoint has `has_more=false`. Any quarantine requires review before general activation.
+5. Replay the same partition and compare reading identities, counts, quarantine evidence, and checkpoint. A completed HTTP request alone does not prove idempotency. Verify authorized scoped API/UI reads and unrelated-actor denial against deployed data.
+6. Enable scheduled read-only synchronization only after those checks pass. Observe the first scheduled run and document recovery. Requests are bounded to twenty pages and recent dates; page-budget failures require explicit site partition replay. Older historical backfill is not implemented by the seven-day replay endpoint.
+
+### Financial features still require implementation
+
+- Current payment specification: [`SPARKMETER_PAYMENT_CONTRACT.md`](SPARKMETER_PAYMENT_CONTRACT.md). Authenticated Koios v1 documentation rechecked on October 23 confirms the customer-scoped create request, organization-unique caller reference, reference lookup, processed-payment evidence, and reversal route. The documented 429 example mentions 500 requests/minute; actual write-rate scope and duplicate-response timing remain unconfirmed.
+- SparkMeter payment translation and a single-attempt canary policy exist, but production wallet dispatch and payment reconciliation are not connected. Full Beverly financial feature parity is not delivered by telemetry activation.
+- Support ticket CH-82160 confirms no separate Koios payment sandbox. Prepare the provider-recommended assigned test meter/customer, separate low-balance sales account, and a token restricted to that account. No new test target or token is inferred from an existing customer name.
+- Implement and test provider-confirmed lookup/reconciliation before connecting dispatch. A single-attempt design can retain ambiguous holds and use read-only lookup without assuming safe POST retries. Engineering's duplicate external-ID behavior, delayed-visibility guarantees, and payment-write limits remain required before adding automatic financial retry. Never infer those guarantees from Calinmeter token-task behavior.
+- The NGN 100 ceiling limits a separately confirmed test; it does not authorize an unspecified transaction. Unknown energy semantics and physical offline cutoff remain explicitly unverified.
+
+Independent local checks can verify code, contracts, types, and builds. They cannot close production database, deployment, live-data, financial-contract, or physical-meter gates.
+
+### Owner-run migration handoff
+
+Target: Beverly production project `qpoipyqgrjsjdvfqmxok`.
+Installation: `53f12390-74f7-40b3-b1db-e907c256986d`.
+The restore project is different.
+
+Apply after reviewing these results:
+
+```sql
+-- Read-only baseline. Save the results before migration.
+select id, status, environment,
+  (select count(*) from public.oem_telemetry_readings r
+   where r.oem_installation_id = i.id) as reading_count,
+  (select count(*) from public.oem_telemetry_quarantine q
+   where q.oem_installation_id = i.id) as quarantine_count
+from public.oem_installations i
+where i.id = '53f12390-74f7-40b3-b1db-e907c256986d';
+
+select
+  to_regclass('public.oem_inventory_meters') is not null as inventory_exists,
+  to_regclass('public.oem_sync_cursors') is not null as checkpoints_exist,
+  to_regprocedure('public.apply_oem_telemetry_page(uuid,text,text,jsonb,jsonb,jsonb)') is not null as page_rpc_exists,
+  exists(select 1 from pg_trigger
+    where tgrelid = 'public.oem_telemetry_readings'::regclass
+      and tgname = 'require_oem_telemetry_meter_ownership'
+      and not tgisinternal and tgenabled = 'O') as ownership_trigger_enabled;
+```
+
+Expected installation status: `draft`.
+Expected environment: `production`.
+All prerequisite booleans must pass.
+Stop for any unexpected result.
+Inspect the current function before replacement:
+
+```sql
+select pg_get_functiondef(
+  'public.apply_oem_telemetry_page(uuid,text,text,jsonb,jsonb,jsonb)'::regprocedure
+) as current_page_rpc;
+```
+
+Save its complete definition privately.
+Compare against the reviewed rollback function.
+Stop if newer changes would disappear.
+
+1. Open the production SQL editor.
+2. Save baseline results and function definition.
+3. Open the reviewed migration file.
+4. Paste its complete contents unchanged.
+5. Run its complete transaction once.
+6. Save the execution result.
+7. Run the verification query below.
+
+Migration: [`20261021120000_oem_telemetry_ownership_quarantine.sql`](../supabase/migrations/20261021120000_oem_telemetry_ownership_quarantine.sql).
+SHA-256: `2E563BA27B4B1C06BA99C4D8DE0ACE6EF82735D7B317753BB8ACB9EAC64331DE`.
+
+```sql
+-- Read-only verification. All six booleans must be true.
+with target as (
+  select to_regprocedure('public.apply_oem_telemetry_page(uuid,text,text,jsonb,jsonb,jsonb)')::oid as fn
+)
+select
+  to_regclass('public.oem_telemetry_quarantine_ownership_lookup_idx') is not null as quarantine_index_exists,
+  coalesce(position('telemetry_meter_ownership_mismatch' in pg_get_functiondef(fn)) > 0, false) as quarantine_branch_exists,
+  exists(select 1 from pg_trigger
+    where tgrelid = 'public.oem_telemetry_readings'::regclass
+      and tgname = 'require_oem_telemetry_meter_ownership'
+      and not tgisinternal and tgenabled = 'O') as ownership_trigger_enabled,
+  coalesce(has_function_privilege('service_role', fn, 'EXECUTE'), false) as service_execution_allowed,
+  not coalesce(has_function_privilege('anon', fn, 'EXECUTE'), true) as anonymous_execution_denied,
+  not coalesce(has_function_privilege('authenticated', fn, 'EXECUTE'), true) as client_execution_denied
+from target;
+```
+
+Rerun the baseline query afterward.
+Status and counts must remain unchanged.
+This migration does not ingest readings.
+It does not activate the installation.
+These checks verify migration structure only.
+Live ingestion remains a separate gate.
+
+Rollback: [`20261021120000_oem_telemetry_ownership_quarantine.rollback.sql`](../supabase/rollbacks/20261021120000_oem_telemetry_ownership_quarantine.rollback.sql).
+Use only after reviewing the failure.
+Rollback restores strict page rejection.
+It retains readings and quarantine evidence.
+It does not deactivate an installation.
+Record manual execution for migration-history reconciliation.
+Never reconcile history without verifying SQL.
 
 ## 2026-10-19 release investigation
 

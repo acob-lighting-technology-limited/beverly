@@ -28,3 +28,4 @@ assert.doesNotMatch(reads, /provider_payload/);
 assert.match(readsRollback, /drop function if exists public\.list_authorized_oem_telemetry/);
 console.log("OEM telemetry migration contract passed");
 require('./oem-telemetry-ownership-migration.test.cjs');
+require('./oem-telemetry-ownership-quarantine.test.cjs');

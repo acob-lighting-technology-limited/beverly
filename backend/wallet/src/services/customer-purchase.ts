@@ -294,6 +294,30 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
         throw e;
     }
 
+    if (meter.oemId === 'sparkmeter') {
+        const wallet = customerWallet;
+        if (!wallet) throw new CustomerPurchaseError('Wallet not provisioned.', 'wallet_missing');
+        const { executeSparkMeterVend } = await import('./sparkmeter-vending.js');
+        const vendRes = await executeSparkMeterVend({
+            actorType: 'customer',
+            actorId: input.customerId,
+            userId: input.customerUserId,
+            walletId: wallet.id,
+            meterId: meter.meterId,
+            amountMinor: input.amountMinor,
+            clientIdempotencyKey: input.clientIdempotencyKey,
+            customerName: input.customerName,
+        });
+        return {
+            purchaseOrder: vendRes.purchaseOrder,
+            token: null,
+            units: vendRes.units,
+            receiptId: vendRes.receiptId,
+            authorizationUrl: null,
+            reference: null,
+        };
+    }
+
     const approvedMeter = await assertMeterApprovedForPurchase(input.customerId, meter.meterId);
     try {
         assertStationVendAllowed(approvedMeter.stationId, meter.stationId);

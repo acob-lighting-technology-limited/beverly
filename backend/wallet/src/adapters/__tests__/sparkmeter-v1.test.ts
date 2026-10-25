@@ -3,11 +3,31 @@ import {
     buildSparkMeterProductionCanaryPlan,
     buildSparkMeterAuthHeaders,
     buildSparkMeterPaymentRequest,
+    buildSparkMeterPaymentLookupRequest,
     evaluateSparkMeterCreditSafety,
     parseSparkMeterPaymentResponse,
 } from '../sparkmeter-v1.js';
 
 describe('SparkMeter Koios v1 adapter', () => {
+    it('never releases an ambiguous duplicate payment as a rejection', () => {
+        expect(parseSparkMeterPaymentResponse(400, {
+            errors: [{ title: 'Duplicate external ID', details: 'Payment already exists' }], data: null,
+        })).toEqual({ status: 'unknown' });
+    });
+    it('keeps a different customer payment ambiguous', () => {
+        expect(parseSparkMeterPaymentResponse(201, {
+            errors: [],
+            data: {
+                id: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                recipient_id: 'wrong-customer',
+                amount: { value: '100.00', currency: 'NGN' },
+                external_id: 'beverly-command', status: 'processed',
+            },
+        }, {
+            commandId: 'beverly-command', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'expected-customer',
+        })).toEqual({ status: 'unknown' });
+    });
     it.each([
         { creditMinor: Number.NaN },
         { creditMinor: Number.POSITIVE_INFINITY },
@@ -221,6 +241,9 @@ describe('SparkMeter Koios v1 adapter', () => {
                 external_id: 'ZQRS5',
                 status: 'processed',
             },
+        }, {
+            commandId: 'ZQRS5', amountMinor: 234, currency: 'USD',
+            settlementCurrency: 'USD', externalCustomerId: 'a49c0554-60be-406c-b109-03cc2ba785f4',
         })).toEqual({
             status: 'confirmed_success',
             providerReference: 'ZQRS5',
@@ -237,4 +260,93 @@ describe('SparkMeter Koios v1 adapter', () => {
             reason: 'Unknown parameter: query',
         });
     });
+
+    it.each([
+        { external_id: 'other-command' },
+        { recipient_id: 'other-customer' },
+        { id: '' },
+        { status: 'reversed' },
+        { amount: { value: '2.35', currency: 'USD' } },
+        { amount: { value: '2.34', currency: 'NGN' } },
+        { amount: { value: '2.3401', currency: 'USD' } },
+        { amount: { value: 2.34, currency: 'USD' } },
+        { amount: { value: '2e0', currency: 'USD' } },
+        { amount: { value: '-2.34', currency: 'USD' } },
+    ])('requires exact trusted payment evidence: %j', (override) => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: {
+                id: '3fa85f64-5717-4562-b3fc-2c963f66afa6', recipient_id: 'customer',
+                amount: { value: '2.34', currency: 'USD' },
+                external_id: 'command', status: 'processed', ...override,
+            },
+        }, { commandId: 'command', amountMinor: 234, currency: 'USD',
+            settlementCurrency: 'USD', externalCustomerId: 'customer' }))
+            .toEqual({ status: 'unknown' });
+    });
+
+    it('confirms an exact payment found by external ID', () => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: {
+                id: '3fa85f64-5717-4562-b3fc-2c963f66afa6', recipient_id: 'customer',
+                amount: { value: '100.0', currency: 'NGN' },
+                external_id: 'command', status: 'processed',
+            },
+        }, { commandId: 'command', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'customer' }))
+            .toEqual({ status: 'confirmed_success', providerReference: 'command' });
+    });
+
+    it.each([404, 429, 500])('keeps uncertain HTTP %i outcomes unknown', (status) => {
+        expect(parseSparkMeterPaymentResponse(status, { errors: [], data: null }))
+            .toEqual({ status: 'unknown' });
+    });
+
+    it('requires trusted context even for a processed response', () => {
+        expect(parseSparkMeterPaymentResponse(201, {
+            errors: [], data: { external_id: 'command', status: 'processed' },
+        })).toEqual({ status: 'unknown' });
+    });
+
+    it('builds documented payment lookup request by external ID', () => {
+        expect(buildSparkMeterPaymentLookupRequest('cmd-123')).toEqual({
+            method: 'GET',
+            path: '/api/v1/payments?external_id=cmd-123',
+        });
+        expect(() => buildSparkMeterPaymentLookupRequest('')).toThrow('SparkMeter lookup command is required');
+    });
+
+    it('confirms exact payment when lookup returns an array containing one matching record', () => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: [{
+                id: '3fa85f64-5717-4562-b3fc-2c963f66afa6', recipient_id: 'customer',
+                amount: { value: '100.00', currency: 'NGN' },
+                external_id: 'command-xyz', status: 'processed',
+            }],
+        }, {
+            commandId: 'command-xyz', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'customer',
+        })).toEqual({ status: 'confirmed_success', providerReference: 'command-xyz' });
+    });
+
+    it('keeps empty array lookup response unknown without releasing hold', () => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: [],
+        }, {
+            commandId: 'command-xyz', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'customer',
+        })).toEqual({ status: 'unknown' });
+    });
+
+    it('keeps multi-record array lookup response unknown', () => {
+        expect(parseSparkMeterPaymentResponse(200, {
+            errors: [], data: [
+                { id: '3fa85f64-5717-4562-b3fc-2c963f66afa6', external_id: 'command-xyz', status: 'processed' },
+                { id: '9fa85f64-5717-4562-b3fc-2c963f66afa9', external_id: 'command-xyz', status: 'processed' },
+            ],
+        }, {
+            commandId: 'command-xyz', amountMinor: 10000, currency: 'NGN',
+            settlementCurrency: 'NGN', externalCustomerId: 'customer',
+        })).toEqual({ status: 'unknown' });
+    });
 });
+

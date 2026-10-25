@@ -18,7 +18,12 @@ interface SyncDependencies {
     persistPage(installationId: string, mode: 'historical', scopeKey: string, page: TelemetryPage): Promise<{ readings: number; quarantine: number }>;
     wait?: (milliseconds: number) => Promise<void>;
 }
-export interface TelemetryReplayOptions { readonly date?: string; readonly site?: string }
+export interface TelemetryReplayOptions {
+    readonly date?: string;
+    readonly site?: string;
+    readonly allowHistoricalBackfill?: boolean;
+    readonly mode?: 'replay' | 'backfill';
+}
 export interface TelemetrySyncSummary {
     installations: number;
     pages: number;
@@ -41,8 +46,10 @@ export async function runSparkMeterTelemetrySync(
 ): Promise<TelemetrySyncSummary> {
     const today = new Date().toISOString().slice(0, 10);
     const date = options.date ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const isBackfill = options.allowHistoricalBackfill === true || options.mode === 'backfill';
+    const minDate = isBackfill ? '2020-01-01' : new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
     if (!z.string().date().safeParse(date).success
-        || date < new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
+        || date < minDate
         || date > today) throw new Error('OEM telemetry date outside replay window');
     if (options.site && !z.string().uuid().safeParse(options.site).success) throw new Error('OEM telemetry site outside installation');
     const site = options.site;
@@ -50,6 +57,7 @@ export async function runSparkMeterTelemetrySync(
     if (options.site && selected.length === 0) throw new Error('OEM telemetry site outside installation');
     const summary: TelemetrySyncSummary = { installations: selected.length, pages: 0, readings: 0, quarantine: 0, failures: [] };
     for (const target of selected) {
+        const initialQuarantine = summary.quarantine;
         const seen = new Set<string>();
         let cursor: string | undefined;
         let stage: 'fetch' | 'persist' = 'fetch';
@@ -78,6 +86,9 @@ export async function runSparkMeterTelemetrySync(
         } catch (error) {
             const reason = error instanceof Error && /^telemetry_/.test(error.message) ? error.message : `telemetry_${stage}_failed`;
             summary.failures.push({ installationId: target.installationId, reason });
+        }
+        if (summary.quarantine > initialQuarantine) {
+            summary.failures.push({ installationId: target.installationId, reason: 'telemetry_quarantine_requires_review' });
         }
     }
     if (summary.failures.length) {

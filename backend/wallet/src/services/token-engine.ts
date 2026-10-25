@@ -289,7 +289,7 @@ export interface MeterInfo {
     communicationWay?: string | null;
     isThreePhase?: boolean | null;
     sgc?: string | null;
-    resolutionSource?: 'energy_account' | 'local_binding' | 'energy_low_purchase_report' | 'archived_contract_sample';
+    resolutionSource?: 'energy_account' | 'local_binding' | 'energy_low_purchase_report' | 'archived_contract_sample' | 'oem_inventory';
     liveVerified?: boolean;
     /**
      * Phase 6 unification: which OEM this meter belongs to (from
@@ -365,6 +365,9 @@ export async function lookupMeter(
 
     const fallback = await lookupLocalAccountBinding(normalizedMeterId);
     if (fallback) return fallback;
+
+    const oemInventory = await lookupOemInventoryMeter(normalizedMeterId, opts.oemId);
+    if (oemInventory) return oemInventory;
 
     if (opts.allowHistoricalFallback) {
         const historical = await lookupHistoricalLowPurchaseReport(normalizedMeterId, opts.oemId).catch((error) => {
@@ -442,6 +445,58 @@ async function lookupLocalAccountBinding(meterId: string): Promise<MeterInfo | n
         // oem_id yet. A null value here is treated as "default OEM" downstream,
         // which is exactly correct since every such row is a real Calinmeter meter.
         oemId: (data as any).oem_id ?? null,
+    };
+}
+
+export async function lookupOemInventoryMeter(
+    meterId: string,
+    oemId?: string | null,
+    db = adminClient,
+): Promise<MeterInfo | null> {
+    const { data: meter, error } = await db
+        .from('oem_inventory_meters')
+        .select(`
+            external_id,
+            customer_external_id,
+            serial,
+            tariff_id,
+            meter_phase,
+            site_id,
+            oem_installation_id,
+            oem_installations(id, oem_type, tenant_id)
+        `)
+        .or(`serial.eq.${meterId},external_id.eq.${meterId}`)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle();
+
+    if (error || !meter) return null;
+
+    const detectedOemType = (meter.oem_installations as any)?.oem_type ?? 'sparkmeter';
+    if (oemId && oemId !== detectedOemType) {
+        return null;
+    }
+
+    const { data: customer } = await db
+        .from('oem_inventory_customers')
+        .select('name, phone, external_id')
+        .eq('oem_installation_id', meter.oem_installation_id)
+        .eq('external_id', meter.customer_external_id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+    return {
+        meterId: String(meter.serial || meter.external_id),
+        customerId: String(customer?.external_id || meter.customer_external_id),
+        customerName: String(customer?.name || `Customer ${meter.customer_external_id}`),
+        stationId: String(meter.site_id || 'UNKNOWN'),
+        tariffId: String(meter.tariff_id || 'RESIDENTIAL'),
+        protocolVersion: null,
+        communicationWay: null,
+        isThreePhase: meter.meter_phase === 'three_phase',
+        resolutionSource: 'oem_inventory',
+        liveVerified: true,
+        oemId: detectedOemType,
     };
 }
 

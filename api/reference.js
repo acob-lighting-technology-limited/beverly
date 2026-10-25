@@ -2828,6 +2828,15 @@ async function dispatchLocalDatabaseAction(request, pathname, requestData) {
     }
     const { syncActiveSparkMeterTelemetry } = await import("../backend/wallet/dist/services/oem-telemetry-sync.js");
     const query = cronQuery(request.url);
+    const allowHistoricalBackfill = query.backfill === "true" || query.mode === "backfill";
+    if (allowHistoricalBackfill) {
+      return localJobResponse(await syncActiveSparkMeterTelemetry({
+        date: query.date,
+        site: query.site,
+        allowHistoricalBackfill: true,
+        mode: "backfill"
+      }));
+    }
     return localJobResponse(await syncActiveSparkMeterTelemetry({ date: query.date, site: query.site }));
   }
   if ((request.method || "GET").toUpperCase() === "GET" && pathname === "/api/cron/sync-oem-dimensions") {
