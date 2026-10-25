@@ -3,7 +3,7 @@
 const supabase = require("./supabase-service");
 
 const defaultRetention = {
-  hotReadingDays: 90,
+  hotReadingDays: 60,
   cacheDays: 1,
   snapshotDays: 14,
   exportDays: 180,

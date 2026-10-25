@@ -46,6 +46,7 @@ supabase.restRequest = async (pathname, options) => {
       station_id: "UMAISHA",
       last_status: "succeeded",
       last_success_at: new Date().toISOString(),
+      last_finished_at: new Date().toISOString(),
       cursor_date: yesterday,
       source_latest_date: yesterday,
       last_error: null

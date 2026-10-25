@@ -58,9 +58,9 @@
         <span class="archive-tile__hint">monthly source rows; yearly duplicates excluded</span>
       </article>
       <article class="archive-tile archive-tile--info">
-        <span class="archive-tile__label">Storage used</span>
-        <strong class="archive-tile__value">{{ summary.totalSizeMb }} MB</strong>
-        <span class="archive-tile__hint">of {{ summary.storageQuotaMb }} MB bucket quota</span>
+        <span class="archive-tile__label">Archive file size</span>
+        <strong class="archive-tile__value">{{ summary.totalSizeMb }} MiB</strong>
+        <span class="archive-tile__hint">Organization storage is shared</span>
       </article>
       <article class="archive-tile archive-tile--neutral">
         <span class="archive-tile__label">Coverage through</span>

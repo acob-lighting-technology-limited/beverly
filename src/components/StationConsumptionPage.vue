@@ -34,8 +34,9 @@
             :class="['scc-badge', data.freshness.staleCount ? 'scc-badge--slow' : 'scc-badge--fast']"
             :title="`Source freshness: ${data.freshness.maximumLagDays} day maximum lag`"
           >
-            Source freshness: {{ data.freshness.staleCount ? `${data.freshness.staleCount} stale` : 'Current' }}
+            Source freshness: {{ data.freshness.staleCount ? `${data.freshness.staleCount} stale` : 'Recently scanned' }}
             · {{ data.freshness.maximumLagDays }}d lag
+            · Completeness unverified
           </span>
         </div>
         <div class="scc-hero-actions">

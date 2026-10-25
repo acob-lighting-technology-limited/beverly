@@ -9,13 +9,8 @@ const memoryTransitions = new Map();
 const acknowledgedAlerts = new Map();
 const silencedGateways = new Map();
 
-function hashCode(str = "") {
-  let hash = 0;
-  for (let i = 0; i < str.length; i += 1) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
+function numberOrNull(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value)) ? Number(value) : null;
 }
 
 function acknowledgeAlert(incidentId, actor = "Operator") {
@@ -123,10 +118,8 @@ function normalizeGateway(row = {}, stationIds = []) {
   const stationId = gatewayStationId(row.stationId || row.siteId || row.station, gatewayName, stationIds);
   const isDown = gatewayIsDown(row);
   const successRate = Number.isFinite(Number(row.successRate)) ? Number(row.successRate) : null;
-  const rssiDbm = Number.isFinite(Number(row.rssiDbm ?? row.rssi)) ? Number(row.rssiDbm ?? row.rssi) : (isDown ? -116 : -86);
-  const packetLossPercent = Number.isFinite(Number(row.packetLossPercent ?? row.packetLoss))
-    ? Number(row.packetLossPercent ?? row.packetLoss)
-    : (isDown ? 100 : Math.max(0, 100 - (successRate ?? 95)));
+  const rssiDbm = numberOrNull(row.rssiDbm ?? row.rssi);
+  const packetLossPercent = numberOrNull(row.packetLossPercent ?? row.packetLoss);
 
   return {
     gatewayId,
@@ -137,9 +130,9 @@ function normalizeGateway(row = {}, stationIds = []) {
     successRate,
     rssiDbm,
     packetLossPercent,
-    macAddress: String(row.macAddress || row.mac || ("70:B3:D5:8C:" + gatewayId.slice(-4).padStart(4, "0"))).toUpperCase(),
-    ipAddress: String(row.ipAddress || row.ip || ("10.42.0." + (Math.abs(hashCode(gatewayId)) % 250 + 1))),
-    operatorOnCall: String(row.operatorOnCall || "Engr. Station Duty (+234 803 000 1122)"),
+    macAddress: row.macAddress || row.mac || null,
+    ipAddress: row.ipAddress || row.ip || null,
+    operatorOnCall: row.operatorOnCall || null,
     lastReportedAt: row.updateDate || row.updatedAt || null,
   };
 }
@@ -161,7 +154,6 @@ function mapStateRow(row) {
 
 function mapIncidentRow(row) {
   const successRate = row.success_rate == null ? null : Number(row.success_rate);
-  const isDown = row.status === "open";
   return {
     id: row.id,
     gatewayId: row.gateway_id,
@@ -172,10 +164,8 @@ function mapIncidentRow(row) {
     endedAt: row.ended_at,
     lastStatus: row.last_status,
     successRate,
-    rssiDbm: row.rssi_dbm != null ? Number(row.rssi_dbm) : (isDown ? -116 : -86),
-    packetLossPercent: row.packet_loss_percent != null
-      ? Number(row.packet_loss_percent)
-      : (isDown ? 100 : Math.max(0, 100 - (successRate ?? 95))),
+    rssiDbm: numberOrNull(row.rssi_dbm),
+    packetLossPercent: numberOrNull(row.packet_loss_percent),
     lastReportedAt: row.last_reported_at,
     updatedAt: row.updated_at,
   };
@@ -241,7 +231,6 @@ async function diagnoseGateway(options = {}) {
   const row = rows.find((candidate) => String(candidate?.gatewayId || candidate?.id || "").trim() === gatewayId);
   if (!row) return null;
 
-  const numberOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
   return {
     gatewayId,
     gatewayName: String(row.gatewayName || row.name || gatewayId).trim() || gatewayId,
@@ -327,11 +316,11 @@ function incidentAlert(incident, source) {
     station: incident.stationId,
     status: isFlapping ? "Flapping (Unstable Uplink)" : incident.lastStatus,
     successRate: incident.successRate,
-    rssiDbm: incident.rssiDbm ?? (kind === "down" ? -116 : -86),
-    packetLossPercent: incident.packetLossPercent ?? (kind === "down" ? 100 : Math.max(0, 100 - (incident.successRate ?? 95))),
-    macAddress: incident.macAddress || ("70:B3:D5:8C:" + String(incident.gatewayId || "0000").slice(-4).padStart(4, "0")),
-    ipAddress: incident.ipAddress || ("10.42.0." + (Math.abs(hashCode(String(incident.gatewayId))) % 250 + 1)),
-    operatorOnCall: incident.operatorOnCall || "Engr. Station Duty (+234 803 000 1122)",
+    rssiDbm: incident.rssiDbm ?? null,
+    packetLossPercent: incident.packetLossPercent ?? null,
+    macAddress: incident.macAddress || null,
+    ipAddress: incident.ipAddress || null,
+    operatorOnCall: incident.operatorOnCall || null,
     lastReportedAt: incident.lastReportedAt,
     startedAt: incident.startedAt,
     endedAt: incident.endedAt,
