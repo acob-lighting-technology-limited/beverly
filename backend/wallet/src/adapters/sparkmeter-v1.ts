@@ -268,7 +268,7 @@ export function parseSparkMeterPaymentResponse(
     const providerReference = payment.external_id;
     const paymentId = typeof payment.id === 'string'
         && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.id);
-    if (payment.status !== 'processed' || !paymentId
+    if (!['processed', 'processing'].includes(String(payment.status)) || !paymentId
         || providerReference !== request.body.external_id
         || payment.recipient_id !== expected.externalCustomerId.trim()
         || money.currency !== expected.settlementCurrency.trim().toUpperCase()

@@ -462,7 +462,7 @@ export async function lookupOemInventoryMeter(
     oemId?: string | null,
     db = adminClient,
 ): Promise<MeterInfo | null> {
-    const { data: meter, error } = await db
+    const { data: meter } = await db
         .from('oem_inventory_meters')
         .select(`
             external_id,
@@ -472,16 +472,47 @@ export async function lookupOemInventoryMeter(
             meter_phase,
             site_id,
             oem_installation_id,
-            oem_installations(id, oem_type, tenant_id)
+            oem_installations(id, oem_id, tenant_id)
         `)
         .or(`serial.eq.${meterId},external_id.eq.${meterId}`)
         .eq('status', 'active')
         .limit(1)
         .maybeSingle();
 
-    if (error || !meter) return null;
+    let resolvedMeter = meter;
+    if (!resolvedMeter) {
+        const { data: custRow } = await db
+            .from('oem_inventory_customers')
+            .select('external_id, oem_installation_id')
+            .or(`code.eq.${meterId},external_id.eq.${meterId}`)
+            .eq('status', 'active')
+            .limit(1)
+            .maybeSingle();
+        if (custRow) {
+            const { data: custMeter } = await db
+                .from('oem_inventory_meters')
+                .select(`
+                    external_id,
+                    customer_external_id,
+                    serial,
+                    tariff_id,
+                    meter_phase,
+                    site_id,
+                    oem_installation_id,
+                    oem_installations(id, oem_id, tenant_id)
+                `)
+                .eq('customer_external_id', custRow.external_id)
+                .eq('status', 'active')
+                .limit(1)
+                .maybeSingle();
+            resolvedMeter = custMeter;
+        }
+    }
 
-    const detectedOemType = (meter.oem_installations as any)?.oem_type ?? 'sparkmeter';
+    if (!resolvedMeter) return null;
+    const meterRecord = resolvedMeter;
+
+    const detectedOemType = (meterRecord.oem_installations as any)?.oem_type ?? 'sparkmeter';
     if (oemId && oemId !== detectedOemType) {
         return null;
     }
@@ -489,23 +520,23 @@ export async function lookupOemInventoryMeter(
     const { data: customer } = await db
         .from('oem_inventory_customers')
         .select('name, phone, external_id')
-        .eq('oem_installation_id', meter.oem_installation_id)
-        .eq('external_id', meter.customer_external_id)
+        .eq('oem_installation_id', meterRecord.oem_installation_id)
+        .eq('external_id', meterRecord.customer_external_id)
         .eq('status', 'active')
         .maybeSingle();
 
-    const siteKey = String(meter.site_id || '').toLowerCase();
-    const resolvedStationId = SPARKMETER_SITE_TO_STATION[siteKey] || String(meter.site_id || 'UNKNOWN');
+    const siteKey = String(meterRecord.site_id || '').toLowerCase();
+    const resolvedStationId = SPARKMETER_SITE_TO_STATION[siteKey] || String(meterRecord.site_id || 'UNKNOWN');
 
     return {
-        meterId: String(meter.serial || meter.external_id),
-        customerId: String(customer?.external_id || meter.customer_external_id),
-        customerName: String(customer?.name || `Customer ${meter.customer_external_id}`),
+        meterId: String(meterRecord.serial || meterRecord.external_id),
+        customerId: String(customer?.external_id || meterRecord.customer_external_id),
+        customerName: String(customer?.name || `Customer ${meterRecord.customer_external_id}`),
         stationId: resolvedStationId,
-        tariffId: String(meter.tariff_id || 'RESIDENTIAL'),
+        tariffId: String(meterRecord.tariff_id || 'RESIDENTIAL'),
         protocolVersion: null,
         communicationWay: null,
-        isThreePhase: meter.meter_phase === 'three_phase',
+        isThreePhase: meterRecord.meter_phase === 'three_phase',
         resolutionSource: 'oem_inventory',
         liveVerified: true,
         oemId: detectedOemType,
