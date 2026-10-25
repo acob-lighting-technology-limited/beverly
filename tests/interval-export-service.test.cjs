@@ -80,8 +80,9 @@ assert.equal(exportDateRange("all", new Date("2027-08-19T12:00:00.000Z")).to, "2
   assert.equal(summary.sourceRows, 3);
   assert.equal(summary.exportedRows, 2);
   const workbook = await new ExcelJS.Workbook().xlsx.load(Buffer.concat(response.chunks));
-  const sheet = workbook.worksheets[0];
-  const overflowSheet = workbook.worksheets[1];
+  assert.equal(workbook.getWorksheet("Collection Status").getCell("A2").value, "Source completeness unverified");
+  const sheet = workbook.getWorksheet("Interval Data 1");
+  const overflowSheet = workbook.getWorksheet("Interval Data 2");
   assert.equal(summary.sheetCount, 2);
   assert.equal(sheet.rowCount, 2);
   assert.equal(sheet.getCell("A2").value, "M-1");

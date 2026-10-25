@@ -7,6 +7,8 @@ This project is owned and maintained in the `acob-lighting-technology-limited` G
 Status: release blocked.
 
 Read first:
+- [Meter ingestion recovery](docs/METER_INGESTION_IMPLEMENTATION_STATUS_2026-10-25.md)
+- [Capacity status](docs/DATABASE_CAPACITY_STATUS_2026-10-25.md)
 - [Master Playbook](docs/MASTER_PLAYBOOK.md)
 - [Release Status](docs/RELEASE_STATUS.md)
 - [Production Gap Analysis](docs/PRODUCTION_GAP_ANALYSIS.md)

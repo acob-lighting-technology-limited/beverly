@@ -5769,15 +5769,7 @@ async function handler(request, response) {
 
     if (!result) {
       result = await proxyLive(request, pathname, requestData);
-      if (result?.body?._proxy?.source === "live") {
-        await writeDailyMeterRows({
-          pathname,
-          requestPayload: requestData.parsedBody,
-          responsePayload: result.body
-        }).catch((error) => {
-          console.error("[consumption-store-write]", error instanceof Error ? error.message : String(error));
-        });
-      }
+      // Report reads never repair ingestion implicitly.
     }
 
     // --- MERGE LOCAL STATION MAPPINGS INTO /api/station/read RESPONSE ---

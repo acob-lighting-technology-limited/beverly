@@ -13,7 +13,8 @@ const dailyMeterPath = "/api/DailyDataMeter/read";
 const stationPath = "/api/station/read";
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date(Date.now() + 3600000);
+  return addDays(now.toISOString().slice(0, 10), -1);
 }
 
 function normalizeDate(value, fallback = "") {
@@ -70,10 +71,12 @@ async function postLive(pathname, payload, options = {}) {
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
-      const body = await response.json().catch(() => ({}));
+      const body = await response.json();
       if (!response.ok) {
         throw new Error(body.reason || body.msg || body.error || `Live request failed: ${response.status}`);
       }
+      if (![0, 200].includes(Number(body?.code))) throw new Error(body?.reason || body?.msg || "Invalid source business response");
+      if (![body?.result?.data, body?.data?.data, body?.result, body?.data].some(Array.isArray)) throw new Error("Invalid source collection");
       return body;
     } catch (error) {
       lastError = error;
@@ -91,9 +94,9 @@ async function postLive(pathname, payload, options = {}) {
 async function resolveStations(value, options = {}) {
   const requested = normalizeStations(value);
   if (requested.length) return requested;
-  const payload = await postLive(stationPath, { pageNumber: 1, pageSize: 500 }, options);
+  const payload = await postLive(stationPath, { lang: "en", pageNumber: 1, pageSize: 500 }, options);
   const stations = normalizeStations(collectionRowsFromPayload(payload)
-    .map((row) => row?.stationId || row?.station_id || row?.siteId || row?.id));
+    .map((row) => row?.stationId || row?.station_id || row?.siteId || row?.id)).filter((id) => id !== "ADMIN");
   if (!stations.length) throw new Error("Live station directory returned no stations");
   return stations;
 }
@@ -132,9 +135,19 @@ async function createSyncRun(stationId, mode) {
   return { id, startedAt };
 }
 
-async function finishSyncRun(id, stationId, mode, result, error, attempts, startedAt) {
+async function finishSyncRun(id, stationId, mode, result, error, attempts, startedAt, owner, progress) {
   const finishedAt = new Date().toISOString();
   const status = error ? "failed" : result?.complete ? "succeeded" : "partial";
+  await checkpoint(stationId, owner, progress, {
+    last_mode: mode, last_status: status, last_started_at: startedAt,
+    last_finished_at: finishedAt,
+    cursor_date: result?.storedThrough || result?.latestReadingDate || null,
+    source_latest_date: result?.sourceLatestReadingDate || null,
+    observed_through: result?.complete ? result.to : null,
+    last_fetched_rows: Number(result?.fetchedRows || 0),
+    last_stored_rows: Number(result?.storedRows || 0),
+    last_error: error ? String(error.message || error) : null,
+  });
   await supabase.restRequest(`/consumption_sync_runs?id=eq.${encodeURIComponent(id)}`, {
     method: "PATCH",
     prefer: "return=minimal",
@@ -151,24 +164,6 @@ async function finishSyncRun(id, stationId, mode, result, error, attempts, start
       source_latest_date: result?.sourceLatestReadingDate || null,
       stop_reason: result?.stopReason || null,
       error_message: error ? String(error.message || error) : null,
-    },
-  });
-  await supabase.restRequest("/consumption_sync_station_state?on_conflict=station_id", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: {
-      station_id: stationId,
-      last_mode: mode,
-      last_status: status,
-      last_started_at: startedAt,
-      last_finished_at: finishedAt,
-      ...(status === "succeeded" ? { last_success_at: finishedAt } : {}),
-      cursor_date: result?.storedThrough || result?.latestReadingDate || null,
-      source_latest_date: result?.sourceLatestReadingDate || null,
-      last_fetched_rows: Number(result?.fetchedRows || 0),
-      last_stored_rows: Number(result?.storedRows || 0),
-      last_error: error ? String(error.message || error) : null,
-      updated_at: finishedAt,
     },
   });
 }
@@ -228,6 +223,14 @@ async function recordQuotaPause(stationIds, mode, quota) {
     prefer: "return=minimal",
     body: rows.length === 1 ? rows[0] : rows,
   });
+  for (const stationId of stationIds) {
+    await supabase.restRequest("/consumption_sync_station_state?on_conflict=station_id", {
+      method: "POST", prefer: "resolution=merge-duplicates,return=minimal",
+      body: { station_id: stationId, last_mode: mode, last_status: "quota_paused",
+        last_started_at: measuredAt, last_finished_at: measuredAt,
+        last_error: quota.reason, updated_at: measuredAt },
+    });
+  }
 }
 
 function maxPagesForMode(mode, input) {
@@ -249,10 +252,10 @@ function syncWindow(mode, stationStats, input) {
   const to = normalizeDate(input.to, today());
   const retentionDays = positiveInteger(
     input.hotRetentionDays,
-    positiveInteger(process.env.CONSUMPTION_HOT_RETENTION_DAYS, 90)
+    positiveInteger(process.env.CONSUMPTION_HOT_RETENTION_DAYS, 60)
   );
   const retentionFloor = addDays(to, -retentionDays);
-  const retentionFrom = `${retentionFloor.slice(0, 7)}-01`;
+  const retentionFrom = retentionFloor;
   if (mode === "backfill") {
     const requestedFrom = normalizeDate(input.from, retentionFrom);
     return {
@@ -262,10 +265,11 @@ function syncWindow(mode, stationStats, input) {
     };
   }
   const latest = normalizeDate(stationStats?.latestReadingDate);
-  const lookbackDays = Math.max(0, positiveInteger(input.lookbackDays, positiveInteger(process.env.CONSUMPTION_SYNC_LOOKBACK_DAYS, 0)));
-  const requestedFrom = latest
+  const configuredLookback = Number(input.lookbackDays ?? process.env.CONSUMPTION_SYNC_LOOKBACK_DAYS ?? 7);
+  const lookbackDays = Number.isFinite(configuredLookback) && configuredLookback >= 0 ? Math.floor(configuredLookback) : 7;
+  const requestedFrom = normalizeDate(input.from) || (latest
     ? addDays(latest, -lookbackDays)
-    : normalizeDate(input.from, retentionFrom);
+    : retentionFrom);
   return {
     from: requestedFrom > retentionFrom ? requestedFrom : retentionFrom,
     to,
@@ -274,106 +278,100 @@ function syncWindow(mode, stationStats, input) {
   };
 }
 
+async function checkpoint(stationId, owner, progress, outcome = null) {
+  const saved = await supabase.restRequest("/rpc/checkpoint_consumption_sync_station", {
+    method: "POST", body: { p_station_id: stationId, p_owner: owner, p_progress: progress, p_outcome: outcome },
+  });
+  if (saved !== true) throw new Error("Consumption station lease lost");
+}
+
 async function syncStation(stationId, stationStats, options) {
   const pageSize = Math.min(500, positiveInteger(options.pageSize, positiveInteger(process.env.CONSUMPTION_SYNC_PAGE_SIZE, 500)));
   const maxPages = maxPagesForMode(options.mode, options);
-  const window = syncWindow(options.mode, stationStats, options);
-  let pageNumber = 1;
-  let fetchedRows = 0;
-  let storedRows = 0;
-  let pagesFetched = 0;
-  let rawTotal = 0;
-  let earliest = null;
-  let latest = null;
-  let storedThrough = null;
-  let stopReason = null;
-
-  while (true) {
-    if (maxPages > 0 && pagesFetched >= maxPages) break;
-    const payload = {
-      lang: "en",
-      stationId,
-      FROM: window.from,
-      TO: window.to,
-      pageNumber,
-      pageSize,
-    };
-    const responsePayload = await postLive(dailyMeterPath, payload, options);
+  const requested = syncWindow(options.mode, stationStats, options);
+  if (requested.from > requested.to) throw new Error("Invalid consumption date window");
+  const pending = options.progress;
+  const resume = pending && pending.mode === options.mode && pending.pageSize === pageSize
+    && (!options.from || pending.from === requested.from) && (!options.to || pending.to === requested.to);
+  const window = resume ? pending : requested;
+  // Replay a boundary page: source inserts can shift offset-based pagination.
+  let pageNumber = resume ? Math.max(1, pending.nextPage - 1) : 1;
+  let pagesFetched = 0, fetchedRows = 0, storedRows = 0;
+  let rawTotal = 0, earliest = null, latest = null, storedThrough = null;
+  let exhausted = false;
+  let firstFingerprint = resume ? pending.firstFingerprint : null;
+  let previousFingerprint = null;
+  let progress = resume ? pending : null;
+  const deadline = options.deadline || Date.now() + 120000;
+  while ((maxPages === 0 || pagesFetched < maxPages) && Date.now() < deadline) {
+    await checkpoint(stationId, options.owner, progress);
+    const payload = { lang: "en", stationId, FROM: window.from, TO: window.to,
+      currentDateRange: [window.from, window.to],
+      orderBy: "currentDate desc, meterId asc", pageNumber, pageSize };
+    const responsePayload = await postLive(dailyMeterPath, payload, { ...options, timeoutMs: Math.min(options.timeoutMs || 25000, Math.max(1000, deadline - Date.now())) });
     const rows = collectionRowsFromPayload(responsePayload);
-    if (!rows.length) break;
-
+    const fingerprint = crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+    if (rows.length && fingerprint === previousFingerprint) throw new Error("Source repeated a page; traversal cannot advance");
+    previousFingerprint = fingerprint;
+    if (pageNumber === 1) firstFingerprint = fingerprint;
     const eligibleRows = rows.filter((row) => {
       const day = normalizeDate(row.currentDate || row.readingDate || row.createDate);
       const rowStation = normalizeStations(row.stationId || row.station || row.siteId)[0] || stationId;
       return rowStation === stationId && day && day >= window.from && day <= window.to;
     });
-    const pageDates = rows
-      .map((row) => normalizeDate(row.currentDate || row.readingDate || row.createDate))
-      .filter(Boolean);
-    for (const row of eligibleRows) {
-      const day = normalizeDate(row.currentDate || row.readingDate || row.createDate);
-      if (day && (!storedThrough || day > storedThrough)) storedThrough = day;
-    }
-    const descendingDates = pageDates.every((day, index) => index === 0 || pageDates[index - 1] >= day);
-
     const bounds = rowsDateBounds(rows);
     if (bounds.earliest && (!earliest || bounds.earliest < earliest)) earliest = bounds.earliest;
     if (bounds.latest && (!latest || bounds.latest > latest)) latest = bounds.latest;
-
-    const stored = eligibleRows.length
-      ? await writeDailyMeterRows({
-        pathname: dailyMeterPath,
-        requestPayload: payload,
-        responsePayload: { result: { data: eligibleRows } },
-      })
-      : { stored: 0 };
-
+    for (const row of eligibleRows) {
+      const day = normalizeDate(row.currentDate || row.readingDate || row.createDate);
+      if (!storedThrough || day > storedThrough) storedThrough = day;
+    }
+    const stored = eligibleRows.length ? await writeDailyMeterRows({
+      pathname: dailyMeterPath, requestPayload: payload,
+      responsePayload: { result: { data: eligibleRows } },
+    }) : { stored: 0 };
     fetchedRows += rows.length;
     storedRows += Number(stored.stored || 0);
     pagesFetched += 1;
-    rawTotal = Number(responsePayload?.result?.total ?? responsePayload?.data?.total ?? rawTotal) || rawTotal;
-
-    if (descendingDates && pageDates.some((day) => day < window.from)) {
-      stopReason = "cursor_crossed";
-      break;
-    }
-    if (rows.length < pageSize) break;
-    if (rawTotal && pageNumber * pageSize >= rawTotal) break;
+    rawTotal = Number(responsePayload?.result?.total ?? responsePayload?.data?.total ?? 0);
+    // Dates are untrusted filters. Traverse to exhaustion, never an old-date boundary.
+    exhausted = rows.length < pageSize;
     pageNumber += 1;
+    progress = { mode: options.mode, from: window.from, to: window.to, pageSize,
+      nextPage: pageNumber, firstFingerprint };
+    await checkpoint(stationId, options.owner, progress);
+    options.onProgress(progress);
+    if (exhausted) break;
   }
-
-  return {
-    stationId,
-    mode: options.mode,
-    from: window.from,
-    to: window.to,
-    detection: window.reason,
-    latestReadingDate: window.latestReadingDate || null,
-    pagesFetched,
-    fetchedRows,
-    storedRows,
-    rawTotal,
-    stopReason,
-    complete: stopReason === "cursor_crossed" || maxPages === 0 || !rawTotal || fetchedRows >= rawTotal || pagesFetched < maxPages,
-    sourceEarliestReadingDate: earliest,
-    sourceLatestReadingDate: latest,
-    storedThrough,
-  };
+  let sourceStable = false;
+  if (exhausted) {
+    const head = await postLive(dailyMeterPath, { lang: "en", stationId,
+      FROM: window.from, TO: window.to, currentDateRange: [window.from, window.to], orderBy: "currentDate desc, meterId asc", pageNumber: 1, pageSize }, options);
+    sourceStable = crypto.createHash("sha256").update(JSON.stringify(collectionRowsFromPayload(head))).digest("hex") === firstFingerprint;
+  }
+  const complete = exhausted && sourceStable;
+  return { stationId, mode: options.mode, from: window.from, to: window.to,
+    detection: resume ? "resumed_scan" : window.reason, latestReadingDate: stationStats?.latestReadingDate || null,
+    pagesFetched, fetchedRows, storedRows, rawTotal,
+    stopReason: complete ? "source_exhausted_observed" : exhausted ? "source_changed" : "budget_exhausted",
+    complete, verification: "observed_only", verifiedCompleteThrough: null,
+    sourceEarliestReadingDate: earliest, sourceLatestReadingDate: latest, storedThrough,
+    progress: exhausted ? null : progress };
 }
-
 async function runConsumptionSync(input = {}) {
   const mode = input.mode === "backfill" || input.full === true ? "backfill" : "incremental";
   const requestedStations = normalizeStations(input.stations || input.stationId || process.env.CONSUMPTION_SYNC_STATIONS);
+  const stationScope = await resolveStations(requestedStations, input);
   const quota = await databaseQuotaState(input, mode);
   if (quota.quotaPaused) {
-    await recordQuotaPause(requestedStations, mode, quota);
+    await recordQuotaPause(stationScope, mode, quota);
     return {
       ok: true,
       mode,
       quotaPaused: true,
       reason: quota.reason,
       quota,
-      stationCount: requestedStations.length,
+      stationCount: stationScope.length,
       syncedStations: 0,
       failedStations: 0,
       fetchedRows: 0,
@@ -382,7 +380,7 @@ async function runConsumptionSync(input = {}) {
       failures: [],
     };
   }
-  let stationIds = await resolveStations(requestedStations, input);
+  let stationIds = stationScope;
   if (!requestedStations.length) {
     const claimed = await supabase.restRequest("/rpc/claim_consumption_sync_station", {
       method: "POST",
@@ -402,6 +400,15 @@ async function runConsumptionSync(input = {}) {
   const stations = [];
   const failures = [];
   for (const stationId of stationIds) {
+    const owner = crypto.randomUUID();
+    const lease = await supabase.restRequest("/rpc/acquire_consumption_sync_station", {
+      method: "POST", body: { p_station_id: stationId, p_owner: owner },
+    });
+    if (!lease?.acquired) {
+      failures.push({ stationId, mode, error: "Station already leased", attempts: 0 });
+      continue;
+    }
+    let progress = lease.state?.scan_progress || null;
     const attempts = stationAttemptsForMode(mode, input);
     const run = await createSyncRun(stationId, mode);
     let attemptsUsed = 0;
@@ -410,12 +417,13 @@ async function runConsumptionSync(input = {}) {
     for (let attempt = 1; attempt <= attempts; attempt++) {
       attemptsUsed = attempt;
       try {
-        stationResult = await syncStation(stationId, statsByStation.get(stationId), { ...input, mode });
-        if (stationResult.storedRows > 0) {
+        stationResult = await syncStation(stationId, statsByStation.get(stationId), { ...input, mode, owner, progress, onProgress: (saved) => { progress = saved; } });
+        if (stationResult.storedRows > 0 || stationResult.complete) {
           stationResult.aggregateRefresh = await refreshMeterReadingAggregates([stationId]);
         }
         break;
       } catch (error) {
+        stationResult = null;
         lastError = error;
         if (attempt < attempts) {
           await new Promise((resolve) => setTimeout(resolve, Math.min(30000, attempt * attempt * 5000)));
@@ -423,10 +431,10 @@ async function runConsumptionSync(input = {}) {
       }
     }
     if (stationResult) {
-      await finishSyncRun(run.id, stationId, mode, stationResult, null, attemptsUsed, run.startedAt);
+      await finishSyncRun(run.id, stationId, mode, stationResult, null, attemptsUsed, run.startedAt, owner, stationResult.progress);
       stations.push(stationResult);
     } else {
-      await finishSyncRun(run.id, stationId, mode, null, lastError, attemptsUsed, run.startedAt);
+      await finishSyncRun(run.id, stationId, mode, null, lastError, attemptsUsed, run.startedAt, owner, progress);
       failures.push({
         stationId,
         mode,
@@ -456,25 +464,27 @@ async function runConsumptionSync(input = {}) {
 }
 
 async function runScheduledConsumptionSync(input = {}) {
-  const limit = input.stations || input.stationId ? 1 : Math.min(4, positiveInteger(input.maxStations, 4));
-  const deadline = Date.now() + 180000;
+  const eligible = await resolveStations(input.stations || input.stationId || process.env.CONSUMPTION_SYNC_STATIONS, input);
+  const deadline = Date.now() + Math.min(240000, positiveInteger(input.budgetMs, 180000));
   const results = [];
-  for (let index = 0; index < limit && Date.now() < deadline; index += 1) {
-    const result = await runConsumptionSync({ ...input, maxPagesPerStation: input.maxPagesPerStation ?? 8 });
+  for (const stationId of eligible) {
+    if (Date.now() >= deadline) break;
+    const remaining = eligible.length - results.length;
+    const sliceDeadline = Date.now() + Math.max(1000, Math.floor((deadline - Date.now()) / remaining));
+    const result = await runConsumptionSync({ ...input, stations: [stationId], deadline: sliceDeadline });
     results.push(result);
-    if (result.quotaPaused || result.failedStations) break;
+    if (result.quotaPaused) break;
   }
   return {
-    ok: results.every((result) => result.ok),
-    stationCount: results.reduce((sum, result) => sum + result.stationCount, 0),
+    ok: results.length === eligible.length && results.every((result) => result.ok),
+    stationCount: eligible.length, visitedStations: results.length,
     syncedStations: results.reduce((sum, result) => sum + result.syncedStations, 0),
     failedStations: results.reduce((sum, result) => sum + result.failedStations, 0),
     fetchedRows: results.reduce((sum, result) => sum + result.fetchedRows, 0),
     storedRows: results.reduce((sum, result) => sum + result.storedRows, 0),
     quotaPaused: results.some((result) => result.quotaPaused),
     stations: results.flatMap((result) => result.stations || []),
-    failures: results.flatMap((result) => result.failures || []),
-    runs: results.length,
+    failures: results.flatMap((result) => result.failures || []), runs: results.length,
   };
 }
 

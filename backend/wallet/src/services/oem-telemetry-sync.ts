@@ -91,7 +91,7 @@ const installationRows = z.array(z.object({
     id: z.string().uuid(), base_url: z.string().url(), approved_hostnames: z.array(z.string()).min(1),
     config_version: z.number().int().positive(), tenants: z.object({ status: z.literal('active') }),
     oem_manufacturers: z.object({ slug: z.literal('sparkmeter') }),
-    oem_config_revisions: z.array(z.object({ revision: z.number().int().positive(), configuration: z.record(z.unknown()) })),
+    oem_config_revisions: z.array(z.object({ revision: z.number().int().positive(), configuration: z.record(z.string(), z.unknown()) })),
 })).max(100);
 
 /** Discover active SparkMeter installations and synchronize historical telemetry. */

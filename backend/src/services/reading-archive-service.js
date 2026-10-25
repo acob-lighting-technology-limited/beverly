@@ -6,7 +6,7 @@
  * Exports closed months of `daily_meter_readings` to Supabase Storage as one gzipped
  * CSV per (station, month), and indexes each object in `archive_reports`. This is what
  * lets the hot retention window shrink without losing daily-granularity drill-down or
- * telemetry: Storage is a separate free-tier quota (1 GB) from the Postgres 500 MB cap.
+ * telemetry: object storage is separate from database disk and shared across the organization.
  *
  * SHAPE BORROWED FROM SPARKMETER, GRAIN DELIBERATELY NOT.
  * SparkMeter pre-generates reports keyed by (org, service_area, site, date, type,
@@ -910,7 +910,7 @@ async function reportsSummary(filters = {}) {
       }),
       consumptionSyncHealth(normalized.stationId)
     ]);
-    if (summary && !Array.isArray(summary)) return { ...summary, syncHealth };
+    if (summary && !Array.isArray(summary)) return { ...summary, storageQuotaMb: null, organizationStorageUsage: null, syncHealth };
   } catch (error) {
     if (!/PGRST202|Could not find the function|schema cache/i.test(String(error?.message || error))) throw error;
   }
@@ -966,9 +966,9 @@ async function reportsSummary(filters = {}) {
     totalRows: sourceRows,
     totalBundleRows: bundleRows,
     totalSizeMb: Math.round((bytes / 1048576) * 100) / 100,
-    // The point of the archive is that this number is charged against the 1 GB
-    // Storage quota, NOT the 500 MB Postgres quota.
-    storageQuotaMb: 1024,
+    // Archive size is not organization-wide storage usage.
+    storageQuotaMb: null,
+    organizationStorageUsage: null,
     byType,
     byGranularity,
     byOem,

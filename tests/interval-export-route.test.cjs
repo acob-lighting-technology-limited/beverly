@@ -5,6 +5,7 @@ const http = require("node:http");
 const ExcelJS = require("exceljs");
 
 process.env.SESSION_STORE_MODE = "memory";
+process.env.JWT_SECRET = "interval-export-fixture-session-secret-32-chars";
 process.env.RATE_LIMIT_ENABLED = "false";
 process.env.DEMO_AUTH_ENABLED = "true";
 process.env.INTERVAL_EXPORT_RETRY_DELAY_MS = "1";
@@ -43,7 +44,7 @@ function request(port, pathname) {
       hostname: "127.0.0.1",
       port,
       path: pathname,
-      headers: { Cookie: "bev_token=local-dev-token" },
+      headers: { Cookie: `bev_token=local-dev-token; bev_session=${encodeURIComponent(handler._test.signCrmSession({startedAt: Date.now(), lastActiveAt: Date.now(), tokenFingerprint: handler._test.crmTokenFingerprint("local-dev-token")}))}` },
     }, (res) => {
       const chunks = [];
       res.on("data", (chunk) => chunks.push(chunk));
@@ -95,12 +96,12 @@ function vercelResponse(res) {
 
   try {
     const result = await request(facade.address().port, "/api/reference?__pathname=/api/DailyDataMeter/export.xlsx&range=7d&search=ada&sort=desc");
-    assert.equal(result.status, 200);
+    assert.equal(result.status, 200, result.body.toString());
     assert.match(result.headers["content-type"], /spreadsheetml/);
     assert.match(result.headers["content-disposition"], /interval_data_7d_/);
     assert.deepEqual(upstreamPages, [1, 2]);
     const workbook = await new ExcelJS.Workbook().xlsx.load(result.body);
-    const sheet = workbook.worksheets[0];
+    const sheet = workbook.getWorksheet("Interval Data 1");
     assert.deepEqual([sheet.getCell("A2").value, sheet.getCell("A3").value], ["M-1", "M-3"]);
     assert.equal(sheet.getCell("A2").alignment.horizontal, "center");
     console.log("interval-export-route ok");

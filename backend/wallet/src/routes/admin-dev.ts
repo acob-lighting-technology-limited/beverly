@@ -243,7 +243,7 @@ const adminDevRoutes: FastifyPluginAsync = async (fastify) => {
     fastify.post('/dev/notif-templates/:id/test-send', async (req) => {
         const body = z.object({
             target: z.string().trim().min(3).max(300),
-            variables: z.record(z.string()).default({}),
+            variables: z.record(z.string(), z.string()).default({}),
         }).parse(req.body);
         await testDevNotificationTemplate((req.params as { id: string }).id, {
             target: body.target,

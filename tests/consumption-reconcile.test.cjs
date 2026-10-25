@@ -1,0 +1,12 @@
+"use strict";
+const assert = require("node:assert/strict");
+const { compareReadings } = require("../tools/consumption-reconcile.cjs");
+const row = (meter_id, total1) => ({ station_id: "TUNGA", meter_id, reading_date: "2026-10-21", total1, remain1: null });
+const source = [row("A", 10), row("B", 20), row("C", null)];
+const result = compareReadings(source, [row("A", 11), row("D", 20), row("C", 0)]);
+assert.equal(result.missing, 1);
+assert.equal(result.mismatched, 2);
+assert.equal(result.localOnly, 1);
+assert.equal(compareReadings(source, source).mismatched, 0);
+assert.equal(result.verification, "observed_only");
+console.log("Reading identity and value reconciliation passed");

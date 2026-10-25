@@ -128,7 +128,7 @@ function gatewayResponse(status, updateDate) {
 
   // Incident transitions must flow into the automation alert pipeline.
   const serviceSource = fs.readFileSync(path.join(__dirname, "../backend/src/services/gateway-health-service.js"), "utf8");
-  const referenceSource = fs.readFileSync(path.join(__dirname, "../api/reference.js"), "utf8");
+  const referenceSource = fs.readFileSync(path.join(__dirname, "../api/reference.js"), "utf8").replace(/\r\n/g, "\n");
   const alertsSource = fs.readFileSync(path.join(__dirname, "../src/components/StationAlertsBell.vue"), "utf8");
   assert.match(serviceSource, /handleAutomationIncident/);
   assert.match(serviceSource, /gateway-down/);
@@ -140,6 +140,8 @@ function gatewayResponse(status, updateDate) {
   assert.doesNotMatch(referenceSource, /Gateway health fallback/, "gateway outages must not be disguised as an empty healthy response");
   assert.match(referenceSource, /response\.status\(502\)\.json\(\{[\s\S]*?source: "live-required"/, "gateway outages must fail loudly");
   assert.doesNotMatch(alertsSource, /status: 'Responsive', pingMs:/, "the UI must not fabricate a successful diagnostic after an API failure");
+  const absent = normalizeGateway({ gatewayId: "UNKNOWN", status: false, rssi: null });
+  for (const key of ["rssiDbm", "packetLossPercent", "ipAddress", "macAddress", "operatorOnCall"]) assert.equal(absent[key], null, key);
   console.log("gateway-health-service ok");
 })().catch((error) => {
   console.error(error);
