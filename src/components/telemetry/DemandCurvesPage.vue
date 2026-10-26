@@ -1129,6 +1129,9 @@ export default {
 }
 
 @media (max-width: 768px) {
+  .demand-curves-page {
+    padding: var(--space-3, 12px);
+  }
   .dc-header {
     flex-direction: column;
     align-items: stretch;

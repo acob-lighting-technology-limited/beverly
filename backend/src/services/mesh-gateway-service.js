@@ -541,8 +541,90 @@ function getMeshGatewayStatus(filter = {}) {
   };
 }
 
+/**
+ * Returns structured SparkMeter NOVA operational & mesh health alerts
+ * for the navbar notification system
+ */
+function getSparkMeterNovaAlerts() {
+  const { gateways, orphanedMeters } = getMeshGatewayStatus();
+  const alerts = [];
+  const now = new Date();
+
+  // 1. Degraded / Weak Signal Base Stations
+  for (const bs of gateways) {
+    if (bs.signalQuality === "Weak" || bs.packetDeliverySuccessRate < 96) {
+      alerts.push({
+        id: `nova-alert-${bs.gatewayId.toLowerCase()}`,
+        gateway: bs.gatewayId,
+        gatewayName: `${bs.gatewayName} (NOVA Base Station)`,
+        station: bs.siteName,
+        kind: "degraded",
+        status: "false",
+        successRate: bs.packetDeliverySuccessRate,
+        rssiDbm: bs.avgRssiDbm,
+        packetLossPercent: Number((100 - bs.packetDeliverySuccessRate).toFixed(1)),
+        startedAt: new Date(Date.now() - 4 * 3600000).toISOString(),
+        lastReportedAt: bs.lastHeartbeat,
+        source: "sparkmeter-nova",
+        system: "NOVA"
+      });
+    }
+  }
+
+  // 2. Critical Orphaned Mesh Meters (RF heartbeat missing > 1 hour)
+  for (const orphan of orphanedMeters) {
+    if (orphan.severity === "critical") {
+      alerts.push({
+        id: `nova-orphan-${orphan.meterSerial.toLowerCase()}`,
+        gateway: orphan.meterSerial,
+        gatewayName: `Mesh Node Outage: ${orphan.customerName} (${orphan.meterSerial})`,
+        station: orphan.siteName,
+        kind: "down",
+        status: "false",
+        successRate: 0,
+        rssiDbm: orphan.lastRssiDbm,
+        packetLossPercent: 100,
+        startedAt: orphan.lastHeartbeatAt,
+        lastReportedAt: orphan.lastHeartbeatAt,
+        source: "sparkmeter-nova-mesh",
+        system: "NOVA",
+        failureReason: orphan.failureReason,
+        recommendedAction: orphan.recommendedAction
+      });
+    }
+  }
+
+  // 3. Recovered Base Station / Healthy NOVA Core entry
+  alerts.push({
+    id: "nova-core-sync-health",
+    gateway: "NOVA-CLOUD-CORE",
+    gatewayName: "SparkMeter NOVA Telemetry Pipeline",
+    station: "All Grids (Central Cloud)",
+    kind: "recovered",
+    status: "true",
+    successRate: 99.8,
+    rssiDbm: -68,
+    packetLossPercent: 0.2,
+    startedAt: new Date(Date.now() - 7200000).toISOString(),
+    endedAt: new Date(Date.now() - 360000).toISOString(),
+    lastReportedAt: new Date().toISOString(),
+    source: "sparkmeter-nova-cloud",
+    system: "NOVA"
+  });
+
+  return {
+    alerts,
+    eventIds: alerts.filter((a) => a.kind === "down" || a.kind === "degraded").map((a) => a.id),
+    checkedAt: now.toISOString(),
+    oem: "sparkmeter",
+    systemName: "SparkMeter NOVA"
+  };
+}
+
 module.exports = {
   BASE_STATIONS,
   ORPHANED_METERS,
-  getMeshGatewayStatus
+  getMeshGatewayStatus,
+  getSparkMeterNovaAlerts
 };
+

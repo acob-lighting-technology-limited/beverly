@@ -273,7 +273,7 @@
             <tr
               v-for="site in filteredAndSortedSites"
               :key="site.siteId"
-              :class="{ 'eap-row--theft': site.rating.isTheftAlert }"
+              :class="{ 'eap-row--theft': site.rating?.isTheftAlert }"
             >
               <td class="eap-site-cell">
                 <div class="eap-site-code">{{ site.siteCode }}</div>
@@ -304,17 +304,17 @@
               </td>
               <td class="text-center">
                 <span :class="['eap-rating-badge', getBadgeClass(site.rating)]">
-                  <span v-if="site.rating.isTheftAlert" class="eap-pulse-dot"></span>
-                  {{ site.rating.label }}
+                  <span v-if="site.rating?.isTheftAlert" class="eap-pulse-dot"></span>
+                  {{ site.rating?.label || 'Normal' }}
                 </span>
               </td>
               <td class="text-right">
                 <button
                   class="eap-action-btn"
-                  :class="{ 'eap-action-btn--danger': site.rating.isTheftAlert }"
+                  :class="{ 'eap-action-btn--danger': site.rating?.isTheftAlert }"
                   @click="openInspectModal(site)"
                 >
-                  {{ site.rating.isTheftAlert ? 'Bypass Alert' : 'Inspect' }}
+                  {{ site.rating?.isTheftAlert ? 'Bypass Alert' : 'Inspect' }}
                 </button>
               </td>
             </tr>
@@ -338,7 +338,7 @@
         </div>
 
         <div class="eap-modal-content">
-          <div v-if="inspectingSite.rating.isTheftAlert" class="eap-alert-banner">
+          <div v-if="inspectingSite.rating?.isTheftAlert" class="eap-alert-banner">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="eap-alert-icon">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
               <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
@@ -475,7 +475,18 @@ export default {
         }
         return this.sortAsc ? (valA || 0) - (valB || 0) : (valB || 0) - (valA || 0);
       });
-      return list;
+      return list.map((s) => {
+        const pct = Number(s.lossRatePercent != null ? s.lossRatePercent : s.lossPercent || 0);
+        return {
+          ...s,
+          lossRatePercent: pct,
+          rating: s.rating || {
+            code: pct > 10 ? "CRITICAL" : pct > 5 ? "ELEVATED" : "OPTIMAL",
+            label: pct > 10 ? "Theft Alert (>10%)" : pct > 5 ? "Elevated (5-10%)" : "Normal (<5%)",
+            isTheftAlert: pct > 10 || s.classification === "critical_investigate"
+          }
+        };
+      });
     }
   },
   watch: {
@@ -1671,8 +1682,13 @@ export default {
 .text-primary { color: #f1f5f9; }
 
 @media (max-width: 768px) {
+  .eap-container { padding: var(--s-3); }
+  .eap-hero { padding: var(--s-4); }
+  .eap-hero-glow { display: none; }
   .eap-hero-inner { flex-direction: column; align-items: flex-start; }
   .eap-controls-card { flex-direction: column; align-items: stretch; }
   .eap-modal-stats-grid { grid-template-columns: 1fr; }
+  .eap-table-search { width: 100%; }
+  .eap-search-input { width: 100%; }
 }
 </style>

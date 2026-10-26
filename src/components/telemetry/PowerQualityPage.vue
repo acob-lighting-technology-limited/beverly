@@ -1521,6 +1521,9 @@ export default {
 }
 
 @media (max-width: 768px) {
+  .power-quality-page {
+    padding: var(--space-3, 12px);
+  }
   .pq-header {
     flex-direction: column;
     align-items: stretch;
