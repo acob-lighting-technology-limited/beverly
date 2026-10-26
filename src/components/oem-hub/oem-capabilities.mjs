@@ -57,6 +57,36 @@ export const CAPABILITY_DEFINITIONS = [
     label: "Wallet vending",
     description: "This OEM's meters can be topped up through the Beverly Wallet.",
     previewGroups: ["Wallet"]
+  },
+  {
+    key: "smart_grid_telemetry",
+    label: "Power quality & load curves",
+    description: "Power quality metrics, interval demand curves, and telemetry feeds.",
+    previewGroups: ["Smart Grid Telemetry"]
+  },
+  {
+    key: "remote_relay_control",
+    label: "Remote relay & load limiting",
+    description: "Remote connect/disconnect relays and configure load limit thresholds.",
+    previewGroups: ["Remote Grid Control"]
+  },
+  {
+    key: "grid_energy_audit",
+    label: "Energy audit & loss detection",
+    description: "Grid feeder energy balancing and non-technical loss detection.",
+    previewGroups: ["Energy Audit"]
+  },
+  {
+    key: "mesh_network_health",
+    label: "Mesh network & gateway health",
+    description: "Base station status, RF signal quality, and mesh hop metrics.",
+    previewGroups: ["Mesh & Gateways"]
+  },
+  {
+    key: "direct_credit_balance",
+    label: "Direct credit account balance",
+    description: "Direct credit account balance tracking and consumption burn-rate forecasting.",
+    previewGroups: ["Management (Customer, Account)"]
   }
 ];
 

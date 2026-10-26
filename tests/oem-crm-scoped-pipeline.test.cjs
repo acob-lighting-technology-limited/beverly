@@ -30,6 +30,9 @@ function testOemStoreResolution() {
 
 // 2. Test App.vue capability gating logic
 function testAppCapabilityGating() {
+  const { previewGroupsFor } = require("../src/components/oem-hub/oem-capabilities.mjs");
+  const { routeGroups } = require("../src/data/route-manifest.js");
+
   function getCapabilities(oem) {
     const raw = oem?.capabilities || {};
     const slug = String(oem?.slug || "").toLowerCase();
@@ -49,6 +52,11 @@ function testAppCapabilityGating() {
         event_notification: true,
         tariff_management: true,
         load_profile: true,
+        smart_grid_telemetry: true,
+        remote_relay_control: true,
+        grid_energy_audit: true,
+        mesh_network_health: true,
+        direct_credit_balance: true
       };
     }
     if (slug === "miyaji_ev") {
@@ -74,12 +82,39 @@ function testAppCapabilityGating() {
   assert.equal(sparkCaps.token_records, false, "SparkMeter token_records must be false");
   assert.equal(sparkCaps.wallet_vending, true, "SparkMeter wallet_vending must be true");
   assert.equal(sparkCaps.tariff_management, true, "SparkMeter tariff_management must be true");
+  assert.equal(sparkCaps.smart_grid_telemetry, true, "SparkMeter smart_grid_telemetry must be true");
+  assert.equal(sparkCaps.remote_relay_control, true, "SparkMeter remote_relay_control must be true");
+  assert.equal(sparkCaps.grid_energy_audit, true, "SparkMeter grid_energy_audit must be true");
+  assert.equal(sparkCaps.mesh_network_health, true, "SparkMeter mesh_network_health must be true");
+  assert.equal(sparkCaps.direct_credit_balance, true, "SparkMeter direct_credit_balance must be true");
+
+  // Verify OEM capabilities definition preview groups
+  const sparkPreviewGroups = previewGroupsFor(sparkCaps);
+  assert(sparkPreviewGroups.includes("Smart Grid Telemetry"), "Must surface Smart Grid Telemetry group");
+  assert(sparkPreviewGroups.includes("Remote Grid Control"), "Must surface Remote Grid Control group");
+  assert(sparkPreviewGroups.includes("Energy Audit"), "Must surface Energy Audit group");
+  assert(sparkPreviewGroups.includes("Mesh & Gateways"), "Must surface Mesh & Gateways group");
+  assert(sparkPreviewGroups.includes("Management (Customer, Account)"), "Must surface Management (Customer, Account) group");
+  assert(!sparkPreviewGroups.includes("Token Generate"), "Must hide Token Generate group");
+  assert(!sparkPreviewGroups.includes("Token Record"), "Must hide Token Record group");
+
+  // Verify route manifest groups
+  const activeRouteGroups = routeGroups("super-admin", sparkCaps).map(g => g.name);
+  assert(activeRouteGroups.includes("Smart Grid Telemetry"), "Route manifest must surface Smart Grid Telemetry");
+  assert(activeRouteGroups.includes("Remote Grid Control"), "Route manifest must surface Remote Grid Control");
+  assert(activeRouteGroups.includes("Site Energy Audit"), "Route manifest must surface Site Energy Audit");
+  assert(activeRouteGroups.includes("Mesh & Gateways"), "Route manifest must surface Mesh & Gateways");
+  assert(!activeRouteGroups.includes("Token Generate"), "Route manifest must hide Token Generate");
+  assert(!activeRouteGroups.includes("Token Record"), "Route manifest must hide Token Record");
+  assert(!activeRouteGroups.includes("Remote Operation"), "Route manifest must hide Remote Operation");
+  assert(!activeRouteGroups.includes("Remote Operation Task"), "Route manifest must hide Remote Operation Task");
+  assert(!activeRouteGroups.includes("Protocol"), "Route manifest must hide Protocol");
 
   const calinCaps = getCapabilities({ slug: "calinmeter", vendingStrategy: "sts_token", capabilities: { token_generation: true, remote_meter_task: true } });
   assert.equal(calinCaps.token_generation, true, "Calinmeter token_generation must be preserved");
   assert.equal(calinCaps.remote_meter_task, true, "Calinmeter remote_meter_task must be preserved");
 
-  console.log("✓ App.vue capability gating strictly filters STS routes for Direct Credit / SparkMeter");
+  console.log("✓ App.vue capability gating surfaces 5 smart grid groups and hides STS routes for Direct Credit / SparkMeter");
 }
 
 function extractListData(res) {
@@ -198,7 +233,10 @@ async function testApiReferenceScoping() {
   const firstCust = customers[0];
   assert(firstCust.customerId, "customerId must be present");
   assert(firstCust.name, "name must be present");
-  console.log(`✓ /api/customer/read returned ${custTotal} SparkMeter customers mapped to canonical table shape`);
+  assert(firstCust.creditBalance && firstCust.creditBalance.startsWith("₦"), "creditBalance must start with ₦");
+  assert.equal(typeof firstCust.burnRateKwhPerDay, "number", "burnRateKwhPerDay must be a number");
+  assert.equal(typeof firstCust.daysRemaining, "number", "daysRemaining must be a number");
+  console.log(`✓ /api/customer/read returned ${custTotal} SparkMeter customers mapped to canonical table shape (including direct credit balance)`);
 
   // D. SparkMeter Account Read
   const acctRes = await callApi("/api/account/read", { page: 1, pageSize: 20 }, { "x-oem-id": "sparkmeter" });
@@ -210,7 +248,10 @@ async function testApiReferenceScoping() {
   assert(firstAcct.accountId, "accountId must be present");
   assert(firstAcct.customerId, "customerId must be present");
   assert(firstAcct.meterId, "meterId must be present");
-  console.log(`✓ /api/account/read returned ${acctTotal} SparkMeter customer-meter accounts`);
+  assert(firstAcct.creditBalance && firstAcct.creditBalance.startsWith("₦"), "creditBalance must start with ₦");
+  assert.equal(typeof firstAcct.burnRateKwhPerDay, "number", "burnRateKwhPerDay must be a number");
+  assert.equal(typeof firstAcct.daysRemaining, "number", "daysRemaining must be a number");
+  console.log(`✓ /api/account/read returned ${acctTotal} SparkMeter customer-meter accounts (including direct credit balance)`);
 
   // E. Calinmeter Station Read (Regression check)
   const calinStationRes = await callApi("/api/station/read", {}, { "x-oem-id": "calinmeter" });
