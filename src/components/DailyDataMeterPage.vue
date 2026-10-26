@@ -310,7 +310,8 @@ import BaseInput from "./base/BaseInput.vue";
 import BaseSelect from "./base/BaseSelect.vue";
 import ExportRangeMenu from "./base/ExportRangeMenu.vue";
 import { getApi, postApi } from "../services/api.js";
-import { hourlyCreateTime, intervalRowMatchesSearch, normalizeDailyMeterRow, sliceIntervalRows } from "../services/interval-data-flow.mjs";
+import { hourlyCreateTime, intervalRowMatchesSearch, intervalSearchFilters, normalizeDailyMeterRow, sliceIntervalRows } from "../services/interval-data-flow.mjs";
+import { fetchStationOptions } from "../services/station-registry.mjs";
 import { normalizeIntervalTableStatus } from "../services/interval-status.mjs";
 
 function normalizeCollection(response) {
@@ -419,7 +420,10 @@ export default {
           TO: new Date().toISOString(),
           orderBy: `currentDate ${this.sortDir}`
         };
-        if (this.searchTerm) payload.searchTerm = this.searchTerm;
+        if (this.searchTerm) {
+          const stations = await fetchStationOptions().catch(() => []);
+          Object.assign(payload, intervalSearchFilters(this.searchTerm, stations));
+        }
         const response = await postApi("/api/DailyDataMeter/read", payload);
         const health = response?.data?.freshness || response?.body?.data?.freshness;
         this.collectionWarning = health?.staleCount

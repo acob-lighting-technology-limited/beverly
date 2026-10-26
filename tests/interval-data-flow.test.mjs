@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   hourlyCreateTime,
   intervalRowMatchesSearch,
+  intervalSearchFilters,
   normalizeDailyMeterRow,
   sliceIntervalRows
 } from "../src/services/interval-data-flow.mjs";
@@ -32,6 +33,9 @@ assert.equal(intervalRowMatchesSearch(row, "amina"), true);
 assert.equal(intervalRowMatchesSearch(row, "470053"), true);
 assert.equal(intervalRowMatchesSearch(row, "kyakale"), true);
 assert.equal(intervalRowMatchesSearch(row, "missing"), false);
+assert.deepEqual(intervalSearchFilters(" ofemili ", [{ stationId: "OFEMILI" }]), { stationId: "OFEMILI" });
+assert.deepEqual(intervalSearchFilters("470053", [{ stationId: "OFEMILI" }]), { searchTerm: "470053" });
+assert.deepEqual(intervalSearchFilters("", [{ stationId: "OFEMILI" }]), {});
 assert.deepEqual(sliceIntervalRows([1, 2, 3, 4, 5], 2, 2), [3, 4]);
 assert.equal(hourlyCreateTime({ createTime: "2026-05-10 08:31:46", timestamp: "2026-05-10T00:00:00.000Z" }), "2026-05-10 08:31:46");
 assert.equal(hourlyCreateTime({ createDate: "2026-05-10", createTime: "2026-05-10 08:31:46" }), "2026-05-10 08:31:46");

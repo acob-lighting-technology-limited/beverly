@@ -80,6 +80,13 @@ export function intervalRowMatchesSearch(row = {}, searchTerm = "") {
   ].some((value) => String(value ?? "").toLowerCase().includes(query));
 }
 
+export function intervalSearchFilters(searchTerm, stations = []) {
+  const term = String(searchTerm || "").trim();
+  if (!term) return {};
+  const station = stations.find(row => String(row.stationId || "").toLowerCase() === term.toLowerCase());
+  return station ? { stationId: station.stationId } : { searchTerm: term };
+}
+
 export function sliceIntervalRows(rows, page = 1, pageSize = 10) {
   const safePage = Math.max(1, Number(page) || 1);
   const safePageSize = Math.max(1, Number(pageSize) || 10);
