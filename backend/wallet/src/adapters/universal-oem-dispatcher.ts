@@ -185,6 +185,14 @@ export interface UniversalVendInput {
     readonly meter?: MeterInfo;
     readonly idempotencyKey?: string;
     readonly isThreePhase?: boolean | null;
+    readonly preview?: any;
+    readonly vatBreakdown?: {
+        readonly energy_amount_minor?: number;
+        readonly vat_amount_minor?: number;
+        readonly amountMinor?: number;
+        readonly vatAmountMinor?: number;
+        readonly netMinor?: number;
+    };
 }
 
 export interface UniversalVendDependencies {
@@ -300,7 +308,7 @@ export async function executeUniversalVend(
     }
 
     // 6. Preview purchase
-    const preview = await doPreview(input.amountMinor, meter.tariffId || 'RESIDENTIAL');
+    const preview = input.preview ?? await doPreview(input.amountMinor, meter.tariffId || 'RESIDENTIAL');
     const isThreePhase = input.isThreePhase !== undefined ? input.isThreePhase : meter.isThreePhase === true;
     const meterType: MeterType = isThreePhase ? 'three_phase' : 'single_phase';
 

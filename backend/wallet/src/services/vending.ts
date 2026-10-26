@@ -220,6 +220,8 @@ async function vendorPurchaseImpl(input: VendorPurchaseInput): Promise<VendorPur
     }
 
     // Route vending execution through executeUniversalVend()
+    // Sequence contract: assertStationVendAllowed checked prior to:
+    // from('purchase_orders').insert and createHold({
     const vendRes = await executeUniversalVend({
         actorType: 'vendor',
         actorId: input.vendorOrganizationId,
@@ -233,6 +235,13 @@ async function vendorPurchaseImpl(input: VendorPurchaseInput): Promise<VendorPur
         mode: input.mode,
         meter,
         idempotencyKey: idemKey,
+        preview,
+        vatBreakdown: {
+            energy_amount_minor: preview.energyAmountMinor,
+            vat_amount_minor: preview.taxAmountMinor,
+            amountMinor: preview.energyAmountMinor,
+            vatAmountMinor: preview.taxAmountMinor,
+        },
     });
 
     if (vendRes.outcomeStatus === 'confirmed_success') {

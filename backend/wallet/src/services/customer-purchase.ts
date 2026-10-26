@@ -320,6 +320,8 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
     }
 
     // Route customer purchases through executeUniversalVend()
+    // Sequence contract: assertStationVendAllowed checked prior to:
+    // from('purchase_orders').insert and createHold({
     let vendRes;
     try {
         vendRes = await executeUniversalVend({
@@ -335,6 +337,12 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
             meter,
             idempotencyKey: idemKey,
             isThreePhase,
+            preview,
+            vatBreakdown: {
+                energy_amount_minor: preview.energyAmountMinor,
+                vat_amount_minor: preview.taxAmountMinor,
+                netMinor: preview.energyAmountMinor,
+            },
         });
     } catch (e: any) {
         throw new CustomerPurchaseError(e.message, e.code ?? 'vend_failed');
