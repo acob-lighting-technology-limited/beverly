@@ -346,6 +346,7 @@ export default {
       pageSize: 10,
       gotoPage: "1",
       loading: false,
+      requestId: 0,
       collectionWarning: "Source completeness unverified",
       sortDir: "desc",
       searchCache: {
@@ -403,6 +404,7 @@ export default {
     this.reload();
   },
   beforeUnmount() {
+    this.requestId += 1;
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
       this.searchDebounceTimer = null;
@@ -410,6 +412,8 @@ export default {
   },
   methods: {
     async reload() {
+      const requestId = ++this.requestId;
+      const searchTerm = this.searchTerm;
       this.loading = true;
       try {
         const payload = {
@@ -420,22 +424,25 @@ export default {
           TO: new Date().toISOString(),
           orderBy: `currentDate ${this.sortDir}`
         };
-        if (this.searchTerm) {
+        if (searchTerm) {
           const stations = await fetchStationOptions().catch(() => []);
-          Object.assign(payload, intervalSearchFilters(this.searchTerm, stations));
+          if (requestId !== this.requestId) return;
+          Object.assign(payload, intervalSearchFilters(searchTerm, stations));
         }
         const response = await postApi("/api/DailyDataMeter/read", payload);
+        if (requestId !== this.requestId || searchTerm !== this.searchTerm) return;
         const health = response?.data?.freshness || response?.body?.data?.freshness;
         this.collectionWarning = health?.staleCount
           ? `${health.staleCount} stations need collection. Completeness remains unverified.`
           : "Source completeness unverified";
         const collection = normalizeCollection(response);
-        const query = this.searchTerm.trim().toLowerCase();
+        const query = searchTerm.trim().toLowerCase();
         let rows = collection.rows.map(normalizeDailyMeterRow);
         let total = collection.total;
 
         if (query && !rows.every((row) => intervalRowMatchesSearch(row, query))) {
-          const searchedRows = this.sortRows(await this.fetchAllSearchMatches(payload, query));
+          const searchedRows = this.sortRows(await this.fetchAllSearchMatches(payload, query, requestId));
+          if (requestId !== this.requestId) return;
           total = searchedRows.length;
           rows = sliceIntervalRows(searchedRows, this.page, this.pageSize);
         }
@@ -445,11 +452,12 @@ export default {
         this.totalRecords = total;
         this.page = Math.min(this.page, this.totalPages);
       } catch (error) {
+        if (requestId !== this.requestId) return;
         console.error("[DailyDataMeterPage]", error);
         this.rows = [];
         this.totalRecords = 0;
       } finally {
-        this.loading = false;
+        if (requestId === this.requestId) this.loading = false;
       }
     },
     async openHourly(row) {
@@ -518,7 +526,8 @@ export default {
       this.closeRowActionMenu();
       this.openHourly(row);
     },
-    async fetchAllSearchMatches(basePayload, query) {
+    async fetchAllSearchMatches(basePayload, query, requestId = this.requestId) {
+      if (requestId !== this.requestId) return [];
       if (this.searchCache.query === query && this.searchCache.rows.length) {
         return this.searchCache.rows;
       }
@@ -530,12 +539,14 @@ export default {
         pageNumber: 1,
         pageSize
       });
+      if (requestId !== this.requestId) return [];
       const firstCollection = normalizeCollection(first);
       const total = firstCollection.total || firstCollection.rows.length;
       const allRows = firstCollection.rows.map(normalizeDailyMeterRow);
       const pageCount = Math.ceil(total / pageSize);
 
       for (let pageNumber = 2; pageNumber <= pageCount; pageNumber += 4) {
+        if (requestId !== this.requestId) return [];
         const pageNumbers = Array.from(
           { length: Math.min(4, pageCount - pageNumber + 1) },
           (_, index) => pageNumber + index
@@ -552,6 +563,7 @@ export default {
         }
       }
 
+      if (requestId !== this.requestId) return [];
       const rows = allRows.filter((row) => intervalRowMatchesSearch(row, query));
       this.searchCache = { query, rows };
       return rows;
