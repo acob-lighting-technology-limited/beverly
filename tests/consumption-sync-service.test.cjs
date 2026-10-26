@@ -19,6 +19,7 @@ supabase.restRequest = async (pathname, options = {}) => {
   if (writeFailure && pathname.startsWith("/daily_meter_readings?")) throw new Error("Storage write failed");
   if (pathname === "/rpc/consumption_database_usage") return { bytes: quotaBytes };
   if (pathname === "/rpc/claim_consumption_sync_station") return "TUNGA";
+  if (pathname === "/consumption_sync_station_state?select=station_id,last_finished_at") return [...states].map(([station_id, state]) => ({ station_id, last_finished_at: state.last_finished_at }));
   if (pathname === "/rpc/acquire_consumption_sync_station") {
     const state = states.get(body.p_station_id) || {};
     if (state.busy) return { acquired: false };
@@ -128,11 +129,16 @@ global.fetch = async (url, init) => {
   assert(!calls.some(c => c.url.endsWith("/api/DailyDataMeter/read")));
 
   reset();
+  states.set("TUNGA", { last_finished_at: "2026-10-20T00:00:00Z" });
+  states.set("UMAISHA", { last_finished_at: "2026-10-19T00:00:00Z" });
   const scheduled = await runScheduledConsumptionSync({ from: "2026-10-21", to: "2026-10-24", maxPages: 2 });
   assert.equal(scheduled.visitedStations, 6);
   assert.equal(scheduled.runs, 6);
   assert.equal(new Set(calls.filter(c => c.url.endsWith("/api/DailyDataMeter/read")).map(c => c.stationId)).size, 6);
   assert(!states.has("ADMIN"));
+  const visits = calls.filter(c => c.url.endsWith("/api/DailyDataMeter/read")).map(c => c.stationId);
+  assert(visits.indexOf("UMAISHA") < visits.indexOf("TUNGA"), "older stations precede recently finished stations");
+  assert(visits.indexOf("OFEMILI") < visits.indexOf("UMAISHA"), "never-finished stations receive first priority");
 
   reset();
   quotaBytes = 6500000000;

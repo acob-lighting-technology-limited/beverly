@@ -465,6 +465,12 @@ async function runConsumptionSync(input = {}) {
 
 async function runScheduledConsumptionSync(input = {}) {
   const eligible = await resolveStations(input.stations || input.stationId || process.env.CONSUMPTION_SYNC_STATIONS, input);
+  const states = await supabase.restRequest("/consumption_sync_station_state?select=station_id,last_finished_at");
+  if (!Array.isArray(states)) throw new Error("Invalid consumption scheduling state");
+  const finished = new Map(states.map((state) => [state.station_id, Date.parse(state.last_finished_at) || 0]));
+  // Database and aggregate work can overrun a station's time slice. Persisted
+  // finish times put stations omitted by the previous deadline first next time.
+  eligible.sort((a, b) => (finished.get(a) || 0) - (finished.get(b) || 0) || a.localeCompare(b));
   const deadline = Date.now() + Math.min(240000, positiveInteger(input.budgetMs, 180000));
   const results = [];
   for (const stationId of eligible) {
