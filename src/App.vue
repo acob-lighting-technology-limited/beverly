@@ -322,6 +322,11 @@
           <VendingMonitorPage v-else-if="route.customComponent === 'VendingMonitorPage'" :route="route" />
           <StationConsumptionPage v-else-if="route.customComponent === 'StationConsumptionPage'" :route="route" :hash="hash" :role-id="currentRoleId" />
           <ArchiveReportsPage v-else-if="route.customComponent === 'ArchiveReportsPage'" :route="route" />
+          <PowerQualityPage v-else-if="route.customComponent === 'PowerQualityPage' || route.hash === '#/telemetry/power-quality'" :route="route" />
+          <DemandCurvesPage v-else-if="route.customComponent === 'DemandCurvesPage' || route.hash === '#/telemetry/demand-curves'" :route="route" />
+          <RemoteRelayPage v-else-if="route.customComponent === 'RemoteRelayPage'" />
+          <EnergyAuditPage v-else-if="route.customComponent === 'EnergyAuditPage'" />
+          <GatewayHealthPage v-else-if="route.customComponent === 'GatewayHealthPage'" />
           <TablePage v-else :route="route" />
         </main>
     </section>
@@ -414,6 +419,11 @@ import VendingMonitorPage from "./components/wallet/VendingMonitorPage.vue";
 import ReportsPage from "./components/ReportsPage.vue";
 import StationAlertsBell from "./components/StationAlertsBell.vue";
 import OemHubPage from "./components/oem-hub/OemHubPage.vue";
+import PowerQualityPage from "./components/telemetry/PowerQualityPage.vue";
+import DemandCurvesPage from "./components/telemetry/DemandCurvesPage.vue";
+import RemoteRelayPage from "./components/grid-control/RemoteRelayPage.vue";
+import EnergyAuditPage from "./components/analytics/EnergyAuditPage.vue";
+import GatewayHealthPage from "./components/mesh/GatewayHealthPage.vue";
 import BeverlyLoader from "@beverly/tokens/BeverlyLoader.vue";
 import PwaUpdateToast from "@beverly/tokens/PwaUpdateToast.vue";
 import LanguageSwitcher from "@beverly/tokens/LanguageSwitcher.vue";
@@ -436,7 +446,7 @@ function normalizeThemeChoice(theme) {
 
 export default {
   name: "App",
-  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DisputesPage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
+  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
   data() {
     return {
       hash: window.location.hash || "#/login?redirect=%2Fdashboard",
@@ -501,13 +511,23 @@ export default {
           tariff_management: true,
           load_profile: true,
           firmware_update: false,
+          smart_grid_telemetry: true,
+          remote_relay_control: true,
+          grid_energy_audit: true,
+          mesh_network_health: true,
+          direct_credit_balance: true,
           ...raw,
           // Explicit overrides ensure STS token & direct-credit incompatible features remain strictly hidden
           remote_meter_task: false,
           dlms_protocol: false,
           dlt645_protocol: false,
           gprs_support: false,
-          firmware_update: false
+          firmware_update: false,
+          smart_grid_telemetry: true,
+          remote_relay_control: true,
+          grid_energy_audit: true,
+          mesh_network_health: true,
+          direct_credit_balance: true
         };
       }
 

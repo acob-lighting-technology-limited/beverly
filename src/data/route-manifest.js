@@ -54,7 +54,12 @@ export const routeManifest = [
     customComponent: "OnboardingStudioPage",
     roles: ["super-admin"]
   },
-  { group: "System", title: "Automation Command", hash: "#/system/automation-command", apis: ["/api/system/automation-report", "/api/system/automation-control"], columns: [], actions: ["Refresh", "Save", "Test Alert"], isCustomPage: true, customComponent: "AutomationCommandPage", roles: ["super-admin", "operations-manager"] }
+  { group: "System", title: "Automation Command", hash: "#/system/automation-command", apis: ["/api/system/automation-report", "/api/system/automation-control"], columns: [], actions: ["Refresh", "Save", "Test Alert"], isCustomPage: true, customComponent: "AutomationCommandPage", roles: ["super-admin", "operations-manager"] },
+  { group: "Smart Grid Telemetry", title: "Power Quality", hash: "#/telemetry/power-quality", apis: ["/api/oem/telemetry/power-quality"], columns: [], actions: ["Refresh"], isCustomPage: true, customComponent: "PowerQualityPage", roles: ["super-admin", "operations-manager"] },
+  { group: "Smart Grid Telemetry", title: "Demand Curves", hash: "#/telemetry/demand-curves", apis: ["/api/oem/telemetry/load-curves", "/api/oem/telemetry/demand-curves"], columns: [], actions: ["Refresh", "Export"], isCustomPage: true, customComponent: "DemandCurvesPage", roles: ["super-admin", "operations-manager"] },
+  { group: "Remote Grid Control", title: "Relay & Load Limiting", hash: "#/grid-control/remote-relay", apis: ["/api/oem/grid-control/list", "/api/oem/grid-control/relay-status", "/api/oem/grid-control/relay-switch", "/api/oem/grid-control/power-limit"], columns: [], actions: ["Connect", "Disconnect", "Set Power Limit"], isCustomPage: true, customComponent: "RemoteRelayPage", roles: ["super-admin", "operations-manager"] },
+  { group: "Site Energy Audit", title: "Energy Balance & Theft", hash: "#/analytics/energy-audit", apis: ["/api/oem/analytics/energy-audit"], columns: [], actions: ["Refresh", "Export"], isCustomPage: true, customComponent: "EnergyAuditPage", roles: ["super-admin", "operations-manager", "account"] },
+  { group: "Mesh & Gateways", title: "Gateway & Mesh Health", hash: "#/mesh/gateways", apis: ["/api/oem/mesh/gateway-status"], columns: [], actions: ["Refresh"], isCustomPage: true, customComponent: "GatewayHealthPage", roles: ["super-admin", "operations-manager"] }
 ];
 
 const referenceVisibleHashes = new Set([
@@ -99,6 +104,11 @@ const referenceVisibleHashes = new Set([
   "#/remote-support/file-upload",
   "#/system/station-onboarding-studio",
   "#/system/automation-command",
+  "#/telemetry/power-quality",
+  "#/telemetry/demand-curves",
+  "#/grid-control/remote-relay",
+  "#/analytics/energy-audit",
+  "#/mesh/gateways",
 ]);
 
 
@@ -207,7 +217,11 @@ export const routeCapabilityByHashPrefix = [
   ["#/remote-support/firmware-update", "firmware_update"],
   ["#/protocol/dlms", "dlms_protocol"],
   ["#/protocol/dlt645", "dlt645_protocol"],
-  ["#/wallet", "wallet_vending"]
+  ["#/wallet", "wallet_vending"],
+  ["#/telemetry/", "smart_grid_telemetry"],
+  ["#/grid-control/", "remote_relay_control"],
+  ["#/analytics/energy-audit", "grid_energy_audit"],
+  ["#/mesh/gateways", "mesh_network_health"]
 ];
 
 export function routeCapabilityKey(route) {
