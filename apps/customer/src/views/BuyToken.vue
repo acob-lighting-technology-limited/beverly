@@ -61,6 +61,27 @@ function meterTypeLabel(type?: string | null) {
     return 'Phase Unknown';
 }
 
+const isDirectCredit = computed(() => {
+    return Boolean(
+        result.value?.status === 'delivered'
+        || result.value?.vending_strategy === 'direct_credit'
+        || (result.value as any)?.vendingStrategy === 'direct_credit'
+        || result.value?.purchaseOrder?.vending_strategy === 'direct_credit'
+        || (result.value?.purchaseOrder as any)?.vendingStrategy === 'direct_credit'
+        || result.value?.purchaseOrder?.delivery_state === 'delivered'
+        || (selMeter.value as any)?.vending_strategy === 'direct_credit'
+        || (selMeter.value as any)?.vendingStrategy === 'direct_credit'
+        || result.value?.mode === 'direct_credit'
+        || result.value?.purchaseOrder?.mode === 'direct_credit'
+        || (step.value === 4 && result.value && !result.value.token)
+    );
+});
+
+const isDirectCreditMeter = computed(() => {
+    return (selMeter.value as any)?.vending_strategy === 'direct_credit'
+        || (selMeter.value as any)?.vendingStrategy === 'direct_credit';
+});
+
 const remoteState = computed(() => String(result.value?.purchaseOrder?.delivery_state ?? 'token_generated'));
 const canRemoteSendToken = computed(() => {
     if (!result.value?.token || !result.value.purchaseOrder?.id || remoteSending.value) return false;
@@ -174,7 +195,22 @@ async function purchase() {
         }
 
         const rawToken = String(r?.token || r?.purchaseOrder?.token || '').trim();
-        const isFailed = !rawToken || r?.status === 'failed' || r?.purchaseOrder?.status === 'failed' || r?.purchaseOrder?.delivery_state === 'vend_failed';
+        const isDirectCreditPurchase = r?.status === 'delivered'
+            || r?.vending_strategy === 'direct_credit'
+            || (r as any)?.vendingStrategy === 'direct_credit'
+            || r?.purchaseOrder?.vending_strategy === 'direct_credit'
+            || (r?.purchaseOrder as any)?.vendingStrategy === 'direct_credit'
+            || r?.purchaseOrder?.delivery_state === 'delivered'
+            || (selMeter.value as any)?.vending_strategy === 'direct_credit'
+            || (selMeter.value as any)?.vendingStrategy === 'direct_credit'
+            || r?.mode === 'direct_credit'
+            || r?.purchaseOrder?.mode === 'direct_credit';
+
+        const isOrderFailed = r?.status === 'failed'
+            || r?.purchaseOrder?.status === 'failed'
+            || r?.purchaseOrder?.delivery_state === 'vend_failed';
+
+        const isFailed = isOrderFailed || (!rawToken && !isDirectCreditPurchase);
 
         if (isFailed) {
             result.value = null;
@@ -182,12 +218,12 @@ async function purchase() {
             const failureReason = r?.purchaseOrder?.remark
                 || r?.purchaseOrder?.failure_reason
                 || r?.message
-                || 'Token generation failed. No token was returned by the vending service.';
+                || (isDirectCreditPurchase ? 'Direct credit failed. No credit was applied to your meter.' : 'Token generation failed. No token was returned by the vending service.');
             failedPurchase.value = {
-                title: 'Token Generation Failed',
+                title: isDirectCreditPurchase ? 'Direct Credit Failed' : 'Token Generation Failed',
                 message: failureReason,
                 action: 'No wallet funds were debited. Your balance is untouched.',
-                code: r?.purchaseOrder?.delivery_state || r?.code || 'token_not_generated',
+                code: r?.purchaseOrder?.delivery_state || r?.code || (isDirectCreditPurchase ? 'direct_credit_failed' : 'token_not_generated'),
                 meterId: selMeter.value?.meter_id,
                 amountMinor: amountMinor.value,
                 units: preview.value?.units,
@@ -200,18 +236,22 @@ async function purchase() {
 
         result.value = {
             ...r,
-            token: rawToken,
+            token: rawToken || null,
         };
         failedPurchase.value = null;
         notice.value = {
             tone: 'success',
-            title: 'Token generated successfully',
-            message: 'Receipt is ready. Copy, download, view, or remote send now.',
+            title: isDirectCreditPurchase ? 'Credit Applied Successfully' : 'Token generated successfully',
+            message: isDirectCreditPurchase
+                ? 'Your meter balance has been credited directly over-the-air. No 20-digit keypad token is required.'
+                : 'Receipt is ready. Copy, download, view, or remote send now.',
         };
         step.value   = 4;
-        window.setTimeout(() => {
-            remoteTrackerOpen.value = true;
-        }, 500);
+        if (!isDirectCreditPurchase) {
+            window.setTimeout(() => {
+                remoteTrackerOpen.value = true;
+            }, 500);
+        }
     } catch (e: any) {
         remoteTrackerOpen.value = false;
         const errDetails = describeApiError(e, e?.message ?? 'Purchase failed. Try again.');
@@ -243,17 +283,32 @@ async function submitStepUp() {
         pendingPurchaseParams = null;
 
         const rawToken = String(r?.token || r?.purchaseOrder?.token || '').trim();
-        const isFailed = !rawToken || r?.status === 'failed' || r?.purchaseOrder?.status === 'failed' || r?.purchaseOrder?.delivery_state === 'vend_failed';
+        const isDirectCreditPurchase = r?.status === 'delivered'
+            || r?.vending_strategy === 'direct_credit'
+            || (r as any)?.vendingStrategy === 'direct_credit'
+            || r?.purchaseOrder?.vending_strategy === 'direct_credit'
+            || (r?.purchaseOrder as any)?.vendingStrategy === 'direct_credit'
+            || r?.purchaseOrder?.delivery_state === 'delivered'
+            || (selMeter.value as any)?.vending_strategy === 'direct_credit'
+            || (selMeter.value as any)?.vendingStrategy === 'direct_credit'
+            || r?.mode === 'direct_credit'
+            || r?.purchaseOrder?.mode === 'direct_credit';
+
+        const isOrderFailed = r?.status === 'failed'
+            || r?.purchaseOrder?.status === 'failed'
+            || r?.purchaseOrder?.delivery_state === 'vend_failed';
+
+        const isFailed = isOrderFailed || (!rawToken && !isDirectCreditPurchase);
 
         if (isFailed) {
             result.value = null;
             remoteTrackerOpen.value = false;
-            const failureReason = r?.purchaseOrder?.remark || r?.message || 'Token generation failed after security check.';
+            const failureReason = r?.purchaseOrder?.remark || r?.message || (isDirectCreditPurchase ? 'Direct credit failed after security check.' : 'Token generation failed after security check.');
             failedPurchase.value = {
-                title: 'Token Generation Failed',
+                title: isDirectCreditPurchase ? 'Direct Credit Failed' : 'Token Generation Failed',
                 message: failureReason,
                 action: 'No wallet funds were debited. Your balance is untouched.',
-                code: r?.purchaseOrder?.delivery_state || r?.code || 'token_not_generated',
+                code: r?.purchaseOrder?.delivery_state || r?.code || (isDirectCreditPurchase ? 'direct_credit_failed' : 'token_not_generated'),
                 meterId: selMeter.value?.meter_id,
                 amountMinor: amountMinor.value,
                 orderId: r?.purchaseOrder?.id,
@@ -265,18 +320,22 @@ async function submitStepUp() {
 
         result.value = {
             ...r,
-            token: rawToken,
+            token: rawToken || null,
         };
         failedPurchase.value = null;
         notice.value = {
             tone: 'success',
-            title: 'Token generated successfully',
-            message: 'Receipt is ready. Copy, download, view, or remote send now.',
+            title: isDirectCreditPurchase ? 'Credit Applied Successfully' : 'Token generated successfully',
+            message: isDirectCreditPurchase
+                ? 'Your meter balance has been credited directly over-the-air. No 20-digit keypad token is required.'
+                : 'Receipt is ready. Copy, download, view, or remote send now.',
         };
         step.value   = 4;
-        window.setTimeout(() => {
-            remoteTrackerOpen.value = true;
-        }, 500);
+        if (!isDirectCreditPurchase) {
+            window.setTimeout(() => {
+                remoteTrackerOpen.value = true;
+            }, 500);
+        }
     } catch (e: any) {
         stepUpError.value = e?.message ?? 'Incorrect code. Try again.';
     } finally { stepUpLoading.value = false; }
@@ -314,9 +373,18 @@ function reset() {
 
 function resultReceiptRow() {
     if (!result.value) return null;
+    const isDirect = !result.value.token
+        || result.value.status === 'delivered'
+        || result.value.vending_strategy === 'direct_credit'
+        || (result.value as any)?.vendingStrategy === 'direct_credit'
+        || result.value.purchaseOrder?.vending_strategy === 'direct_credit'
+        || (result.value.purchaseOrder as any)?.vendingStrategy === 'direct_credit'
+        || (selMeter.value as any)?.vending_strategy === 'direct_credit'
+        || (selMeter.value as any)?.vendingStrategy === 'direct_credit';
     return {
         ...(result.value.purchaseOrder ?? {}),
         token: result.value.token,
+        vending_strategy: isDirect ? 'direct_credit' : 'sts_token',
         units_kwh: result.value.units,
         receipt_id: result.value.receiptId,
         purchase_order_id: result.value.purchaseOrder?.id,
@@ -621,9 +689,10 @@ async function remoteSendGeneratedToken() {
       </div>
     </div>
 
-    <!-- Step 4: Token reveal -->
-    <template v-if="step === 4 && result?.token">
-      <div class="bw-card" style="text-align:center">
+    <!-- Step 4: Token reveal or Direct Credit success -->
+    <template v-if="step === 4 && result">
+      <!-- STS Token branch -->
+      <div v-if="result.token" class="bw-card" style="text-align:center">
         <div style="width:48px; height:48px; border-radius:50%; background: oklch(70% 0.19 145 / 0.15); display:grid; place-items:center; margin: 0 auto var(--s-4)">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
@@ -651,7 +720,56 @@ async function remoteSendGeneratedToken() {
           <button class="bw-btn" @click="printResultReceipt">Print receipt</button>
         </div>
       </div>
-      <button class="bw-btn primary" style="width:100%; justify-content:center" @click="reset">
+
+      <!-- Direct Credit success branch -->
+      <div v-else class="bw-card direct-credit-success-card" style="text-align:center">
+        <div style="width:48px; height:48px; border-radius:50%; background: oklch(70% 0.19 145 / 0.15); display:grid; place-items:center; margin: 0 auto var(--s-4)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div style="display: inline-block; margin-bottom: var(--s-2)">
+          <span class="bw-badge success" style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em">Direct Credit Applied</span>
+        </div>
+        <p class="bw-page-title" style="margin-bottom: var(--s-2)">Credit Applied Successfully</p>
+        <p class="bw-muted" style="font-size: var(--t-sm); margin-bottom: var(--s-4)">
+          Balance credited automatically to meter <span class="bw-mono">{{ result.purchaseOrder?.meter_id ?? selMeter?.meter_id }}</span>
+        </p>
+
+        <div class="bw-token-box" style="padding: var(--s-5)">
+          <div style="font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: var(--s-1)">Amount Credited</div>
+          <div class="bw-token-value" style="font-size: clamp(1.8rem, 6vw, 2.4rem); font-weight: 800; color: var(--brand); margin: var(--s-1) 0">
+            {{ naira(result.purchaseOrder?.amount_minor ?? preview?.amountMinor) }}
+          </div>
+          <div class="bw-token-units" style="font-size: var(--t-md); font-weight: 600">
+            {{ kwh(result.units) }}
+          </div>
+        </div>
+
+        <div class="bw-alert info" style="margin-top: var(--s-3); text-align: left; display: flex; align-items: center; gap: var(--s-3)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span style="font-size: var(--t-sm)">Your meter balance has been credited directly over-the-air. No 20-digit keypad token is required.</span>
+        </div>
+
+        <div class="bw-card" style="text-align:left; margin-top: var(--s-3)">
+          <div class="bw-row" style="justify-content:space-between"><span class="bw-muted">Meter</span><strong class="bw-mono">{{ result.purchaseOrder?.meter_id ?? selMeter?.meter_id }}</strong></div>
+          <div class="bw-row" style="justify-content:space-between; margin-top: var(--s-2)"><span class="bw-muted">Credit Method</span><span class="bw-badge success">Direct Credit (Account Top-up)</span></div>
+          <div class="bw-row" style="justify-content:space-between; margin-top: var(--s-2)"><span class="bw-muted">Amount paid</span><strong>{{ naira(result.purchaseOrder?.amount_minor ?? preview?.amountMinor) }}</strong></div>
+          <div class="bw-row" style="justify-content:space-between; margin-top: var(--s-2)"><span class="bw-muted">Energy value</span><strong>{{ naira(result.purchaseOrder?.energy_amount_minor ?? preview?.energyAmountMinor) }}</strong></div>
+          <div class="bw-row" style="justify-content:space-between; margin-top: var(--s-2)"><span class="bw-muted">VAT ({{ Number(result.purchaseOrder?.vat_rate_basis_points ?? preview?.vatRateBasisPoints ?? 0) / 100 }}%)</span><strong>{{ naira(result.purchaseOrder?.vat_amount_minor ?? preview?.vatMinor) }}</strong></div>
+          <div class="bw-row" style="justify-content:space-between; margin-top: var(--s-2)"><span class="bw-muted">Delivery</span><strong class="bw-mono">Directly Credited (Over-the-Air)</strong></div>
+          <div class="bw-row" style="justify-content:space-between; margin-top: var(--s-2)"><span class="bw-muted">Order</span><strong class="bw-mono">#{{ String(result.purchaseOrder?.id ?? '').slice(0, 8) }}</strong></div>
+        </div>
+
+        <div class="buy-token-actions" style="margin-top: var(--s-4)">
+          <button class="bw-btn" @click="downloadResultReceipt">Download receipt</button>
+          <button class="bw-btn" @click="viewResultReceipt">View receipt</button>
+          <button class="bw-btn" @click="printResultReceipt">Print receipt</button>
+        </div>
+      </div>
+
+      <button class="bw-btn primary" style="width:100%; justify-content:center; margin-top: var(--s-3)" @click="reset">
         Buy another
       </button>
     </template>
@@ -667,9 +785,9 @@ async function remoteSendGeneratedToken() {
           </svg>
         </div>
         <p class="token-failed-badge"><span></span>Purchase Unsuccessful</p>
-        <h1 class="bw-page-title" style="margin: 0 0 var(--s-2)">{{ failedPurchase?.title || error?.title || 'Token Generation Failed' }}</h1>
+        <h1 class="bw-page-title" style="margin: 0 0 var(--s-2)">{{ failedPurchase?.title || error?.title || (isDirectCreditMeter ? 'Direct Credit Failed' : 'Token Generation Failed') }}</h1>
         <p class="bw-muted" style="font-size: var(--t-sm); margin-bottom: var(--s-4)">
-          {{ failedPurchase?.message || error?.message || 'We could not generate a token for your meter at this time.' }}
+          {{ failedPurchase?.message || error?.message || (isDirectCreditMeter ? 'We could not apply direct credit to your meter at this time.' : 'We could not generate a token for your meter at this time.') }}
         </p>
 
         <div class="vend-safety-notice" style="text-align:left; margin-bottom: var(--s-4)">

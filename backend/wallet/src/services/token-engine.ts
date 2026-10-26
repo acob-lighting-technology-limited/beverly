@@ -298,6 +298,7 @@ export interface MeterInfo {
      * createRemoteSendTask so a vend for a tagged meter targets the right upstream.
      */
     oemId?: string | null;
+    vendingStrategy?: 'sts_token' | 'direct_credit';
 }
 
 export async function lookupMeter(
@@ -353,6 +354,7 @@ export async function lookupMeter(
                 resolutionSource: 'energy_account',
                 liveVerified: true,
                 oemId: opts.oemId ?? null,
+                vendingStrategy: opts.oemId === 'sparkmeter' ? 'direct_credit' : 'sts_token',
             };
         }
     } catch (error) {
@@ -362,7 +364,12 @@ export async function lookupMeter(
     }
 
     const fallback = await lookupLocalAccountBinding(normalizedMeterId);
-    if (fallback) return fallback;
+    if (fallback) {
+        return {
+            ...fallback,
+            vendingStrategy: fallback.oemId === 'sparkmeter' ? 'direct_credit' : (fallback.vendingStrategy ?? 'sts_token'),
+        };
+    }
 
     const oemInventory = await lookupOemInventoryMeter(normalizedMeterId, opts.oemId);
     if (oemInventory) return oemInventory;
@@ -375,12 +382,22 @@ export async function lookupMeter(
             }
             throw error;
         });
-        if (historical) return historical;
+        if (historical) {
+            return {
+                ...historical,
+                vendingStrategy: historical.oemId === 'sparkmeter' ? 'direct_credit' : (historical.vendingStrategy ?? 'sts_token'),
+            };
+        }
     }
 
     if (opts.allowArchivedFallback) {
         const archived = lookupArchivedMeterSample(normalizedMeterId);
-        if (archived) return archived;
+        if (archived) {
+            return {
+                ...archived,
+                vendingStrategy: archived.oemId === 'sparkmeter' ? 'direct_credit' : (archived.vendingStrategy ?? 'sts_token'),
+            };
+        }
     }
 
     if (upstreamError?.code === 'energy_not_configured') throw upstreamError;
@@ -443,6 +460,7 @@ async function lookupLocalAccountBinding(meterId: string): Promise<MeterInfo | n
         // oem_id yet. A null value here is treated as "default OEM" downstream,
         // which is exactly correct since every such row is a real Calinmeter meter.
         oemId: (data as any).oem_id ?? null,
+        vendingStrategy: (data as any).oem_id === 'sparkmeter' ? 'direct_credit' : 'sts_token',
     };
 }
 
@@ -540,6 +558,7 @@ export async function lookupOemInventoryMeter(
         resolutionSource: 'oem_inventory',
         liveVerified: true,
         oemId: detectedOemType,
+        vendingStrategy: 'direct_credit',
     };
 }
 
@@ -823,21 +842,14 @@ export async function resolveEffectiveIsS2(input: GenerateTokenInput): Promise<b
 }
 
 /**
- * Guards against silently building an STS token payload for an OEM that doesn't
- * speak STS. `direct_credit` (an OEM that credits a meter in real time with no
- * physical token) is reserved in the schema (oem_manufacturers.vending_strategy)
- * but its actual code path has NOT been built. SparkMeter direct-credit behavior
- * is uncertified, so building it now would be speculative, untestable code with
- * no real spec to verify against. Fails loudly and
- * specifically instead of vending Calinmeter's STS shape at a non-STS OEM.
+/**
+ * Direct credit and STS token strategies are supported across OEMs
+ * via the universal OEM dispatcher.
  */
-async function assertVendingStrategySupported(oemId?: string | null): Promise<void> {
+export async function assertVendingStrategySupported(oemId?: string | null): Promise<void> {
     const config = await resolveOemConfig(oemId ?? DEFAULT_OEM_SLUG);
     if (config?.vendingStrategy === 'direct_credit') {
-        throw new TokenEngineError(
-            `${config.displayName} is configured for direct-credit vending, which is not yet implemented in the wallet backend. STS token generation cannot be used for this OEM.`,
-            'vending_strategy_not_implemented',
-        );
+        return;
     }
 }
 

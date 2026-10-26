@@ -16,6 +16,7 @@ export type ReceiptModel = {
     issuedAt?: string;
     subject?: string;
     subtitle?: string;
+    isDirectCredit?: boolean;
     fields: ReceiptField[];
 };
 
@@ -61,8 +62,13 @@ function legacyReceiptHtml(model: ReceiptModel): string {
     const issuedAt = model.issuedAt || date(new Date().toISOString());
     const amount = model.amount || '';
     const status = model.status || '';
-    const token = model.fields.find((item) => item.token);
-    const details = model.fields.filter((item) => !item.token);
+    const token = model.fields.find((item) => item.token && item.value && item.value !== '-');
+    const isDirectCredit = Boolean(
+        model.isDirectCredit ||
+        (!token && model.title === 'Purchase Receipt') ||
+        model.fields.some((f) => f.label === 'Credit Method' && String(f.value).includes('DIRECT CREDIT'))
+    );
+    const details = model.fields.filter((item) => !item.token && item.label !== 'Credit Method');
 
     return `<!doctype html>
 <html>
@@ -171,6 +177,7 @@ function legacyReceiptHtml(model: ReceiptModel): string {
     }
     .token span { display: block; color: #ffd600; font-size: 10px; font-weight: 850; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
     .token strong { color: #ffd600; font-family: "Cascadia Mono", "Courier New", monospace; font-size: 20px; letter-spacing: 2px; word-break: break-all; }
+    .token.direct-credit strong { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 15px; letter-spacing: 0.04em; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
     .item {
       min-width: 0;
@@ -230,7 +237,7 @@ function legacyReceiptHtml(model: ReceiptModel): string {
     </header>
     ${amount ? `<section class="amount"><span>${escapeHtml(model.subject || 'Amount')}</span><strong>${escapeHtml(amount)}</strong></section>` : ''}
     ${status ? `<div class="status">${escapeHtml(status)}</div>` : ''}
-    ${token ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : ''}
+    ${token && !isDirectCredit ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : isDirectCredit ? `<section class="token direct-credit"><span>Credit Method</span><strong>DIRECT CREDIT (METER BALANCE)</strong></section>` : ''}
     <section class="grid">
       ${details.map((item) => `<div class="item ${item.wide ? 'wide' : ''}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join('')}
     </section>
@@ -523,6 +530,7 @@ export function purchaseReceipt(row: any): ReceiptModel {
     }
 
     const { tariffName, tariffPrice } = resolveTariffDetails(row);
+    const isDirectCredit = !row.token || row.vending_strategy === 'direct_credit' || row.vendingStrategy === 'direct_credit' || row.mode === 'direct_credit' || row.purchase_mode === 'direct_credit' || row.delivery_method === 'direct_credit';
 
     return {
         title: 'Purchase Receipt',
@@ -531,8 +539,11 @@ export function purchaseReceipt(row: any): ReceiptModel {
         status: clean(row.status || row.delivery_state),
         issuedAt: date(row.created_at),
         subject: 'Amount Purchased',
+        isDirectCredit,
         fields: [
-            field('Token', row.token, { token: true }),
+            isDirectCredit
+                ? field('Credit Method', 'DIRECT CREDIT (METER BALANCE)')
+                : field('Token', row.token, { token: true }),
             field('Customer', row.customer_name || row.customer_id),
             field('Vended By', vendedBy, { wide: true }),
             field('Meter ID', row.meter_id),

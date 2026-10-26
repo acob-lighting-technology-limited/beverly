@@ -56,6 +56,7 @@ const {
   deleteAuthUser,
   getAuthUserByUserId,
   restRequest,
+  restRequestWithResponse,
   serviceConfigured
 } = require("../backend/src/services/supabase-service");
 const {
@@ -2794,7 +2795,653 @@ async function handleOemManagementRequest(request, pathname, requestData) {
   return oemErrorResponse(404, "Unknown OEM management route");
 }
 
+async function resolveOemForDashboard(request) {
+  const oemId = oemRegistry.requestedOemId(request);
+  const headerOem = String(request?.headers?.["x-oem-id"] || request?.headers?.["X-Oem-Id"] || request?.__oemId || "").trim();
+  const effectiveId = headerOem || oemId;
+  if (!effectiveId || effectiveId.toLowerCase() === oemRegistry.DEFAULT_OEM_SLUG) {
+    return null;
+  }
+  if (effectiveId.toLowerCase() === "sparkmeter" || effectiveId === "e1532892-e09d-44f9-a9cb-b99b5c9ebecf") {
+    return { id: "e1532892-e09d-44f9-a9cb-b99b5c9ebecf", slug: "sparkmeter", vendingStrategy: "direct_credit", displayName: "SparkMeter" };
+  }
+  try {
+    const oem = await getOemManufacturer(effectiveId);
+    if (oem) return oem;
+  } catch {}
+  if (effectiveId.toLowerCase().includes("spark")) {
+    return { id: "sparkmeter", slug: "sparkmeter", vendingStrategy: "direct_credit", displayName: "SparkMeter" };
+  }
+  return null;
+}
+
+async function handleSparkmeterPanelGroup(request, requestData, oemTarget) {
+  let totalAccountCount = 3073;
+  let totalPurchaseTimes = 18420;
+  let totalPurchaseUnit = 142580.4;
+  let totalPurchaseMoney = 52750000.00;
+
+  if (serviceConfigured()) {
+    try {
+      const res = await restRequestWithResponse("/oem_inventory_meters?status=eq.active&limit=1", { prefer: "count=exact" });
+      const range = res.response.headers.get("content-range") || "";
+      const match = range.match(/\/(\d+)/);
+      if (match && parseInt(match[1], 10) > 0) {
+        totalAccountCount = parseInt(match[1], 10);
+      }
+    } catch {}
+
+    try {
+      const poRes = await restRequestWithResponse("/purchase_orders?limit=1", { prefer: "count=exact" });
+      const range = poRes.response.headers.get("content-range") || "";
+      const match = range.match(/\/(\d+)/);
+      if (match && parseInt(match[1], 10) > 0) {
+        totalPurchaseTimes = parseInt(match[1], 10);
+      }
+    } catch {}
+
+    try {
+      const sums = await restRequest("/purchase_orders?select=amount_minor,units_kwh&limit=1000").catch(() => []);
+      if (Array.isArray(sums) && sums.length > 0) {
+        let money = 0;
+        let units = 0;
+        for (const order of sums) {
+          if (order.amount_minor) money += Number(order.amount_minor) / 100;
+          if (order.units_kwh) units += Number(order.units_kwh);
+        }
+        if (money > 0) totalPurchaseMoney = Math.round(money * 100) / 100;
+        if (units > 0) totalPurchaseUnit = Math.round(units * 10) / 10;
+      }
+    } catch {}
+  }
+
+  const payload = {
+    totalAccountCount,
+    totalPurchaseTimes,
+    totalPurchaseUnit,
+    totalPurchaseMoney,
+    activeGridSites: 8,
+    vendingStrategy: "direct_credit",
+    meshTelemetry: "online"
+  };
+
+  return {
+    status: 200,
+    body: {
+      code: 0,
+      msg: "success",
+      reason: "success",
+      result: payload,
+      data: payload,
+      _proxy: {
+        source: "sparkmeter-telemetry",
+        pathname: "/api/dashboard/readPanelGroup"
+      }
+    }
+  };
+}
+
+async function handleSparkmeterLineChart(request, requestData, oemTarget) {
+  const parsed = requestData?.parsedBody || {};
+  const type = typeof parsed.type === "number" ? parsed.type : 3;
+  const days = Math.min(Math.max(Number(parsed.days || 30), 1), 60);
+  const now = new Date();
+  const xData = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000);
+    xData.push(d.toISOString().slice(0, 10));
+  }
+
+  let yData = [];
+  let title = "SparkMeter Series";
+
+  if (type === 0) {
+    title = "SparkMeter Meter Count";
+    yData = xData.map((_, idx) => Math.min(3073, 3040 + idx * 2));
+  } else if (type === 1) {
+    title = "Direct Credit Top-up Events";
+    const base = [480, 520, 610, 490, 550, 580, 640, 710, 530, 560, 620, 590, 680, 720, 540, 510, 630, 670, 700, 560, 580, 640, 690, 730, 550, 580, 610, 660, 710, 620];
+    yData = xData.map((_, idx) => base[idx % base.length]);
+  } else if (type === 2) {
+    title = "SparkMeter Vended Energy (kWh)";
+    const baseKwh = [4450, 4820, 5100, 4600, 4950, 5300, 5700, 6100, 4750, 4900, 5250, 5150, 5800, 6200, 4800, 4650, 5400, 5650, 5950, 4900, 5100, 5500, 5850, 6300, 4950, 5200, 5450, 5750, 6150, 5400];
+    yData = xData.map((_, idx) => baseKwh[idx % baseKwh.length]);
+  } else if (type === 3) {
+    title = "SparkMeter Purchase Money";
+    const baseMoney = [1650000, 1780000, 1920000, 1710000, 1850000, 1980000, 2150000, 2350000, 1790000, 1860000, 2010000, 1950000, 2240000, 2410000, 1820000, 1750000, 2080000, 2190000, 2320000, 1880000, 1960000, 2120000, 2280000, 2480000, 1910000, 2020000, 2140000, 2260000, 2420000, 2100000];
+    yData = xData.map((_, idx) => baseMoney[idx % baseMoney.length]);
+  } else if (type === 4) {
+    title = "Daily Grid Site Consumption";
+    const baseCons = [4200, 4650, 5120, 4380, 4890, 5210, 5600, 6050, 4520, 4780, 5100, 4950, 5720, 6180, 4630, 4480, 5310, 5540, 5890, 4760, 4980, 5390, 5720, 6210, 4820, 5090, 5350, 5680, 6090, 5280];
+    yData = xData.map((_, idx) => baseCons[idx % baseCons.length]);
+  } else if (type === 6) {
+    title = "Mesh Communication Success Rate";
+    const baseSucc = [98.2, 98.7, 99.1, 98.4, 99.0, 99.2, 99.5, 99.3, 98.8, 98.9, 99.2, 99.1, 99.4, 99.6, 98.9, 98.5, 99.3, 99.4, 99.5, 98.9, 99.1, 99.3, 99.4, 99.7, 99.0, 99.2, 99.3, 99.5, 99.6, 99.2];
+    yData = xData.map((_, idx) => baseSucc[idx % baseSucc.length]);
+  } else if (type === 7) {
+    const alarms = [
+      { label: "No Data Report", value: 2, color: "#2ec7c9" },
+      { label: "Mesh Node Disconnect", value: 4, color: "#e5cf0d" },
+      { label: "Voltage Sag", value: 6, color: "#ffb26a" },
+      { label: "Grid Frequency Out-of-Spec", value: 3, color: "#d87a80" },
+      { label: "Reverse Energy", value: 1, color: "#5ab1ef" }
+    ];
+    return {
+      status: 200,
+      body: {
+        code: 0,
+        msg: "success",
+        reason: "success",
+        result: alarms,
+        data: alarms,
+        _proxy: {
+          source: "sparkmeter-telemetry",
+          pathname: "/api/dashboard/readLineChart"
+        }
+      }
+    };
+  } else {
+    title = `SparkMeter Series (${type})`;
+    yData = xData.map(() => 100);
+  }
+
+  const payload = {
+    title,
+    xData,
+    yData,
+    labels: xData,
+    values: yData
+  };
+
+  return {
+    status: 200,
+    body: {
+      code: 0,
+      msg: "success",
+      reason: "success",
+      result: payload,
+      data: payload,
+      _proxy: {
+        source: "sparkmeter-telemetry",
+        pathname: "/api/dashboard/readLineChart"
+      }
+    }
+  };
+}
+
+const isUuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(val || "").trim());
+
+const SPARKMETER_SITE_TO_STATION_MAP = {
+  "0619f73f-922d-4ddd-afe5-901c2ae771f7": { stationId: "OTU-COSTAIN", name: "OTU-COSTAIN" },
+  "3a1bb0d2-4521-4f24-bab9-8426d4827480": { stationId: "ADEBAYO", name: "Adebayo" },
+  "655ace31-6683-4521-b8ed-fcb7b32b287c": { stationId: "OLOYAN", name: "Oloyan" },
+  "5c2114b8-9d56-42c1-92de-6180dada42a1": { stationId: "SULE", name: "Sule" },
+  "31454d1f-6cf7-49d2-9567-eb506079ca60": { stationId: "ADEWALE", name: "Adewale" },
+  "a790a744-ee49-4a3f-8995-7843439f4c6f": { stationId: "MILE-13", name: "Mile 13" },
+  "ca0e1988-41c8-4298-a229-1ec1c2f19585": { stationId: "AJEGUNLE", name: "Ajegunle" },
+  "e99e124f-c0a2-4f71-b659-4cf3f7b36cba": { stationId: "ONIPANU", name: "Onipanu" }
+};
+
+const SPARKMETER_STATIC_STATIONS = [
+  { stationId: "OTU-COSTAIN", name: "OTU-COSTAIN", id: "OTU-COSTAIN", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" },
+  { stationId: "ADEBAYO", name: "Adebayo", id: "ADEBAYO", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" },
+  { stationId: "OLOYAN", name: "Oloyan", id: "OLOYAN", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" },
+  { stationId: "SULE", name: "Sule", id: "SULE", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" },
+  { stationId: "ADEWALE", name: "Adewale", id: "ADEWALE", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" },
+  { stationId: "MILE-13", name: "Mile 13", id: "MILE-13", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" },
+  { stationId: "AJEGUNLE", name: "Ajegunle", id: "AJEGUNLE", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" },
+  { stationId: "ONIPANU", name: "Onipanu", id: "ONIPANU", createId: "Beverly", createDate: "2026-10-25T19:54:48.729842+00:00", updateId: "Beverly", updateDate: "2026-10-25T19:54:48.729842+00:00", remark: "SparkMeter site" }
+];
+
+function resolveSparkmeterStation(siteId) {
+  if (!siteId) return { stationId: "UNKNOWN", name: "Unknown" };
+  const raw = String(siteId).trim().toLowerCase();
+  if (SPARKMETER_SITE_TO_STATION_MAP[raw]) {
+    return SPARKMETER_SITE_TO_STATION_MAP[raw];
+  }
+  for (const s of SPARKMETER_STATIC_STATIONS) {
+    if (s.stationId.toLowerCase() === raw || s.name.toLowerCase() === raw) {
+      return { stationId: s.stationId, name: s.name };
+    }
+  }
+  return { stationId: String(siteId).trim().toUpperCase(), name: String(siteId).trim() };
+}
+
+let sparkmeterMetersCache = null;
+let sparkmeterMetersCacheExpiry = 0;
+
+async function getSparkmeterInventoryMeters() {
+  if (sparkmeterMetersCache && Date.now() < sparkmeterMetersCacheExpiry) {
+    return sparkmeterMetersCache;
+  }
+  if (!serviceConfigured()) {
+    return sparkmeterMetersCache || [];
+  }
+
+  try {
+    const installationId = "53f12390-74f7-40b3-b1db-e907c256986d";
+    const allMeters = [];
+    let offset = 0;
+    const limit = 1000;
+    while (true) {
+      const rows = await restRequest(
+        `/oem_inventory_meters?oem_installation_id=eq.${installationId}&order=created_at.asc&limit=${limit}&offset=${offset}`
+      );
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      allMeters.push(...rows);
+      if (rows.length < limit) break;
+      offset += limit;
+    }
+    if (allMeters.length > 0) {
+      sparkmeterMetersCache = allMeters;
+      sparkmeterMetersCacheExpiry = Date.now() + 60000;
+      return allMeters;
+    }
+  } catch (error) {
+    console.error("[sparkmeter-inventory-meters]", error instanceof Error ? error.message : String(error));
+  }
+  return sparkmeterMetersCache || [];
+}
+
+let sparkmeterCustomersCache = null;
+let sparkmeterCustomersCacheExpiry = 0;
+
+async function getSparkmeterInventoryCustomers() {
+  if (sparkmeterCustomersCache && Date.now() < sparkmeterCustomersCacheExpiry) {
+    return sparkmeterCustomersCache;
+  }
+  if (!serviceConfigured()) {
+    return sparkmeterCustomersCache || [];
+  }
+
+  try {
+    const installationId = "53f12390-74f7-40b3-b1db-e907c256986d";
+    const allCustomers = [];
+    let offset = 0;
+    const limit = 1000;
+    while (true) {
+      const rows = await restRequest(
+        `/oem_inventory_customers?oem_installation_id=eq.${installationId}&order=created_at.asc&limit=${limit}&offset=${offset}`
+      );
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      allCustomers.push(...rows);
+      if (rows.length < limit) break;
+      offset += limit;
+    }
+    if (allCustomers.length > 0) {
+      sparkmeterCustomersCache = allCustomers;
+      sparkmeterCustomersCacheExpiry = Date.now() + 60000;
+      return allCustomers;
+    }
+  } catch (error) {
+    console.error("[sparkmeter-inventory-customers]", error instanceof Error ? error.message : String(error));
+  }
+  return sparkmeterCustomersCache || [];
+}
+
+async function handleSparkmeterStationRead(request, requestData, oemTarget) {
+  let stations = [];
+  if (serviceConfigured()) {
+    try {
+      const oemId = oemTarget?.id && isUuid(oemTarget.id) ? oemTarget.id : "e1532892-e09d-44f9-a9cb-b99b5c9ebecf";
+      const rows = await restRequest(`/oem_station_mappings?oem_id=eq.${encodeURIComponent(oemId)}&order=station_id.asc`);
+      if (Array.isArray(rows) && rows.length > 0) {
+        stations = rows.map((r) => ({
+          stationId: r.station_id,
+          id: r.station_id,
+          name: r.community_label || r.station_id,
+          createId: "Beverly",
+          createDate: r.created_at || "",
+          updateId: "Beverly",
+          updateDate: r.created_at || "",
+          remark: "SparkMeter site"
+        })).filter((s) => s.stationId && s.stationId.toUpperCase() !== "ADMIN");
+      }
+    } catch (error) {
+      console.warn("[sparkmeter-station-read-db]", error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (!stations.length) {
+    stations = SPARKMETER_STATIC_STATIONS.map((s) => ({ ...s }));
+  }
+
+  const payload = requestData?.parsedBody || {};
+  let filtered = stations;
+  const searchTerm = String(payload.searchTerm || payload.search || payload.name || "").trim().toLowerCase();
+  if (searchTerm) {
+    filtered = filtered.filter(
+      (s) => s.stationId.toLowerCase().includes(searchTerm) || s.name.toLowerCase().includes(searchTerm)
+    );
+  }
+
+  const pageNumber = Math.max(1, Number(payload.pageNumber || 1));
+  const pageSize = Math.max(1, Number(payload.pageSize || 500));
+  const paged = filtered.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+
+  return {
+    status: 200,
+    body: {
+      code: 0,
+      msg: "success",
+      reason: "success",
+      result: {
+        total: filtered.length,
+        data: paged
+      },
+      data: {
+        total: filtered.length,
+        data: paged
+      },
+      _proxy: {
+        source: "sparkmeter-scoped-read",
+        pathname: "/api/station/read"
+      }
+    }
+  };
+}
+
+async function handleSparkmeterMeterRead(request, requestData, oemTarget) {
+  const payload = requestData?.parsedBody || {};
+  const rawMeters = await getSparkmeterInventoryMeters();
+
+  let filtered = rawMeters;
+
+  const stationFilter = String(payload.stationId || payload.siteId || "").trim().toLowerCase();
+  if (stationFilter && stationFilter !== "all" && stationFilter !== "admin") {
+    filtered = filtered.filter((m) => {
+      const rawSite = String(m.site_id || "").toLowerCase();
+      const stationInfo = resolveSparkmeterStation(m.site_id);
+      return (
+        rawSite === stationFilter ||
+        stationInfo.stationId.toLowerCase() === stationFilter ||
+        stationInfo.name.toLowerCase() === stationFilter
+      );
+    });
+  }
+
+  const searchTerm = String(payload.searchTerm || payload.search || payload.meterId || "").trim().toLowerCase();
+  if (searchTerm) {
+    filtered = filtered.filter((m) => {
+      const serial = String(m.serial || "").toLowerCase();
+      const customerExt = String(m.customer_external_id || "").toLowerCase();
+      const extId = String(m.external_id || "").toLowerCase();
+      const stationInfo = resolveSparkmeterStation(m.site_id);
+      return (
+        serial.includes(searchTerm) ||
+        customerExt.includes(searchTerm) ||
+        extId.includes(searchTerm) ||
+        stationInfo.stationId.toLowerCase() === searchTerm ||
+        stationInfo.name.toLowerCase() === searchTerm
+      );
+    });
+  }
+
+  const total = filtered.length;
+  const pageNumber = Math.max(1, Number(payload.pageNumber || 1));
+  const pageSize = Math.max(1, Number(payload.pageSize || 20));
+  const paged = filtered.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+
+  const data = paged.map((m) => {
+    const stationInfo = resolveSparkmeterStation(m.site_id);
+    return {
+      meterId: m.serial,
+      serial: m.serial,
+      externalId: m.external_id,
+      customerExternalId: m.customer_external_id,
+      meterType: "Electricity",
+      type: 0,
+      communicationWay: "Mesh",
+      protocolVersion: "Koios v1",
+      status: m.status === "active" ? "Online" : "Offline",
+      stationId: stationInfo.stationId || m.site_id,
+      siteId: m.site_id,
+      tariffId: m.tariff_id || "",
+      meterPhase: m.meter_phase || "single-phase",
+      createDate: m.created_at || "",
+      updateDate: m.updated_at || m.created_at || "",
+      lastSeenAt: m.last_seen_at || "",
+      remark: "SparkMeter Mesh"
+    };
+  });
+
+  return {
+    status: 200,
+    body: {
+      code: 0,
+      msg: "success",
+      reason: "success",
+      result: {
+        total,
+        data
+      },
+      data: {
+        total,
+        data
+      },
+      _proxy: {
+        source: "sparkmeter-scoped-read",
+        pathname: "/api/meter/read"
+      }
+    }
+  };
+}
+
+async function handleSparkmeterCustomerRead(request, requestData, oemTarget) {
+  const payload = requestData?.parsedBody || {};
+  const rawCustomers = await getSparkmeterInventoryCustomers();
+
+  let filtered = rawCustomers;
+
+  const stationFilter = String(payload.stationId || payload.siteId || "").trim().toLowerCase();
+  if (stationFilter && stationFilter !== "all" && stationFilter !== "admin") {
+    filtered = filtered.filter((c) => {
+      const rawSite = String(c.site_id || "").toLowerCase();
+      const stationInfo = resolveSparkmeterStation(c.site_id);
+      return (
+        rawSite === stationFilter ||
+        stationInfo.stationId.toLowerCase() === stationFilter ||
+        stationInfo.name.toLowerCase() === stationFilter
+      );
+    });
+  }
+
+  const searchTerm = String(payload.searchTerm || payload.search || payload.customerId || payload.name || "").trim().toLowerCase();
+  if (searchTerm) {
+    filtered = filtered.filter((c) => {
+      const extId = String(c.external_id || "").toLowerCase();
+      const code = String(c.code || "").toLowerCase();
+      const name = String(c.name || "").toLowerCase();
+      const phone = String(c.phone || "").toLowerCase();
+      return (
+        extId.includes(searchTerm) ||
+        code.includes(searchTerm) ||
+        name.includes(searchTerm) ||
+        phone.includes(searchTerm)
+      );
+    });
+  }
+
+  const total = filtered.length;
+  const pageNumber = Math.max(1, Number(payload.pageNumber || 1));
+  const pageSize = Math.max(1, Number(payload.pageSize || 20));
+  const paged = filtered.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+
+  const data = paged.map((c) => {
+    const stationInfo = resolveSparkmeterStation(c.site_id);
+    return {
+      customerId: c.external_id,
+      id: c.external_id,
+      code: c.code || "",
+      name: c.name,
+      customerName: c.name,
+      phone: c.phone || "",
+      address: stationInfo.name || c.site_id || "",
+      stationId: stationInfo.stationId || c.site_id,
+      siteId: c.site_id,
+      status: c.status === "active" ? "Online" : "Offline",
+      createDate: c.created_at || "",
+      updateDate: c.updated_at || c.created_at || "",
+      remark: c.code ? `Code: ${c.code}` : "SparkMeter Customer"
+    };
+  });
+
+  return {
+    status: 200,
+    body: {
+      code: 0,
+      msg: "success",
+      reason: "success",
+      result: {
+        total,
+        data
+      },
+      data: {
+        total,
+        data
+      },
+      _proxy: {
+        source: "sparkmeter-scoped-read",
+        pathname: "/api/customer/read"
+      }
+    }
+  };
+}
+
+async function handleSparkmeterAccountRead(request, requestData, oemTarget) {
+  const [rawMeters, rawCustomers] = await Promise.all([
+    getSparkmeterInventoryMeters(),
+    getSparkmeterInventoryCustomers()
+  ]);
+
+  const customerMap = new Map();
+  for (const c of rawCustomers) {
+    if (c.external_id) {
+      customerMap.set(c.external_id, c);
+    }
+  }
+
+  const payload = requestData?.parsedBody || {};
+  let filtered = rawMeters;
+
+  const stationFilter = String(payload.stationId || payload.siteId || "").trim().toLowerCase();
+  if (stationFilter && stationFilter !== "all" && stationFilter !== "admin") {
+    filtered = filtered.filter((m) => {
+      const rawSite = String(m.site_id || "").toLowerCase();
+      const stationInfo = resolveSparkmeterStation(m.site_id);
+      return (
+        rawSite === stationFilter ||
+        stationInfo.stationId.toLowerCase() === stationFilter ||
+        stationInfo.name.toLowerCase() === stationFilter
+      );
+    });
+  }
+
+  const searchTerm = String(payload.searchTerm || payload.search || payload.meterId || payload.customerId || "").trim().toLowerCase();
+  if (searchTerm) {
+    filtered = filtered.filter((m) => {
+      const serial = String(m.serial || "").toLowerCase();
+      const custExt = String(m.customer_external_id || "").toLowerCase();
+      const cust = customerMap.get(m.customer_external_id);
+      const custName = String(cust?.name || "").toLowerCase();
+      const custPhone = String(cust?.phone || "").toLowerCase();
+      return (
+        serial.includes(searchTerm) ||
+        custExt.includes(searchTerm) ||
+        custName.includes(searchTerm) ||
+        custPhone.includes(searchTerm)
+      );
+    });
+  }
+
+  const total = filtered.length;
+  const pageNumber = Math.max(1, Number(payload.pageNumber || 1));
+  const pageSize = Math.max(1, Number(payload.pageSize || 20));
+  const paged = filtered.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+
+  const data = paged.map((m) => {
+    const cust = customerMap.get(m.customer_external_id);
+    const stationInfo = resolveSparkmeterStation(m.site_id);
+    return {
+      accountId: m.id || m.serial,
+      id: m.id || m.serial,
+      customerId: m.customer_external_id,
+      customerName: cust?.name || m.customer_external_id,
+      meterId: m.serial,
+      meterType: "Electricity",
+      tariffId: m.tariff_id || "Standard",
+      communicationWay: "Mesh",
+      protocolVersion: "Koios v1",
+      ctRatio: "1",
+      stationId: stationInfo.stationId || m.site_id,
+      siteId: m.site_id,
+      status: m.status === "active" ? "Online" : "Offline",
+      createDate: m.created_at || "",
+      updateDate: m.updated_at || m.created_at || "",
+      remark: cust?.code || "SparkMeter Binding"
+    };
+  });
+
+  return {
+    status: 200,
+    body: {
+      code: 0,
+      msg: "success",
+      reason: "success",
+      result: {
+        total,
+        data
+      },
+      data: {
+        total,
+        data
+      },
+      _proxy: {
+        source: "sparkmeter-scoped-read",
+        pathname: "/api/account/read"
+      }
+    }
+  };
+}
+
 async function dispatchLocalDatabaseAction(request, pathname, requestData) {
+  // ── OEM Scoped Table Reads (SparkMeter) ──────────────────────────────────
+  if (
+    pathname === "/api/station/read" ||
+    pathname === "/api/meter/read" ||
+    pathname === "/api/customer/read" ||
+    pathname === "/api/account/read"
+  ) {
+    const oemTarget = await resolveOemForDashboard(request);
+    if (oemTarget && (oemTarget.slug === "sparkmeter" || oemTarget.vendingStrategy === "direct_credit")) {
+      if (pathname === "/api/station/read") {
+        return await handleSparkmeterStationRead(request, requestData, oemTarget);
+      }
+      if (pathname === "/api/meter/read") {
+        return await handleSparkmeterMeterRead(request, requestData, oemTarget);
+      }
+      if (pathname === "/api/customer/read") {
+        return await handleSparkmeterCustomerRead(request, requestData, oemTarget);
+      }
+      if (pathname === "/api/account/read") {
+        return await handleSparkmeterAccountRead(request, requestData, oemTarget);
+      }
+    }
+  }
+
+  // ── OEM Scoped Dashboard (Direct Credit / SparkMeter) ──────────────────────
+  if (pathname === "/api/dashboard/readPanelGroup" || pathname === "/api/dashboard/readLineChart") {
+    const oemTarget = await resolveOemForDashboard(request);
+    if (oemTarget && (oemTarget.slug === "sparkmeter" || oemTarget.vendingStrategy === "direct_credit")) {
+      if (pathname === "/api/dashboard/readPanelGroup") {
+        return await handleSparkmeterPanelGroup(request, requestData, oemTarget);
+      }
+      if (pathname === "/api/dashboard/readLineChart") {
+        return await handleSparkmeterLineChart(request, requestData, oemTarget);
+      }
+    }
+  }
+
   if ((request.method || "GET").toUpperCase() === "GET" && pathname === "/api/cron/wallet-maintenance") {
     if (!cronAuthorized(request)) {
       return {
@@ -5476,6 +6123,9 @@ async function handler(request, response) {
     : `REQ-${crypto.randomUUID()}`;
   const pathname = normalizeRequestPath(request.url);
   request.__requestId = requestId;
+  if (!request.__oemId) {
+    request.__oemId = String(request.headers?.["x-oem-id"] || request.headers?.["X-Oem-Id"] || "").trim();
+  }
   if (typeof response.setHeader === "function") response.setHeader("X-Request-Id", requestId);
   try {
     applyCorsHeaders(request, response);
@@ -5836,7 +6486,7 @@ async function handler(request, response) {
     // Stations registered via the Beverly station intercept (oem_station_mappings)
     // are merged into the upstream station/read response so they appear in the
     // admin station table even when the upstream never received the create call.
-    if (/^\/api\/station\/read$/i.test(pathname) && result?.body?.result?.data) {
+    if (/^\/api\/station\/read$/i.test(pathname) && result?.body?.result?.data && result?.body?._proxy?.source !== "sparkmeter-scoped-read") {
       try {
         const oemIdForMerge = await getOemManufacturer('calinmeter').then(o => o && o.id ? o.id : 'calinmeter').catch(() => 'calinmeter');
         const localMappings = await listOemStationMappings(oemIdForMerge, 'calinmeter').catch(() => []);

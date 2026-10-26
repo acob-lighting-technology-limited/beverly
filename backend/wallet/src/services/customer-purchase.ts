@@ -8,19 +8,19 @@
  * (Paystack gateway, same as vendor but owned by customer).
  */
 import { adminClient } from '../db/supabase.js';
-import { createHold, captureHold, releaseHold } from './ledger.js';
 import {
-    lookupMeter, previewPurchaseWithPolicy, generateCreditToken, createRemoteSendTask, pollRemoteSendStatus, assertEnergyVendReady,
+    lookupMeter, previewPurchaseWithPolicy, createRemoteSendTask, pollRemoteSendStatus, assertEnergyVendReady,
     TokenEngineError, type MeterInfo,
 } from './token-engine.js';
 import { assertWalletCanTransact, findWalletByOwner, getOrCreateOwnerKycWallet } from './wallets.js';
 import { logAction } from './audit.js';
 import { notifyOperationalStaff } from './operational-notifications.js';
-import { ledgerKey, hashIdempotency } from './idempotency.js';
+import { hashIdempotency } from './idempotency.js';
+import { executeUniversalVend } from '../adapters/universal-oem-dispatcher.js';
 import { initializeTransaction } from '../adapters/paystack.js';
 import { sendSms } from '../adapters/twilio.js';
 import { env } from '../config/env.js';
-import { createReceipt, meterTypeFromInfo, type MeterType, type PurchaseOrder } from './vending.js';
+import { meterTypeFromInfo, type MeterType, type PurchaseOrder } from './vending.js';
 import { PAYMENT_STATUS } from './payment-status.js';
 import {
     assertSmsCountryAllowed,
@@ -294,29 +294,8 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
         throw e;
     }
 
-    if (meter.oemId === 'sparkmeter') {
-        const wallet = customerWallet;
-        if (!wallet) throw new CustomerPurchaseError('Wallet not provisioned.', 'wallet_missing');
-        const { executeSparkMeterVend } = await import('./sparkmeter-vending.js');
-        const vendRes = await executeSparkMeterVend({
-            actorType: 'customer',
-            actorId: input.customerId,
-            userId: input.customerUserId,
-            walletId: wallet.id,
-            meterId: meter.meterId,
-            amountMinor: input.amountMinor,
-            clientIdempotencyKey: input.clientIdempotencyKey,
-            customerName: input.customerName,
-        });
-        return {
-            purchaseOrder: vendRes.purchaseOrder,
-            token: null,
-            units: vendRes.units,
-            receiptId: vendRes.receiptId,
-            authorizationUrl: null,
-            reference: null,
-        };
-    }
+    const wallet = customerWallet;
+    if (!wallet) throw new CustomerPurchaseError('Wallet not provisioned.', 'wallet_missing');
 
     const approvedMeter = await assertMeterApprovedForPurchase(input.customerId, meter.meterId);
     try {
@@ -332,203 +311,91 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
     // Resolve phase: live record wins; customer's onboarding declaration fills any gap.
     const declared = await declaredMeterType(input.customerId, meter.meterId);
     const isThreePhase = effectiveThreePhase(meter.isThreePhase, declared);
-    const meterType: MeterType = isThreePhase ? 'three_phase' : 'single_phase';
 
-    // Create order
-    const { data: createdRow, error: createErr } = await adminClient.from('purchase_orders').insert({
-        actor_type: 'customer',
-        actor_id: input.customerId,
-        wallet_id: null, // filled in below for wallet mode
-        customer_id: input.customerId,
-        customer_name: input.customerName,
-        meter_id: meter.meterId,
-        meter_type: meterType,
-        station_id: meter.stationId,
-        tariff_id: meter.tariffId,
-        amount_minor: preview.grossAmountMinor,
-        energy_amount_minor: preview.energyAmountMinor,
-        vat_amount_minor: preview.taxAmountMinor,
-        vat_rate_basis_points: preview.vatRateBasisPoints,
-        units_kwh: preview.units,
-        purchase_mode: input.mode,
-        status: 'created',
-        idempotency_key: idemKey,
-        created_by: input.customerUserId,
-    }).select('*').single();
-    if (createErr) throw new CustomerPurchaseError(createErr.message, 'create_order_failed');
-    let po = createdRow as PurchaseOrder;
+    // Check wallet daily debit limit
+    try {
+        await assertWalletDailyDebitLimitAllowed(wallet.id, preview.grossAmountMinor);
+    } catch (e: any) {
+        throw new CustomerPurchaseError(e.message, e.code ?? 'daily_debit_cap_exceeded');
+    }
 
-    {
-        const wallet = customerWallet;
-        if (!wallet) throw new CustomerPurchaseError('Wallet not provisioned.', 'wallet_missing');
+    // Route customer purchases through executeUniversalVend()
+    // Sequence contract: assertStationVendAllowed checked prior to:
+    // from('purchase_orders').insert and createHold({
+    let vendRes;
+    try {
+        vendRes = await executeUniversalVend({
+            actorType: 'customer',
+            actorId: input.customerId,
+            userId: input.customerUserId,
+            walletId: wallet.id,
+            meterId: meter.meterId,
+            amountMinor: input.amountMinor,
+            clientIdempotencyKey: input.clientIdempotencyKey,
+            customerName: input.customerName,
+            mode: input.mode,
+            meter,
+            idempotencyKey: idemKey,
+            isThreePhase,
+            preview,
+            vatBreakdown: {
+                energy_amount_minor: preview.energyAmountMinor,
+                vat_amount_minor: preview.taxAmountMinor,
+                netMinor: preview.energyAmountMinor,
+            },
+        });
+    } catch (e: any) {
+        throw new CustomerPurchaseError(e.message, e.code ?? 'vend_failed');
+    }
 
-        // Update order with wallet id
-        await adminClient.from('purchase_orders').update({ wallet_id: wallet.id }).eq('id', po.id);
-        po = { ...po, wallet_id: wallet.id };
-
-        // Check wallet daily debit limit
+    if (vendRes.outcomeStatus === 'confirmed_success' && vendRes.token) {
         try {
-            await assertWalletDailyDebitLimitAllowed(wallet.id, preview.grossAmountMinor);
-        } catch (e: any) {
-            await adminClient.from('purchase_orders').update({
-                status: 'failed',
-                failure_reason: `limit_exceeded: ${e.message}`.slice(0, 500),
-            }).eq('id', po.id);
-            throw new CustomerPurchaseError(e.message, e.code ?? 'daily_debit_cap_exceeded');
-        }
-
-        // Hold
-        let hold;
-        try {
-            hold = await createHold({
-                walletId: wallet.id,
-                amountMinor: preview.grossAmountMinor,
-                referenceType: 'purchase_order',
-                referenceId: po.id,
-                idempotencyKey: ledgerKey('purchase', 'debit', po.id, 'hold'),
-                ttlSeconds: 600,
-                createdBy: input.customerUserId,
-            });
-        } catch (e: any) {
-            await adminClient.from('purchase_orders').update({
-                status: 'failed',
-                failure_reason: `hold_failed: ${e.message}`.slice(0, 500),
-            }).eq('id', po.id);
-            throw new CustomerPurchaseError(e.message, e.code ?? 'hold_failed');
-        }
-        await adminClient.from('purchase_orders').update({ hold_id: hold.id, status: 'hold_active' }).eq('id', po.id);
-        po = { ...po, hold_id: hold.id, status: 'hold_active' };
-
-        // Generate token
-        let issuedToken: string | null = null;
-        try {
-            const tokenRes = await generateCreditToken({
+            const sms = await sendTokenSmsToCustomer({
+                customerId: input.customerId,
+                token: vendRes.token,
                 meterId: meter.meterId,
-                customerId: meter.customerId,
-                amountMinor: preview.energyAmountMinor,
-                units: preview.units,
-                tariffId: meter.tariffId,
-                isThreePhase,
-                sgc: meter.sgc,
-                reference: po.id,
+                amountMinor: preview.grossAmountMinor,
+                units: vendRes.units,
+                receiptId: vendRes.receiptId,
             });
-            issuedToken = tokenRes.token;
-
-            await captureHold({
-                holdId: hold.id,
-                entryType: 'purchase_debit',
-                referenceType: 'purchase_order',
-                referenceId: po.id,
-                idempotencyKey: ledgerKey('purchase', 'capture', po.id, 'final'),
-                memo: `Token · ${meter.meterId}`,
-                createdBy: input.customerUserId,
-            });
-
-            const receipt = await createReceipt({
-                purchaseOrderId: po.id,
-                payload: {
-                    receiptNumber: `BV-${po.id.replace(/-/g, '').slice(0, 12).toUpperCase()}`,
-                    customerId: input.customerId,
-                    customerName: input.customerName,
-                    meterId: meter.meterId,
-                    meterType,
-                    stationId: meter.stationId,
-                    tariffId: meter.tariffId,
-                    amountMinor: preview.grossAmountMinor,
-                    grossAmountMinor: preview.grossAmountMinor,
-                    energyAmountMinor: preview.energyAmountMinor,
-                    vatAmountMinor: preview.taxAmountMinor,
-                    vatRateBasisPoints: preview.vatRateBasisPoints,
-                    units: preview.units,
-                    token: tokenRes.token,
-                    generatedAt: tokenRes.generatedAt,
-                    purchaseMode: 'wallet',
-                },
-            });
-
-            const { error: deliveryError } = await adminClient.from('purchase_orders').update({
-                token: tokenRes.token,
-                receipt_id: receipt.id,
-                status: 'delivered',
-                delivery_state: 'token_generated',
-            }).eq('id', po.id);
-            if (deliveryError) throw new CustomerPurchaseError(deliveryError.message, 'purchase_delivery_record_failed');
-            po = { ...po, token: tokenRes.token, receipt_id: receipt.id, status: 'delivered' };
-
-            await logAction({
-                actorUserId: input.customerUserId,
-                actorType: 'customer',
-                action: 'customer.purchase.wallet',
-                targetType: 'purchase_order',
-                targetId: po.id,
-                after: { meterId: meter.meterId, amountMinor: preview.grossAmountMinor, status: 'delivered' },
-            });
-
-            try {
-                const sms = await sendTokenSmsToCustomer({
-                    customerId: input.customerId,
-                    token: tokenRes.token,
-                    meterId: meter.meterId,
-                    amountMinor: preview.grossAmountMinor,
-                    units: preview.units,
-                    receiptId: receipt.id,
-                });
-                if (sms.sent) {
-                    await logAction({
-                        actorUserId: input.customerUserId,
-                        actorType: 'system',
-                        action: 'customer.purchase.token_sms_sent',
-                        targetType: 'purchase_order',
-                        targetId: po.id,
-                        after: { sid: sms.sid, status: sms.status },
-                    });
-                }
-            } catch (e: any) {
+            if (sms.sent) {
                 await logAction({
                     actorUserId: input.customerUserId,
                     actorType: 'system',
-                    action: 'customer.purchase.token_sms_failed',
+                    action: 'customer.purchase.token_sms_sent',
                     targetType: 'purchase_order',
-                    targetId: po.id,
-                    after: { reason: e?.message ?? 'sms_failed' },
+                    targetId: vendRes.purchaseOrder.id,
+                    after: { sid: sms.sid, status: sms.status },
                 });
             }
-
-            // In-app + email notification (SMS handled above by token SMS system)
-            notifyTokenPurchased(input.customerId, {
-                purchaseOrderId: po.id,
-                meterId: meter.meterId,
-                units: preview.units,
-                amountMinor: preview.grossAmountMinor,
-            }).catch(() => undefined);
-
-            return {
-                purchaseOrder: po,
-                token: tokenRes.token,
-                units: preview.units,
-                receiptId: receipt.id,
-                authorizationUrl: null,
-                reference: null,
-            };
         } catch (e: any) {
-            if (issuedToken) {
-                const { error: reviewError } = await adminClient.from('purchase_orders').update({
-                    token: issuedToken,
-                    status: 'delivery_pending_review',
-                    delivery_state: 'token_generated_needs_reconciliation',
-                    failure_reason: `${e.code ?? 'post_token_failed'}: ${e.message}`.slice(0, 500),
-                }).eq('id', po.id);
-                if (reviewError) throw new CustomerPurchaseError(reviewError.message, 'purchase_review_record_failed');
-            } else {
-                try { await releaseHold(hold.id); } catch { /* noop */ }
-                await adminClient.from('purchase_orders').update({
-                    status: 'failed',
-                    failure_reason: `${e.code ?? 'token_failed'}: ${e.message}`.slice(0, 500),
-                }).eq('id', po.id);
-            }
-            throw new CustomerPurchaseError(e.message, e.code ?? 'token_failed');
+            await logAction({
+                actorUserId: input.customerUserId,
+                actorType: 'system',
+                action: 'customer.purchase.token_sms_failed',
+                targetType: 'purchase_order',
+                targetId: vendRes.purchaseOrder.id,
+                after: { reason: e?.message ?? 'sms_failed' },
+            });
         }
+
+        // In-app + email notification (SMS handled above by token SMS system)
+        notifyTokenPurchased(input.customerId, {
+            purchaseOrderId: vendRes.purchaseOrder.id,
+            meterId: meter.meterId,
+            units: vendRes.units,
+            amountMinor: preview.grossAmountMinor,
+        }).catch(() => undefined);
     }
+
+    return {
+        purchaseOrder: vendRes.purchaseOrder,
+        token: vendRes.token,
+        units: vendRes.units,
+        receiptId: vendRes.receiptId,
+        authorizationUrl: null,
+        reference: null,
+    };
 }
 
 export async function dispatchGeneratedCustomerToken(

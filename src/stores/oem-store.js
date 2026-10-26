@@ -18,7 +18,7 @@ export const useOemStore = defineStore("oem", {
   }),
   getters: {
     currentOem(state) {
-      return state.oems.find((oem) => oem.id === state.currentOemId) || null;
+      return state.oems.find((oem) => oem.id === state.currentOemId || oem.slug === state.currentOemId) || null;
     },
     hasOems(state) {
       return state.oems.length > 0;
