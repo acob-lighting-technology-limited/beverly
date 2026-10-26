@@ -2,9 +2,13 @@
 
 What this repo does: Beverly reads Calinmeter daily readings from an upstream meter service, stores them in Supabase, and serves consumption reports. Token vending uses separate endpoints and persistence. This investigation assumes the actual 11-entry station directory and the six operating sites named in the staff email.
 
-Audit date: 25 October 2026. Scope: upstream reading and gateway APIs, production database, import run history, database jobs, archive catalogue, report-serving code and the source of the verified production deployment. No incident repair was performed.
+Audit date: 25 October 2026. Scope: upstream reading and gateway APIs, production database, import run history, database jobs, archive catalogue, report-serving code and the source of the verified production deployment. Initial audit excluded production repairs.
 
-**Subsequent capacity correction:** the user confirmed Beverly is now on Pro in the organization shared with ACOB ERP, with 8 GB per-project database disk capacity. The workspace quota is updated to 8,000 MB; no deployment has been made. The 500 MB budget and 400 MB cutoff discussed below are the old settings verified in production and explain the recorded pause, not the current provider entitlement. See [current capacity status](DATABASE_CAPACITY_STATUS_2026-10-25.md).
+**Subsequent repair:** production fixes are deployed.
+Missing readings have been recovered.
+Runtime configuration now uses 8GB.
+Earlier observations remain historical evidence.
+See [verified implementation status](METER_INGESTION_IMPLEMENTATION_STATUS_2026-10-25.md).
 
 ## Conclusion
 

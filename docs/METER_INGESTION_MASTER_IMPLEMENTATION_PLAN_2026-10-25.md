@@ -1,6 +1,10 @@
 # Beverly meter ingestion: master implementation plan and execution prompt
 
-Prepared 25 October 2026. Status: **implementation plan; production repair and recovery not executed**.
+Prepared 25 October 2026.
+
+Production repairs are now deployed.
+Recovery results have been recorded.
+See [verified implementation status](METER_INGESTION_IMPLEMENTATION_STATUS_2026-10-25.md).
 
 ## Objective
 
