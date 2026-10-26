@@ -10,7 +10,14 @@ Updated `vercel.json` and `.env.example` to `DATABASE_QUOTA_MB=8000`. The existi
 
 Using the latest pre-correction live observation of **409,767,059 bytes (409.77 MB)**, usage is **5.12%** of the new configured budget, leaving **7,590,232,941 bytes (7.59 GB)** against that budget. The database-size snapshot and provider disk capacity have different scopes; this is not a measurement of physical disk free space.
 
-**Deployment status:** this correction is in the workspace. No production deployment or import restart has been performed. The previously verified production deployment still declares the old 500 MB setting; a release must carry the updated configuration before production can use the larger budget. Independent provider-project API verification is still permission-blocked; the plan correction is explicitly sourced to the user.
+**Deployment status:** production correction is deployed.
+Runtime budget was verified at 8GB.
+Measured database allocation: 489,974,931 bytes.
+Measurement time: `2026-10-26T10:21:57.708Z`.
+Usage approximates 6.12% of configured budget.
+Hourly collection has resumed successfully.
+Provider plan verification remains permission-blocked.
+See [verified implementation status](METER_INGESTION_IMPLEMENTATION_STATUS_2026-10-25.md).
 
 The observations below describe the **old configuration at the time of the initial audit**, retained as incident evidence. They do not describe the newly confirmed plan.
 

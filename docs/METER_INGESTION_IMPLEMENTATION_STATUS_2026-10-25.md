@@ -45,6 +45,7 @@ Measurement: `2026-10-26T10:16:51.367Z`.
 - Decimal database size: 489.94 MB.
 - Binary database size: 467.25 MiB.
 - Configured budget: 8,000 MB.
+- Production runtime confirms configured 8GB.
 - Budget utilization: approximately 6.12%.
 - Remaining budget: approximately 7.51 GB.
 - User confirmed organization Pro membership.
@@ -139,6 +140,7 @@ Existing earlier rows remain preserved.
 Existing objects receive private backups.
 Monthly checksums and reading comparisons passed.
 One later correction required archive refreshing.
+Final archive refresh also passed.
 
 ## Validation and evidence
 
