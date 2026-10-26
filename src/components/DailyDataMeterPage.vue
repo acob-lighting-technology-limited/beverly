@@ -421,7 +421,7 @@ export default {
           orderBy: `currentDate ${this.sortDir}`
         };
         if (this.searchTerm) {
-          const stations = await fetchStationOptions();
+          const stations = await fetchStationOptions().catch(() => []);
           Object.assign(payload, intervalSearchFilters(this.searchTerm, stations));
         }
         const response = await postApi("/api/DailyDataMeter/read", payload);

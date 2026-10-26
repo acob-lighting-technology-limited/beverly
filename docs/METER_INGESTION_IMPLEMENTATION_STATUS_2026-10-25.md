@@ -31,6 +31,7 @@ Updated: 26 October 2026, Lagos.
 - Recovery supports explicit historical windows.
 - Reporting days follow Lagos boundaries.
 - Reports disclose unverified source completeness.
+- Known station searches use explicit filters.
 - Exports include collection status warnings.
 - Ordinary report reads avoid ingestion.
 - Missing gateway telemetry remains unavailable.
@@ -159,7 +160,13 @@ Final archive refresh also passed.
 - Release CI completed successfully.
 - Conditional API integrity tests skipped.
 - CodeRabbit skipped its independent review.
-- Authenticated CRM verification remains pending.
+- Authenticated daily report loading passed.
+- All six incident-period reports loaded.
+- Displayed totals matched database calculations.
+- Production XLSX downloaded 4,636 readings.
+- Export collection warnings were verified.
+- Station search regressions received correction.
+- Analytics retry succeeded without SQL changes.
 
 Private evidence: `tmp/meter-recovery/`.
 Customer payloads remain excluded from summaries.
@@ -167,8 +174,6 @@ Backup files retain restricted local access.
 
 ## Remaining external verification
 
-- Renew expired CRM authentication.
-- Verify authenticated reports and downloads.
 - Observe one full scheduled day.
 - Inspect physical gateways using field evidence.
 - Verify provider billing through authorized access.
