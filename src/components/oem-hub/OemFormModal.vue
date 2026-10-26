@@ -41,9 +41,13 @@
         <div class="oem-form__field">
           <label class="bw-label" for="oem-vending">Vending strategy</label>
           <select id="oem-vending" v-model="form.vendingStrategy" class="bw-select">
-            <option value="sts_token">STS token (customer types a 20-digit code)</option>
-            <option value="direct_credit">Direct credit (OEM credits the meter over API, no token)</option>
+            <option value="sts_token">STS token (Standard 20-digit keypad code)</option>
+            <option value="direct_credit">Direct credit (Account Top-up via Cloud API)</option>
           </select>
+          <small class="oem-form__hint">
+            <strong>STS Token:</strong> Generates standard 20-digit STS tokens for manual keypad entry or GPRS remote-send.<br />
+            <strong>Direct Credit:</strong> Vends energy directly to customer account balances via cloud API without keypad tokens.
+          </small>
         </div>
 
         <div class="oem-form__field">
@@ -106,6 +110,10 @@ export default {
   },
   data() {
     const source = this.oem || {};
+    const initialCaps = { ...defaultCapabilities(), ...(source.capabilities || {}) };
+    if (source.capabilities?.remote_meter_tasks && !initialCaps.remote_meter_task) {
+      initialCaps.remote_meter_task = true;
+    }
     return {
       capabilityDefs: CAPABILITY_DEFINITIONS,
       logoAccept: logoUploadAcceptValue(),
@@ -119,7 +127,7 @@ export default {
         displayName: source.displayName || "",
         slug: source.slug || "",
         vendingStrategy: source.vendingStrategy || "sts_token",
-        capabilities: { ...defaultCapabilities(), ...(source.capabilities || {}) }
+        capabilities: initialCaps
       }
     };
   },

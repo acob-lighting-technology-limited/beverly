@@ -27,6 +27,13 @@
           <div><dt>Vending strategy</dt><dd>{{ oem.vendingStrategy === 'direct_credit' ? 'Direct credit' : 'STS token' }}</dd></div>
           <div><dt>Endpoints configured</dt><dd>{{ endpoints.length }}</dd></div>
         </dl>
+        <p class="oem-settings__strategy-explanation bw-text-muted">
+          {{
+            oem.vendingStrategy === 'direct_credit'
+              ? 'This OEM vends energy directly to customer account balances via cloud API. Keypad STS tokens are not generated.'
+              : 'This OEM generates 20-digit STS tokens for manual keypad entry or GPRS remote-send.'
+          }}
+        </p>
         <div class="oem-settings__caps">
           <span v-for="cap in enabledCapabilities" :key="cap" class="bw-badge oem-settings__cap">{{ cap }}</span>
           <span v-if="!enabledCapabilities.length" class="oem-settings__empty">No capabilities enabled yet.</span>
@@ -57,6 +64,7 @@
             <option value="bearer_static">Static bearer token</option>
             <option value="bearer_login">Login → cached bearer token</option>
             <option value="api_key_header">API key header</option>
+            <option value="api_key_pair">API Key &amp; Secret Pair (SparkMeter)</option>
             <option value="oauth2_client_credentials">OAuth2 client credentials</option>
           </select>
         </div>
@@ -65,6 +73,11 @@
           <input id="cred-baseurl" v-model="credForm.baseUrl" class="bw-input" type="text" placeholder="Enter API base URL" />
         </div>
         <div class="oem-settings__field">
+          <label class="bw-label" for="cred-hostnames">Approved hostnames (SSRF allowlist)</label>
+          <input id="cred-hostnames" v-model="credForm.approvedHostnames" class="bw-input" type="text" placeholder="e.g. api.sparkmeter.cloud, www.sparkmeter.cloud" />
+          <small class="oem-settings__hint">Allowed destination hostnames for upstream requests (comma-separated, prevents SSRF attacks).</small>
+        </div>
+        <div v-if="credForm.authStrategy !== 'api_key_pair'" class="oem-settings__field">
           <label class="bw-label" for="cred-token">{{ credForm.authStrategy === "api_key_header" ? "API key" : "Bearer token" }}</label>
           <input id="cred-token" v-model="credForm.bearerToken" class="bw-input" type="password" :placeholder="credStatus.hasBearerToken ? '•••••• (set — leave blank to keep)' : (credForm.authStrategy === 'api_key_header' ? 'Paste API key' : 'Paste bearer token')" autocomplete="off" />
           <small class="oem-settings__hint">Encrypted at rest. Leave blank to keep the current value.</small>
@@ -73,6 +86,32 @@
           <label class="bw-label" for="cred-apikeyname">Header name</label>
           <input id="cred-apikeyname" v-model="credForm.apiKeyHeaderName" class="bw-input" type="text" placeholder="X-Api-Key" />
           <small class="oem-settings__hint">Sent as this exact header, e.g. "X-Api-Key" or "Ocp-Apim-Subscription-Key". Defaults to X-Api-Key if left blank.</small>
+        </div>
+        <div v-if="credForm.authStrategy === 'api_key_pair'" class="oem-settings__login-grid">
+          <div class="oem-settings__field">
+            <label class="bw-label" for="cred-apikey">API Key</label>
+            <input
+              id="cred-apikey"
+              v-model="credForm.apiKey"
+              class="bw-input"
+              type="password"
+              :placeholder="(credStatus.hasApiKey || credStatus.hasUsername) ? '•••••• (set — leave blank to keep current)' : 'Enter API key'"
+              autocomplete="off"
+            />
+            <small class="oem-settings__hint">Encrypted at rest. Leave blank to keep current.</small>
+          </div>
+          <div class="oem-settings__field">
+            <label class="bw-label" for="cred-apisecret">API Secret</label>
+            <input
+              id="cred-apisecret"
+              v-model="credForm.apiSecret"
+              class="bw-input"
+              type="password"
+              :placeholder="(credStatus.hasApiSecret || credStatus.hasPassword || credStatus.hasClientSecret) ? '•••••• (set — leave blank to keep current)' : 'Enter API secret'"
+              autocomplete="off"
+            />
+            <small class="oem-settings__hint">Encrypted at rest. Leave blank to keep current.</small>
+          </div>
         </div>
         <div v-if="credForm.authStrategy === 'bearer_login' || credForm.authStrategy === 'oauth2_client_credentials'" class="oem-settings__login-grid">
           <div class="oem-settings__field">
@@ -181,11 +220,14 @@ export default {
       credForm: {
         authStrategy: "bearer_static",
         baseUrl: "",
+        approvedHostnames: "",
         bearerToken: "",
         tokenEndpointPath: "",
         apiKeyHeaderName: "",
         username: "",
-        password: ""
+        password: "",
+        apiKey: "",
+        apiSecret: ""
       },
       savingCreds: false,
       credSaved: false,
@@ -209,7 +251,9 @@ export default {
       return "pending";
     },
     enabledCapabilities() {
-      return CAPABILITY_DEFINITIONS.filter((cap) => this.oem.capabilities?.[cap.key]).map((cap) => cap.label);
+      return CAPABILITY_DEFINITIONS.filter(
+        (cap) => this.oem.capabilities?.[cap.key] || (cap.key === "remote_meter_task" && this.oem.capabilities?.remote_meter_tasks)
+      ).map((cap) => cap.label);
     },
     filteredEndpoints() {
       const query = this.endpointQuery.trim().toLowerCase();
@@ -233,6 +277,8 @@ export default {
         this.credStatus = creds;
         this.credForm.authStrategy = creds.authStrategy || "bearer_static";
         this.credForm.baseUrl = creds.baseUrl || "";
+        const hostnames = creds.approvedHostnames || detail?.approvedHostnames || this.oem.approvedHostnames || "";
+        this.credForm.approvedHostnames = Array.isArray(hostnames) ? hostnames.join(", ") : (hostnames || "");
         this.credForm.tokenEndpointPath = creds.tokenEndpointPath || "";
         this.credForm.apiKeyHeaderName = creds.apiKeyHeaderName || "";
         this.rateLimitForm.windowMs = this.oem.rateLimitWindowMs ?? null;
@@ -252,15 +298,30 @@ export default {
           authStrategy: this.credForm.authStrategy,
           baseUrl: this.credForm.baseUrl
         };
+        if (this.credForm.approvedHostnames !== undefined) {
+          payload.approvedHostnames = typeof this.credForm.approvedHostnames === "string"
+            ? this.credForm.approvedHostnames.split(",").map((s) => s.trim()).filter(Boolean)
+            : this.credForm.approvedHostnames;
+        }
         if (this.credForm.bearerToken) payload.bearerToken = this.credForm.bearerToken;
         if (this.credForm.tokenEndpointPath) payload.tokenEndpointPath = this.credForm.tokenEndpointPath;
         if (this.credForm.authStrategy === "api_key_header") payload.apiKeyHeaderName = this.credForm.apiKeyHeaderName;
         if (this.credForm.username) payload.username = this.credForm.username;
         if (this.credForm.password) payload.password = this.credForm.password;
+        if (this.credForm.apiKey) {
+          payload.apiKey = this.credForm.apiKey;
+          if (!payload.username) payload.username = this.credForm.apiKey;
+        }
+        if (this.credForm.apiSecret) {
+          payload.apiSecret = this.credForm.apiSecret;
+          if (!payload.clientSecret) payload.clientSecret = this.credForm.apiSecret;
+        }
         this.credStatus = await this.store.saveCredentials(this.oem.id, payload);
         this.credForm.bearerToken = "";
         this.credForm.username = "";
         this.credForm.password = "";
+        this.credForm.apiKey = "";
+        this.credForm.apiSecret = "";
         this.credSaved = true;
         this.testResult = null;
       } catch (err) {
@@ -346,6 +407,7 @@ export default {
 .oem-settings__meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s-3); margin: 0; }
 .oem-settings__meta dt { color: var(--text-muted); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.08em; }
 .oem-settings__meta dd { margin: 4px 0 0; font-size: var(--t-sm); font-weight: 600; }
+.oem-settings__strategy-explanation { margin: 0; font-size: var(--t-sm); line-height: 1.5; }
 .oem-settings__caps { display: flex; flex-wrap: wrap; gap: 6px; }
 .oem-settings__cap { text-transform: none; letter-spacing: normal; }
 .oem-settings__empty, .oem-settings__empty-row { color: var(--text-muted); font-size: var(--t-sm); }

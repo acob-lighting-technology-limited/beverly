@@ -194,6 +194,8 @@ interface MeterInfo {
     isThreePhase?: boolean | null;
     liveVerified?: boolean;
     resolutionSource?: string;
+    vendingStrategy?: string;
+    vending_strategy?: string;
 }
 interface Preview {
     amountMinor: number;
@@ -222,9 +224,20 @@ const vendingConfigurationBlocked = computed(() => [
 ].includes(String(error.value?.code ?? ''))
     || presentVendorVendFailure(error.value?.code).blockConfirmation);
 const hasValidToken = computed(() => Boolean(result.value?.token && String(result.value.token).trim().length > 0));
+const isDirectCredit = computed(() => {
+    return meter.value?.vendingStrategy === 'direct_credit'
+        || (meter.value as any)?.vending_strategy === 'direct_credit'
+        || result.value?.purchaseOrder?.vending_strategy === 'direct_credit'
+        || (result.value?.purchaseOrder as any)?.vendingStrategy === 'direct_credit'
+        || (result.value as any)?.vending_strategy === 'direct_credit'
+        || (result.value as any)?.vendingStrategy === 'direct_credit'
+        || (result.value as any)?.mode === 'direct_credit'
+        || result.value?.purchaseOrder?.mode === 'direct_credit'
+        || (!hasValidToken.value && step.value === 'success');
+});
 const remoteState = computed(() => String(result.value?.purchaseOrder?.delivery_state ?? 'token_generated'));
 const tokenGroups = computed(() => String(result.value?.token ?? '').trim().split(/\s+/).filter(Boolean));
-const showReceiptNotice = computed(() => Boolean(notice.value && notice.value.title !== 'Token generated successfully'));
+const showReceiptNotice = computed(() => Boolean(notice.value && notice.value.title !== 'Token generated successfully' && notice.value.title !== 'Credit Applied Successfully'));
 const canRemoteSendToken = computed(() => {
     if (!hasValidToken.value || !result.value?.purchaseOrder?.id || remoteSending.value) return false;
     return remoteState.value !== 'remote_send_delivered';
@@ -251,7 +264,7 @@ const flowSteps = computed(() => [
     },
 ]);
 const confirmLabel = computed(() => {
-    if (loading.value) return 'Generating token...';
+    if (loading.value) return isDirectCredit.value ? 'Applying credit...' : 'Generating token...';
     if (!vendorKycReady.value) return 'Tier 1 verification required';
     if (vendingConfigurationBlocked.value) return 'Vending unavailable';
     if (!canVend.value) return 'Bind meter before vend';
@@ -533,20 +546,28 @@ async function submitAuthorization() {
         const isPoFailed = r?.purchaseOrder?.status === 'failed'
             || r?.purchaseOrder?.delivery_state === 'vend_failed'
             || (r as any)?.status === 'failed';
+        const isDirectCreditOrder = meter.value?.vendingStrategy === 'direct_credit'
+            || (meter.value as any)?.vending_strategy === 'direct_credit'
+            || r?.purchaseOrder?.vending_strategy === 'direct_credit'
+            || (r as any)?.vending_strategy === 'direct_credit'
+            || (r as any)?.vendingStrategy === 'direct_credit'
+            || (r as any)?.mode === 'direct_credit'
+            || r?.purchaseOrder?.mode === 'direct_credit'
+            || r?.purchaseOrder?.delivery_state === 'delivered';
 
-        // CRITICAL: Strict validation - if no token was generated or order failed, DO NOT show success screen!
-        if (!rawToken || isPoFailed) {
+        // CRITICAL: Strict validation - if no token was generated (and not direct credit) or order failed, DO NOT show success screen!
+        if (isPoFailed || (!rawToken && !isDirectCreditOrder)) {
             result.value = null;
             remoteTrackerOpen.value = false;
             const failureReason = r?.purchaseOrder?.remark
                 || r?.purchaseOrder?.failure_reason
                 || (r as any)?.message
-                || 'Token generation failed. No token was returned by the vending service.';
+                || (isDirectCreditOrder ? 'Direct credit failed. No credit was applied by the vending service.' : 'Token generation failed. No token was returned by the vending service.');
             const errDetails = {
-                title: 'Token Generation Failed',
+                title: isDirectCreditOrder ? 'Direct Credit Failed' : 'Token Generation Failed',
                 message: failureReason,
                 action: 'No wallet debit occurred. Your balance is safe. Check the meter binding or retry.',
-                code: r?.purchaseOrder?.delivery_state || (r as any)?.code || 'token_not_generated',
+                code: r?.purchaseOrder?.delivery_state || (r as any)?.code || (isDirectCreditOrder ? 'direct_credit_failed' : 'token_not_generated'),
                 meterId: meter.value?.meterId,
                 customerName: meter.value?.customerName,
                 stationId: meter.value?.stationId,
@@ -561,16 +582,16 @@ async function submitAuthorization() {
             step.value = 'failed';
             showResultPopup(
                 'danger',
-                'Vending Failed',
+                isDirectCreditOrder ? 'Direct Credit Failed' : 'Vending Failed',
                 `${errDetails.message} No wallet debit occurred.`,
             );
             return;
         }
 
-        // Token generation succeeded
+        // Vending succeeded
         result.value = {
             ...r,
-            token: rawToken,
+            token: rawToken || null,
         };
         failedVend.value = null;
         const needsReconciliation = r.purchaseOrder?.status === 'delivery_pending_review'
@@ -578,24 +599,32 @@ async function submitAuthorization() {
         notice.value = needsReconciliation
             ? {
                 tone: 'info',
-                title: 'Token generated; reconciliation pending',
-                message: 'The token is valid and remains available. Beverly operations will reconcile the wallet automatically.',
+                title: isDirectCreditOrder ? 'Direct credit applied; reconciliation pending' : 'Token generated; reconciliation pending',
+                message: isDirectCreditOrder
+                    ? 'Credit applied to meter. Beverly operations will reconcile the wallet automatically.'
+                    : 'The token is valid and remains available. Beverly operations will reconcile the wallet automatically.',
                 code: 'token_generated_needs_reconciliation',
             }
             : {
                 tone: 'success',
-                title: 'Token generated successfully',
-                message: 'Receipt is ready. Copy, download, view, or remote send now.',
+                title: isDirectCreditOrder ? 'Credit Applied Successfully' : 'Token generated successfully',
+                message: isDirectCreditOrder
+                    ? 'Your meter balance has been credited directly over-the-air. No 20-digit keypad token is required.'
+                    : 'Receipt is ready. Copy, download, view, or remote send now.',
             };
         step.value = 'success';
         showResultPopup(
             'success',
-            'Token generated successfully',
-            `Credit token is ready for meter ${meter.value?.meterId || ''}. Remote send dispatching...`,
+            isDirectCreditOrder ? 'Credit Applied Successfully' : 'Token generated successfully',
+            isDirectCreditOrder
+                ? `Direct credit applied to meter ${meter.value?.meterId || ''}.`
+                : `Credit token is ready for meter ${meter.value?.meterId || ''}. Remote send dispatching...`,
         );
-        window.setTimeout(() => {
-            remoteTrackerOpen.value = true;
-        }, 500);
+        if (!isDirectCreditOrder) {
+            window.setTimeout(() => {
+                remoteTrackerOpen.value = true;
+            }, 500);
+        }
     } catch (e: any) {
         if (e instanceof ApiError && e.code === 'vend_credential_required') {
             authOpen.value = false;
@@ -693,6 +722,7 @@ function resultReceiptRow() {
     return {
         ...(result.value.purchaseOrder ?? {}),
         token: result.value.token,
+        vending_strategy: meter.value?.vendingStrategy || (meter.value as any)?.vending_strategy || result.value.purchaseOrder?.vending_strategy || (isDirectCredit.value ? 'direct_credit' : 'sts_token'),
         units_kwh: result.value.units,
         receipt_id: result.value.receiptId,
         purchase_order_id: result.value.purchaseOrder?.id,
@@ -875,8 +905,16 @@ async function remoteSendGeneratedToken() {
       <div v-else-if="step === 'preview'" key="preview" class="bw-card vend-preview-card">
         <button class="bw-btn sm" style="margin-bottom: var(--s-4)" @click="step = 'amount'">← Back</button>
         <p class="bw-label">Confirm purchase</p>
+        <div v-if="meter?.vendingStrategy === 'direct_credit' || (meter as any)?.vending_strategy === 'direct_credit'" style="margin-bottom: var(--s-2)">
+          <span class="bw-badge success" style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em">Direct Meter Credit</span>
+        </div>
         <h2 class="bw-h2 bw-mono" style="font-size: var(--t-3xl); margin: 0">{{ naira(preview?.amountMinor) }}</h2>
         <p class="bw-muted bw-mono">{{ kwh(preview?.units) }} @ ₦{{ preview?.effectivePricePerKwh.toFixed(2) }}/kWh</p>
+
+        <div v-if="meter?.vendingStrategy === 'direct_credit' || (meter as any)?.vending_strategy === 'direct_credit'" class="bw-alert info" style="margin-top: var(--s-3); display: grid; gap: 4px">
+          <strong>Direct Meter Credit</strong>
+          <span>This meter receives direct account credit automatically. No keypad token required.</span>
+        </div>
 
         <div style="border-top: 1px solid var(--border); margin-top: var(--s-4); padding-top: var(--s-4); display: grid; gap: var(--s-2)">
           <div class="bw-row"><span class="bw-muted">Amount paid</span><span class="bw-spacer"></span><strong>{{ naira(preview?.amountMinor) }}</strong></div>
@@ -887,6 +925,7 @@ async function remoteSendGeneratedToken() {
           <div class="bw-row"><span class="bw-muted">Phase</span><span class="bw-spacer"></span><span>{{ meterTypeLabel(meter?.isThreePhase) }}</span></div>
           <div class="bw-row"><span class="bw-muted">Station</span><span class="bw-spacer"></span><span>{{ meter?.stationId }}</span></div>
           <div class="bw-row"><span class="bw-muted">Tariff</span><span class="bw-spacer"></span><span>{{ meter?.tariffId }}</span></div>
+          <div v-if="meter?.vendingStrategy === 'direct_credit' || (meter as any)?.vending_strategy === 'direct_credit'" class="bw-row"><span class="bw-muted">Credit Type</span><span class="bw-spacer"></span><span class="bw-badge success">Direct Meter Credit</span></div>
         </div>
         <div v-if="!meterLiveVerified" class="bw-alert" style="margin-top: var(--s-3); display: grid; gap: 6px">
           <strong>Live vend blocked for safety</strong>
@@ -907,55 +946,104 @@ async function remoteSendGeneratedToken() {
       </div>
 
       <!-- Step: success / receipt -->
-      <div v-else-if="step === 'success' && hasValidToken" key="success" class="bw-stack vend-success">
+      <div v-else-if="step === 'success'" key="success" class="bw-stack vend-success">
         <div v-if="showReceiptNotice" :class="['bw-alert', notice?.tone === 'danger' ? 'danger' : notice?.tone === 'info' ? 'info' : 'success']" style="display: grid; gap: 6px">
           <strong>{{ notice?.title }}</strong>
           <span>{{ notice?.message }}</span>
           <small v-if="notice?.code" class="bw-mono">Code: {{ notice.code }}</small>
         </div>
-        <section class="bw-token-box" aria-labelledby="vend-token-title">
-          <div class="token-ready-row">
-            <div>
-              <p class="token-eyebrow">Credit token</p>
-              <h1 id="vend-token-title">Token ready</h1>
+
+        <!-- STS Token branch (hasValidToken) -->
+        <template v-if="hasValidToken">
+          <section class="bw-token-box" aria-labelledby="vend-token-title">
+            <div class="token-ready-row">
+              <div>
+                <p class="token-eyebrow">Credit token</p>
+                <h1 id="vend-token-title">Token ready</h1>
+              </div>
+              <span class="token-ready-badge"><span aria-hidden="true"></span>Generated</span>
             </div>
-            <span class="token-ready-badge"><span aria-hidden="true"></span>Generated</span>
-          </div>
-          <p class="bw-token-value bw-token-shimmer" :aria-label="`Token ${result?.token ?? ''}`">
-            <span v-for="(group, index) in tokenGroups" :key="`${group}-${index}`">{{ group }}</span>
-          </p>
-          <div class="token-meta">
-            <span>{{ kwh(result?.units) }}</span><span aria-hidden="true">·</span><strong>{{ naira(preview?.amountMinor) }}</strong>
-          </div>
-          <button class="bw-btn primary token-copy-btn" @click="copyToken" aria-live="polite">
-            {{ copied ? 'Token copied' : 'Copy token' }}
-          </button>
-          <p class="token-help">Enter this token manually, or send it remotely.</p>
-        </section>
-        <section class="bw-card vend-receipt-summary" aria-labelledby="vend-receipt-title">
-          <div class="receipt-summary-head">
-            <div>
-              <p class="token-eyebrow">Receipt details</p>
-              <h2 id="vend-receipt-title">{{ meter?.customerName }}</h2>
+            <p class="bw-token-value bw-token-shimmer" :aria-label="`Token ${result?.token ?? ''}`">
+              <span v-for="(group, index) in tokenGroups" :key="`${group}-${index}`">{{ group }}</span>
+            </p>
+            <div class="token-meta">
+              <span>{{ kwh(result?.units) }}</span><span aria-hidden="true">·</span><strong>{{ naira(preview?.amountMinor) }}</strong>
             </div>
-            <span class="receipt-state">{{ remoteState.replace(/_/g, ' ') }}</span>
+            <button class="bw-btn primary token-copy-btn" @click="copyToken" aria-live="polite">
+              {{ copied ? 'Token copied' : 'Copy token' }}
+            </button>
+            <p class="token-help">Enter this token manually, or send it remotely.</p>
+          </section>
+          <section class="bw-card vend-receipt-summary" aria-labelledby="vend-receipt-title">
+            <div class="receipt-summary-head">
+              <div>
+                <p class="token-eyebrow">Receipt details</p>
+                <h2 id="vend-receipt-title">{{ meter?.customerName }}</h2>
+              </div>
+              <span class="receipt-state">{{ remoteState.replace(/_/g, ' ') }}</span>
+            </div>
+            <dl class="receipt-facts">
+              <div><dt>Meter</dt><dd class="bw-mono">{{ meter?.meterId }}</dd></div>
+              <div><dt>Amount</dt><dd>{{ naira(preview?.amountMinor) }}</dd></div>
+              <div><dt>Phase</dt><dd>{{ meterTypeLabel(meter?.isThreePhase) }}</dd></div>
+              <div><dt>Station</dt><dd>{{ meter?.stationId }}</dd></div>
+              <div><dt>Energy value</dt><dd>{{ naira(result?.purchaseOrder?.energy_amount_minor ?? preview?.energyAmountMinor) }}</dd></div>
+              <div><dt>VAT ({{ Number(result?.purchaseOrder?.vat_rate_basis_points ?? preview?.vatRateBasisPoints ?? 0) / 100 }}%)</dt><dd>{{ naira(result?.purchaseOrder?.vat_amount_minor ?? preview?.taxAmountMinor) }}</dd></div>
+            </dl>
+            <p class="receipt-order bw-mono">Order #{{ String(result?.purchaseOrder?.id).slice(0, 8) }}</p>
+          </section>
+          <div class="vend-action-grid">
+            <button class="bw-btn primary action-remote" @click="remoteSendGeneratedToken" :disabled="!canRemoteSendToken">{{ remoteSendLabel }}</button>
+            <button class="bw-btn" @click="downloadResultReceipt">Download receipt</button>
+            <button class="bw-btn" @click="viewResultReceipt">View receipt</button>
+            <button class="bw-btn action-new" @click="reset">New vend</button>
           </div>
-          <dl class="receipt-facts">
-            <div><dt>Meter</dt><dd class="bw-mono">{{ meter?.meterId }}</dd></div>
-            <div><dt>Amount</dt><dd>{{ naira(preview?.amountMinor) }}</dd></div>
-            <div><dt>Phase</dt><dd>{{ meterTypeLabel(meter?.isThreePhase) }}</dd></div>
-            <div><dt>Station</dt><dd>{{ meter?.stationId }}</dd></div>
-            <div><dt>Energy value</dt><dd>{{ naira(result?.purchaseOrder?.energy_amount_minor ?? preview?.energyAmountMinor) }}</dd></div>
-            <div><dt>VAT ({{ Number(result?.purchaseOrder?.vat_rate_basis_points ?? preview?.vatRateBasisPoints ?? 0) / 100 }}%)</dt><dd>{{ naira(result?.purchaseOrder?.vat_amount_minor ?? preview?.taxAmountMinor) }}</dd></div>
-          </dl>
-          <p class="receipt-order bw-mono">Order #{{ String(result?.purchaseOrder?.id).slice(0, 8) }}</p>
-        </section>
-        <div class="vend-action-grid">
-          <button class="bw-btn primary action-remote" @click="remoteSendGeneratedToken" :disabled="!canRemoteSendToken">{{ remoteSendLabel }}</button>
-          <button class="bw-btn" @click="downloadResultReceipt">Download receipt</button>
-          <button class="bw-btn" @click="viewResultReceipt">View receipt</button>
-          <button class="bw-btn action-new" @click="reset">New vend</button>
-        </div>
+        </template>
+
+        <!-- Direct Credit branch (!hasValidToken / isDirectCredit) -->
+        <template v-else>
+          <section class="bw-card vend-direct-credit-card" aria-labelledby="vend-direct-title">
+            <div class="token-ready-row">
+              <div>
+                <p class="token-eyebrow">Direct Credit</p>
+                <h1 id="vend-direct-title">Credit Applied Successfully</h1>
+              </div>
+              <span class="token-ready-badge direct-credit-badge"><span aria-hidden="true"></span>Direct Credit Applied</span>
+            </div>
+
+            <div class="direct-credit-hero">
+              <div class="direct-credit-amount">{{ naira(preview?.amountMinor) }}</div>
+              <div class="direct-credit-units">{{ kwh(result?.units) }}</div>
+            </div>
+
+            <div class="direct-credit-notice">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              <span>Your meter balance has been credited directly over-the-air. No 20-digit keypad token is required.</span>
+            </div>
+
+            <dl class="receipt-facts" style="margin-top: var(--s-4); border-top: 1px solid var(--border); padding-top: var(--s-3)">
+              <div><dt>Customer</dt><dd>{{ meter?.customerName }}</dd></div>
+              <div><dt>Meter ID</dt><dd class="bw-mono">{{ meter?.meterId }}</dd></div>
+              <div><dt>Site / Station</dt><dd>{{ meter?.stationId }}</dd></div>
+              <div><dt>Tariff</dt><dd>{{ meter?.tariffId }}</dd></div>
+              <div><dt>Energy Value</dt><dd>{{ naira(result?.purchaseOrder?.energy_amount_minor ?? preview?.energyAmountMinor) }}</dd></div>
+              <div><dt>Delivery</dt><dd><span class="bw-badge success">Directly Credited (Over-the-Air)</span></dd></div>
+            </dl>
+            <p class="receipt-order bw-mono">Order #{{ String(result?.purchaseOrder?.id).slice(0, 8) }}</p>
+          </section>
+
+          <div class="vend-action-grid">
+            <div class="direct-credit-status-banner">
+              <span class="bw-badge success lg">Directly Credited (Over-the-Air)</span>
+            </div>
+            <button class="bw-btn" @click="downloadResultReceipt">Download receipt</button>
+            <button class="bw-btn" @click="viewResultReceipt">View receipt</button>
+            <button class="bw-btn primary action-new" @click="reset">New vend</button>
+          </div>
+        </template>
       </div>
 
       <!-- Step: failed (Explicit Vending Failure Screen) -->
@@ -971,7 +1059,7 @@ async function remoteSendGeneratedToken() {
             </div>
             <div>
               <p class="token-failed-badge"><span></span>Vending Unsuccessful</p>
-              <h1 id="vend-failed-title" class="failed-title">{{ failedVend?.title || error?.title || 'Token Generation Failed' }}</h1>
+              <h1 id="vend-failed-title" class="failed-title">{{ failedVend?.title || error?.title || (isDirectCredit ? 'Direct Credit Failed' : 'Token Generation Failed') }}</h1>
             </div>
           </div>
 
@@ -987,7 +1075,7 @@ async function remoteSendGeneratedToken() {
           </div>
 
           <div class="failed-reason-box">
-            <p class="failed-reason-msg">{{ failedVend?.message || error?.message || 'The vending system was unable to generate a token for this request.' }}</p>
+            <p class="failed-reason-msg">{{ failedVend?.message || error?.message || (isDirectCredit ? 'The vending system was unable to apply direct credit for this request.' : 'The vending system was unable to generate a token for this request.') }}</p>
             <p v-if="failedVend?.action || error?.action" class="failed-reason-action">{{ failedVend?.action || error?.action }}</p>
             <div class="failed-reason-meta">
               <span v-if="failedVend?.code || error?.code" class="bw-mono">Code: {{ failedVend?.code || error?.code }}</span>
@@ -1438,6 +1526,56 @@ async function remoteSendGeneratedToken() {
 .receipt-facts dt { color: var(--text-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
 .receipt-facts dd { margin: 3px 0 0; overflow-wrap: anywhere; color: var(--text); font-size: var(--t-sm); font-weight: 700; }
 .receipt-order { margin: var(--s-3) 0 0; padding-top: var(--s-3); border-top: 1px solid var(--border); color: var(--text-muted); font-size: var(--t-xs); }
+
+.vend-direct-credit-card {
+  padding: var(--s-5);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border));
+}
+
+.direct-credit-badge {
+  background: color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.direct-credit-hero {
+  margin: var(--s-4) 0;
+  text-align: center;
+}
+
+.direct-credit-amount {
+  font-family: var(--font-mono);
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  font-weight: 800;
+  color: var(--brand);
+}
+
+.direct-credit-units {
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.direct-credit-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+  border-radius: var(--r-lg);
+  font-size: var(--t-sm);
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.direct-credit-status-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--s-2) 0;
+}
 
 @property --token-ring-angle {
   syntax: "<angle>";

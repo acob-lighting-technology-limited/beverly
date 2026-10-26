@@ -11,6 +11,7 @@ export type ReceiptModel = {
   subject?: string;
   source?: { kind: 'wallet-ledger'; id: string };
   subtitle?: string;
+  isDirectCredit?: boolean;
   fields: ReceiptField[];
 };
 
@@ -49,8 +50,13 @@ function field(label: string, value: unknown, options: Pick<ReceiptField, 'wide'
 }
 
 function legacyReceiptHtml(model: ReceiptModel): string {
-  const token = model.fields.find((item) => item.token);
-  const fields = model.fields.filter((item) => !item.token);
+  const token = model.fields.find((item) => item.token && item.value && item.value !== '-');
+  const isDirectCredit = Boolean(
+    model.isDirectCredit ||
+    (!token && model.title === 'Purchase Receipt') ||
+    model.fields.some((f) => f.label === 'Credit Method' && String(f.value).includes('DIRECT CREDIT'))
+  );
+  const fields = model.fields.filter((item) => !item.token && item.label !== 'Credit Method');
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(model.title)} ${escapeHtml(model.receiptId)}</title>
   <style>
     *{box-sizing:border-box}@page{size:A4;margin:0}html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fff}
@@ -65,12 +71,13 @@ function legacyReceiptHtml(model: ReceiptModel): string {
     .amount{margin-bottom:14px;padding:18px;border:1px solid rgba(255,214,0,.28);border-radius:18px;background:linear-gradient(135deg,rgba(255,214,0,.12),rgba(255,214,0,.04));text-align:center}.amount span{display:block;color:#ffd600;text-transform:uppercase;letter-spacing:.1em;font-size:10px;font-weight:850;margin-bottom:7px}.amount strong{display:block;color:#ffd600;font-size:36px;line-height:1;font-weight:900}
     .status{display:inline-flex;margin-bottom:14px;padding:7px 12px;border-radius:999px;border:1px solid rgba(255,214,0,.24);color:#ffd600;font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}
     .token{margin-bottom:14px;padding:15px;border:1px solid rgba(255,214,0,.28);border-radius:16px;background:#030407;text-align:center}.token span{display:block;color:#ffd600;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}.token strong{color:#ffd600;font-family:"Cascadia Mono","Courier New",monospace;font-size:20px;letter-spacing:2px;word-break:break-all}
+    .token.direct-credit strong{font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:15px;letter-spacing:0.04em}
     .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px}.item{min-width:0;padding:9px 10px;border:1px solid rgba(255,214,0,.14);border-radius:12px;background:rgba(255,255,255,.025)}.item.wide{grid-column:1/-1}.item span{display:block;color:#8f98a8;font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}.item strong{display:block;color:#d7dee9;font-size:10px;line-height:1.35;word-break:break-word}
     footer{text-align:center;padding-top:14px;border-top:1px solid rgba(22,163,74,.22);color:#64756b;font-size:10px;line-height:1.6}footer strong{display:block;color:#10281a;font-size:12px;margin-bottom:6px}
     body{background:#eef7f0;color:#183126}.receipt{background:#fff;border-color:rgba(22,163,74,.24);box-shadow:0 24px 70px rgba(22,70,40,.14),0 0 0 6px rgba(22,163,74,.04)}.receipt:before{background:linear-gradient(90deg,#15803d,#22c55e,#86efac)}
     .mark{background:linear-gradient(135deg,#16a34a,#86efac);color:#071d0f}.brand-name,h1{color:#10281a}.sub,.meta,.item span{color:#64756b}.meta{border-color:rgba(22,163,74,.24);background:#f4faf6}.meta strong,.time span,.amount span,.amount strong,.status,.token span,.token strong{color:#16a34a}.time,.amount,.status,.token{border-color:rgba(22,163,74,.24)}.time{background:rgba(22,163,74,.08);color:#183126}.amount{background:linear-gradient(135deg,rgba(22,163,74,.12),rgba(22,163,74,.04))}.token{background:#f2fbf5}.item{border-color:rgba(22,163,74,.14);background:#f8fcf9}.item strong{color:#183126}
     @media print{body{width:210mm;min-height:297mm;padding:0;background:#fff}.receipt{width:148mm;box-shadow:none;border-radius:18px}}@media(max-width:720px){body{padding:0}.receipt{width:100%;min-height:100vh;border-radius:0;padding:20px}header,.grid{grid-template-columns:1fr}.meta{text-align:left}}
-  </style></head><body><main class="receipt"><header><div><div class="brand"><div class="mark">B</div><div class="brand-name">Beverly</div></div><h1>${escapeHtml(model.title)}</h1><p class="sub">${escapeHtml(model.subtitle || 'Wallet operations receipt')}</p><div class="time"><span>Time</span>${escapeHtml(model.issuedAt || date(new Date().toISOString()))}</div></div><div class="meta"><strong>#${escapeHtml(model.receiptId)}</strong><span>Receipt ID</span></div></header>${model.amount ? `<section class="amount"><span>${escapeHtml(model.subject || 'Amount')}</span><strong>${escapeHtml(model.amount)}</strong></section>` : ''}${model.status ? `<div class="status">${escapeHtml(model.status)}</div>` : ''}${token ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : ''}<section class="grid">${fields.map((item) => `<div class="item ${item.wide ? 'wide' : ''}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join('')}</section><footer><strong>ACOB Lighting Technology Limited</strong>support@acoblighting.com &bull; +234 800 BEVERLY<br>www.acoblighting.com</footer></main></body></html>`;
+  </style></head><body><main class="receipt"><header><div><div class="brand"><div class="mark">B</div><div class="brand-name">Beverly</div></div><h1>${escapeHtml(model.title)}</h1><p class="sub">${escapeHtml(model.subtitle || 'Wallet operations receipt')}</p><div class="time"><span>Time</span>${escapeHtml(model.issuedAt || date(new Date().toISOString()))}</div></div><div class="meta"><strong>#${escapeHtml(model.receiptId)}</strong><span>Receipt ID</span></div></header>${model.amount ? `<section class="amount"><span>${escapeHtml(model.subject || 'Amount')}</span><strong>${escapeHtml(model.amount)}</strong></section>` : ''}${model.status ? `<div class="status">${escapeHtml(model.status)}</div>` : ''}${token && !isDirectCredit ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : isDirectCredit ? `<section class="token direct-credit"><span>Credit Method</span><strong>DIRECT CREDIT (METER BALANCE)</strong></section>` : ''}<section class="grid">${fields.map((item) => `<div class="item ${item.wide ? 'wide' : ''}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join('')}</section><footer><strong>ACOB Lighting Technology Limited</strong>support@acoblighting.com &bull; +234 800 BEVERLY<br>www.acoblighting.com</footer></main></body></html>`;
 }
 
 function canonicalReceipt(model: ReceiptModel) {
@@ -329,6 +336,7 @@ function resolveVendedBy(row: any): string {
 export function purchaseReceipt(row: any): ReceiptModel {
   const vendedBy = resolveVendedBy(row);
   const { tariffName, tariffPrice } = resolveTariffDetails(row);
+  const isDirectCredit = !row.token || row.vending_strategy === 'direct_credit' || row.vendingStrategy === 'direct_credit' || row.mode === 'direct_credit' || row.delivery_method === 'direct_credit';
 
   return {
     title: 'Purchase Receipt',
@@ -337,8 +345,11 @@ export function purchaseReceipt(row: any): ReceiptModel {
     status: clean(row.status),
     issuedAt: date(row.created_at),
     subject: 'Amount Purchased',
+    isDirectCredit,
     fields: [
-      field('Token', row.token, { token: true }),
+      isDirectCredit
+        ? field('Credit Method', 'DIRECT CREDIT (METER BALANCE)')
+        : field('Token', row.token, { token: true }),
       field('Customer', row.customer_name || row.customer_phone),
       field('Customer Phone', row.customer_phone),
       field('Vended By', vendedBy, { wide: true }),

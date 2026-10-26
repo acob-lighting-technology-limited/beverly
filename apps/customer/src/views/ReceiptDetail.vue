@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { VENDING_VAT_BASIS_POINTS } from '@beverly/tokens';
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import { api } from '../lib/api';
@@ -13,6 +13,13 @@ const loading = ref(true);
 const error   = ref('');
 const receipt = ref<any>(null);
 const copied  = ref(false);
+
+const isDirectCredit = computed(() => {
+    return !receipt.value?.token
+        || receipt.value?.vending_strategy === 'direct_credit'
+        || receipt.value?.vendingStrategy === 'direct_credit'
+        || receipt.value?.mode === 'direct_credit';
+});
 
 async function load() {
     loading.value = true;
@@ -99,13 +106,21 @@ onMounted(load);
             </div>
           </div>
 
-          <!-- Token highlight -->
-          <div class="rcpt-token-block">
+          <!-- Token highlight or Direct Credit banner -->
+          <div v-if="!isDirectCredit && receipt.token" class="rcpt-token-block">
             <div class="rcpt-token-label">Your Token</div>
-            <div class="rcpt-token">{{ receipt.token ?? '—' }}</div>
+            <div class="rcpt-token">{{ receipt.token }}</div>
             <button class="rcpt-copy-btn" @click="copyToken">
               {{ copied ? '✓ Copied!' : 'Copy Token' }}
             </button>
+          </div>
+          <div v-else class="rcpt-token-block rcpt-direct-credit-block">
+            <div class="rcpt-direct-badge">
+              Credit Method: Direct Credit (Account Top-up)
+            </div>
+            <div class="rcpt-direct-desc">
+              Balance credited automatically to meter
+            </div>
           </div>
 
           <!-- Details -->
@@ -131,7 +146,7 @@ onMounted(load);
         <div class="rcpt-actions">
           <button class="rcpt-action-btn" @click="viewReceiptDoc">View Receipt</button>
           <button class="rcpt-action-btn" @click="printReceiptDoc">Print Receipt</button>
-          <button class="rcpt-action-btn" @click="resendSms">Resend Token SMS</button>
+          <button v-if="!isDirectCredit && receipt.token" class="rcpt-action-btn" @click="resendSms">Resend Token SMS</button>
           <router-link :to="`/disputes?new=1&order=${encodeURIComponent(disputeOrderId())}`" class="rcpt-action-btn">Raise Dispute</router-link>
           <a v-if="receipt.pdf_url" :href="receipt.pdf_url" download class="rcpt-action-btn">Download PDF</a>
         </div>
@@ -148,6 +163,30 @@ onMounted(load);
 .rcpt-brand-name { font-weight: 700; font-size: var(--t-md); }
 .rcpt-brand-sub { font-size: var(--t-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .rcpt-token-block { padding: var(--s-6) var(--s-5); background: oklch(from var(--brand) l c h / 0.06); border-bottom: 1px solid var(--border); text-align: center; }
+.rcpt-direct-credit-block {
+  background: oklch(from var(--green, #22c55e) l c h / 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+}
+.rcpt-direct-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  background: oklch(from var(--green, #22c55e) l c h / 0.15);
+  color: var(--green, #16a34a);
+  border: 1px solid oklch(from var(--green, #22c55e) l c h / 0.3);
+  border-radius: var(--r-full);
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.rcpt-direct-desc {
+  font-size: var(--t-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+}
 .rcpt-token-label { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.10em; color: var(--text-muted); font-weight: 700; margin-bottom: var(--s-3); }
 .rcpt-token { font-family: var(--font-mono); font-size: var(--t-2xl); font-weight: 700; letter-spacing: 0.12em; color: var(--text); margin-bottom: var(--s-4); word-break: break-all; }
 .rcpt-copy-btn { padding: var(--s-2) var(--s-5); background: var(--brand); color: oklch(8% 0.04 145); border: none; border-radius: var(--r-lg); font-size: var(--t-sm); font-weight: 600; cursor: pointer; }
