@@ -32,6 +32,7 @@ Updated: 26 October 2026, Lagos.
 - Reporting days follow Lagos boundaries.
 - Reports disclose unverified source completeness.
 - Known station searches use explicit filters.
+- Concurrent report loads preserve newest filters.
 - Exports include collection status warnings.
 - Ordinary report reads avoid ingestion.
 - Missing gateway telemetry remains unavailable.
@@ -165,6 +166,8 @@ Final archive refresh also passed.
 - Displayed totals matched database calculations.
 - Production XLSX downloaded 4,636 readings.
 - Export collection warnings were verified.
+- Authenticated archive bundle download passed.
+- Downloaded archive checksum matched storage.
 - Station search regressions received correction.
 - Analytics retry succeeded without SQL changes.
 
