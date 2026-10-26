@@ -334,28 +334,28 @@
             </div>
           </div>
 
-          <div class="ghp-gw-hop-preview">
+          <div class="ghp-gw-hop-preview" v-if="gw.hopDistribution">
             <div class="ghp-gw-hop-bar">
               <div
                 class="ghp-ghb-seg ghp-ghb-seg--0"
-                :style="{ width: `${gw.hopDistribution.direct0Hops.percentage}%` }"
+                :style="{ width: `${gw.hopDistribution?.direct0Hops?.percentage || 0}%` }"
                 title="Direct 0-hop"
               ></div>
               <div
                 class="ghp-ghb-seg ghp-ghb-seg--1"
-                :style="{ width: `${gw.hopDistribution.repeater1Hop.percentage}%` }"
+                :style="{ width: `${gw.hopDistribution?.repeater1Hop?.percentage || 0}%` }"
                 title="1-hop repeaters"
               ></div>
               <div
                 class="ghp-ghb-seg ghp-ghb-seg--2"
-                :style="{ width: `${gw.hopDistribution.multi2PlusHops.percentage}%` }"
+                :style="{ width: `${gw.hopDistribution?.multi2PlusHops?.percentage || 0}%` }"
                 title="2+ hops"
               ></div>
             </div>
             <div class="ghp-gw-hop-labels">
-              <span>0-hop: {{ gw.hopDistribution.direct0Hops.percentage }}%</span>
-              <span>1-hop: {{ gw.hopDistribution.repeater1Hop.percentage }}%</span>
-              <span>2+ hop: {{ gw.hopDistribution.multi2PlusHops.percentage }}%</span>
+              <span>0-hop: {{ gw.hopDistribution?.direct0Hops?.percentage || 0 }}%</span>
+              <span>1-hop: {{ gw.hopDistribution?.repeater1Hop?.percentage || 0 }}%</span>
+              <span>2+ hop: {{ gw.hopDistribution?.multi2PlusHops?.percentage || 0 }}%</span>
             </div>
           </div>
 
@@ -1356,7 +1356,10 @@ export default {
 }
 
 .ghp-table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ghp-table {
@@ -1457,5 +1460,42 @@ export default {
 @media (max-width: 900px) {
   .ghp-rf-topology-grid { grid-template-columns: 1fr; }
   .ghp-hero-inner { flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 768px) {
+  .ghp-container {
+    padding: var(--s-3);
+  }
+  .ghp-hero {
+    padding: var(--s-4);
+  }
+  .ghp-hero-glow {
+    display: none;
+  }
+  .ghp-panel-card {
+    padding: var(--s-4);
+  }
+  .ghp-cards-grid {
+    grid-template-columns: 1fr;
+  }
+  .ghp-signal-gauges {
+    grid-template-columns: 1fr;
+  }
+  .ghp-backhaul-summary {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-2);
+  }
+  .ghp-search-box {
+    width: 100%;
+  }
+  .ghp-s-input {
+    width: 100%;
+  }
+  .ghp-orphans-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s-3);
+  }
 }
 </style>

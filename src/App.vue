@@ -136,19 +136,6 @@
               </svg>
             </BaseIconButton>
             <a v-if="!showOemHub" class="top-route" :href="route.hash" :aria-current="'page'">{{ activePageTitle }}</a>
-            <span
-              v-if="!showOemHub && currentOemName"
-              class="oem-workspace-pill"
-              role="button"
-              tabindex="0"
-              :title="`Active OEM: ${currentOemName} — Click to switch workspace`"
-              @click="switchOem"
-              @keydown.enter.space.prevent="switchOem"
-            >
-              <span class="dot"></span>
-              <span class="oem-workspace-pill-name">{{ currentOemName }}</span>
-              <span class="oem-workspace-pill-tag">OEM</span>
-            </span>
             <div class="right-menu">
               <BaseButton variant="quiet" class="toolbar-search" aria-label="Search Beverly" aria-keyshortcuts="Control+K Meta+K" @click="openGlobalSearch">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
@@ -324,9 +311,9 @@
           <ArchiveReportsPage v-else-if="route.customComponent === 'ArchiveReportsPage'" :route="route" />
           <PowerQualityPage v-else-if="route.customComponent === 'PowerQualityPage' || route.hash === '#/telemetry/power-quality'" :route="route" />
           <DemandCurvesPage v-else-if="route.customComponent === 'DemandCurvesPage' || route.hash === '#/telemetry/demand-curves'" :route="route" />
-          <RemoteRelayPage v-else-if="route.customComponent === 'RemoteRelayPage'" />
-          <EnergyAuditPage v-else-if="route.customComponent === 'EnergyAuditPage'" />
-          <GatewayHealthPage v-else-if="route.customComponent === 'GatewayHealthPage'" />
+          <RemoteRelayPage v-else-if="route.customComponent === 'RemoteRelayPage' || route.hash === '#/grid-control/remote-relay'" />
+          <EnergyAuditPage v-else-if="route.customComponent === 'EnergyAuditPage' || route.hash === '#/analytics/energy-audit'" />
+          <GatewayHealthPage v-else-if="route.customComponent === 'GatewayHealthPage' || route.hash === '#/mesh/gateways'" />
           <TablePage v-else :route="route" />
         </main>
     </section>
@@ -1230,64 +1217,5 @@ export default {
 @media (min-width: 1025px) {
   .main-container::before, .bw-account-scrim { display: none; }
   .main-container--account-menu-open :deep(.content-page) { filter: none; }
-}
-
-.oem-workspace-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 10px 4px 8px;
-  margin-left: 12px;
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border-color, rgba(148, 163, 184, 0.18));
-  border-radius: 9999px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-strong, #0f172a);
-  cursor: pointer;
-  user-select: none;
-  transition: all 0.18s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.oem-workspace-pill:hover,
-.oem-workspace-pill:focus-visible {
-  border-color: var(--primary, #059669);
-  background: var(--primary-light, rgba(5, 150, 105, 0.08));
-  color: var(--primary, #059669);
-  outline: none;
-  transform: translateY(-1px);
-}
-
-.oem-workspace-pill .dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
-  animation: pulse-dot 2s infinite ease-in-out;
-}
-
-.oem-workspace-pill-name {
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.oem-workspace-pill-tag {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(5, 150, 105, 0.12);
-  color: var(--primary, #059669);
-  font-weight: 700;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.7; }
 }
 </style>

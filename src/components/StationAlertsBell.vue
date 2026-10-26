@@ -2,7 +2,7 @@
   <div :class="['station-alerts', { 'station-alerts--open': open }]" ref="root">
     <BaseIconButton
       :class="['station-bell', { 'station-bell--has-unread': unread > 0 }]"
-      aria-label="Station health notifications"
+      :aria-label="isSparkMeter ? 'SparkMeter NOVA health notifications' : 'Station health notifications'"
       :aria-expanded="String(open)"
       @click="toggle"
     >
@@ -18,11 +18,11 @@
     </transition>
 
     <transition name="station-alert-popover">
-      <section v-if="open" class="station-alert-popover" role="dialog" aria-modal="false" aria-label="Station health notifications">
+      <section v-if="open" class="station-alert-popover" role="dialog" aria-modal="false" :aria-label="isSparkMeter ? 'SparkMeter NOVA health notifications' : 'Station health notifications'">
         <header class="station-alert-header">
           <div class="station-alert-title">
-            <strong>Notifications</strong>
-            <span>{{ activeAlerts.length }} active outage{{ activeAlerts.length === 1 ? '' : 's' }}</span>
+            <strong>{{ isSparkMeter ? 'SparkMeter NOVA Status' : 'Notifications' }}</strong>
+            <span>{{ activeAlerts.length }} active {{ isSparkMeter ? (activeAlerts.length === 1 ? 'alert' : 'alerts') : (activeAlerts.length === 1 ? 'outage' : 'outages') }}</span>
           </div>
           <div class="station-alert-head-actions">
             <BaseButton variant="ghost" size="sm" class="station-alert-mark-read" :disabled="!unread" @click="markRead">Mark read</BaseButton>
@@ -80,7 +80,7 @@
         </div>
 
         <div class="station-alert-body">
-          <div v-if="loading" class="station-alert-empty">Checking station status...</div>
+          <div v-if="loading" class="station-alert-empty">{{ isSparkMeter ? 'Checking NOVA system status...' : 'Checking station status...' }}</div>
           <div v-else-if="errorMessage" class="station-alert-empty station-alert-error">{{ errorMessage }}</div>
 
           <div
@@ -93,7 +93,7 @@
               <p>{{ emptyMessage }}</p>
               <div v-if="activeView === 'active' && historyAlerts.length" class="station-alert-history-link">
                 <BaseButton variant="quiet" size="sm" @click="activeView = 'history'">
-                  View {{ historyAlerts.length }} recovered gateway{{ historyAlerts.length === 1 ? '' : 's' }} in History &rarr;
+                  View {{ historyAlerts.length }} recovered {{ isSparkMeter ? 'NOVA component' : 'gateway' }}{{ historyAlerts.length === 1 ? '' : 's' }} in History &rarr;
                 </BaseButton>
               </div>
             </div>
@@ -105,7 +105,7 @@
               <div class="station-alert-row-heading">
                 <div class="station-alert-identity">
                   <strong>{{ alert.gatewayName || alert.gateway }}</strong>
-                  <small>{{ alert.gateway }} • Station {{ alert.station }}</small>
+                  <small>{{ isSparkMeter ? 'Node: ' : '' }}{{ alert.gateway }} • {{ isSparkMeter ? 'Site ' : 'Station ' }}{{ alert.station }}</small>
                 </div>
                 <span :class="['station-alert-status', alert.kind]">{{ statusBadgeLabel(alert) }}</span>
               </div>
@@ -131,7 +131,7 @@
                   :disabled="diagnosingId === alert.id"
                   @click="runDiagnostics(alert)"
                 >
-                  {{ diagnosingId === alert.id ? 'Testing...' : '📡 Ping' }}
+                  {{ diagnosingId === alert.id ? 'Testing...' : (isSparkMeter ? '📡 Ping NOVA' : '📡 Ping') }}
                 </BaseButton>
 
                 <BaseButton
@@ -176,21 +176,24 @@
 
               <!-- Compact Telemetry Details Grid -->
               <dl v-if="isExpanded(alert.id)" class="station-alert-details">
-                <div><dt>Gateway</dt><dd>{{ alert.gateway }}</dd></div>
-                <div><dt>Station</dt><dd>{{ alert.station }}</dd></div>
-                <div><dt>Signal (RSSI)</dt><dd>{{ alert.rssiDbm == null ? 'Unavailable' : `${alert.rssiDbm} dBm` }}</dd></div>
+                <div><dt>{{ isSparkMeter ? 'NOVA Component' : 'Gateway' }}</dt><dd>{{ alert.gateway }}</dd></div>
+                <div><dt>{{ isSparkMeter ? 'Mini-Grid Site' : 'Station' }}</dt><dd>{{ alert.station }}</dd></div>
+                <div><dt>{{ isSparkMeter ? 'RF Signal (RSSI)' : 'Signal (RSSI)' }}</dt><dd>{{ alert.rssiDbm == null ? 'Unavailable' : `${alert.rssiDbm} dBm` }}</dd></div>
                 <div><dt>Packet loss</dt><dd>{{ alert.packetLossPercent == null ? 'Unavailable' : `${alert.packetLossPercent}%` }}</dd></div>
                 <div><dt>Success rate</dt><dd>{{ alert.successRate == null ? 'N/A' : `${alert.successRate}%` }}</dd></div>
                 <div><dt>Outage started</dt><dd>{{ formatAlertTime(alert.startedAt) }}</dd></div>
                 <div v-if="alert.endedAt"><dt>Back online at</dt><dd class="station-alert-online-time">{{ formatAlertTime(alert.endedAt) }}</dd></div>
-                <div><dt>Last heartbeat</dt><dd>{{ formatAlertTime(alert.lastReportedAt) }}</dd></div>
+                <div><dt>{{ isSparkMeter ? 'Last NOVA sync' : 'Last heartbeat' }}</dt><dd>{{ formatAlertTime(alert.lastReportedAt) }}</dd></div>
+                <div v-if="alert.failureReason" style="grid-column: span 2;"><dt>Failure Reason</dt><dd style="color: var(--danger, #e5484d);">{{ alert.failureReason }}</dd></div>
+                <div v-if="alert.recommendedAction" style="grid-column: span 2;"><dt>Recommended Action</dt><dd style="color: var(--primary, #146848);">{{ alert.recommendedAction }}</dd></div>
               </dl>
             </div>
           </article>
         </div>
 
         <footer>
-          <a href="#/prepay-report/station-consumption" @click="closePanel">Open station monitoring &rarr;</a>
+          <a v-if="isSparkMeter" href="#/mesh/gateways" @click="closePanel">Open NOVA Mesh &amp; Base Station monitor &rarr;</a>
+          <a v-else href="#/prepay-report/station-consumption" @click="closePanel">Open station monitoring &rarr;</a>
         </footer>
       </section>
     </transition>
@@ -202,6 +205,7 @@ import BaseIconButton from './base/BaseIconButton.vue';
 import BaseButton from './base/BaseButton.vue';
 import { getApi, isSessionExpired, readSessionState, postApi } from '../services/api.js';
 import { formatGatewayDuration } from '../services/gateway-health.mjs';
+import { useOemStore } from '../stores/oem-store.js';
 
 export default {
   name: 'StationAlertsBell',
@@ -222,6 +226,14 @@ export default {
     diagResults: {},
   }),
   computed: {
+    oemStore() {
+      return useOemStore();
+    },
+    isSparkMeter() {
+      const oem = this.oemStore?.currentOem;
+      const slug = this.oemStore?.currentOemId || oem?.slug || "";
+      return slug === "sparkmeter" || oem?.vendingStrategy === "direct_credit";
+    },
     activeAlerts() {
       return this.alerts.filter((a) => (a.kind === 'down' || a.kind === 'degraded') && !a.acknowledged && !a.silenced);
     },
@@ -242,12 +254,24 @@ export default {
       return this.activeAlerts;
     },
     emptyTitle() {
+      if (this.isSparkMeter) {
+        if (this.activeView === 'active') return 'NOVA Cloud & Mesh Healthy';
+        if (this.activeView === 'degraded') return 'No degraded NOVA nodes';
+        if (this.activeView === 'history') return 'No recovery history';
+        return 'No muted NOVA alerts';
+      }
       if (this.activeView === 'active') return 'No active outages';
       if (this.activeView === 'degraded') return 'No degraded gateways';
       if (this.activeView === 'history') return 'No recovery history';
       return 'No muted gateways';
     },
     emptyMessage() {
+      if (this.isSparkMeter) {
+        if (this.activeView === 'active') return 'NOVA telemetry ingestion pipeline and all 8 mini-grid Base Stations are operational.';
+        if (this.activeView === 'degraded') return 'All Sub-GHz RF uplinks, repeater nodes, and packet delivery rates are healthy.';
+        if (this.activeView === 'history') return 'Recovered NOVA Base Stations and cleared alarms appear here.';
+        return 'Muted or acknowledged alerts appear here.';
+      }
       if (this.activeView === 'active') return 'All gateways are reporting normally.';
       if (this.activeView === 'degraded') return 'Uplink signals and packet delivery are healthy.';
       if (this.activeView === 'history') return 'Recovered gateways appear here.';
@@ -289,6 +313,7 @@ export default {
       return formatGatewayDuration(Number.isFinite(start) ? end - start : 0);
     },
     alertSummary(alert) {
+      if (alert.summary) return alert.summary;
       const duration = alert.startedAt ? this.durationFor(alert) : null;
       const recoveredTime = alert.endedAt ? this.formatAlertTime(alert.endedAt) : null;
       if (alert.kind === 'recovered') {
@@ -296,7 +321,7 @@ export default {
           ? `Recovered at ${recoveredTime} (Outage duration: ${duration}).`
           : duration ? `Recovered — offline for ${duration}.` : 'Back online.';
       }
-      if (alert.kind === 'flapping') return 'Rapid disconnect loop. Weak cellular signal.';
+      if (alert.kind === 'flapping') return 'Rapid disconnect loop. Weak RF / cellular signal.';
       if (alert.kind === 'degraded') return `Low success rate (${alert.successRate}%). Uplink degraded.`;
       return duration ? `Down for ${duration}.` : 'Down — duration N/A.';
     },
@@ -354,7 +379,8 @@ export default {
     },
 
     async copyReport(alert) {
-      const reportText = `[ALERT REPORT] ${alert.gatewayName || alert.gateway} (${alert.gateway}) | Station: ${alert.station} | Status: ${alert.status} | RSSI: ${alert.rssiDbm} dBm`;
+      const tag = this.isSparkMeter ? "[SPARKMETER NOVA ALERT]" : "[ALERT REPORT]";
+      const reportText = `${tag} ${alert.gatewayName || alert.gateway} (${alert.gateway}) | ${this.isSparkMeter ? 'Site' : 'Station'}: ${alert.station} | Status: ${alert.status} | RSSI: ${alert.rssiDbm ?? 'N/A'} dBm`;
       try {
         await navigator.clipboard.writeText(reportText);
         this.copiedId = alert.id;
