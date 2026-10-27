@@ -192,8 +192,8 @@ function formatHistoryDate(value: string) {
           :loading="loading"
           :formats="['pdf']"
         />
-        <router-link to="/consumption" class="bw-btn" style="text-decoration:none; white-space:nowrap">
-          Consumption
+        <router-link to="/usage" class="bw-btn" style="text-decoration:none; white-space:nowrap">
+          Usage
         </router-link>
         <button class="bw-btn" type="button" :disabled="balancesLoading" @click="loadMeterBalances">
           {{ balancesLoading ? 'Refreshing…' : 'Refresh balances' }}
