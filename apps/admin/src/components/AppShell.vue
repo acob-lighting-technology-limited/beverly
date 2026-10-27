@@ -96,6 +96,7 @@ const standardNavGroups = computed(() => [
         items: [
             { to: '/', text: 'Dashboard', permission: 'wallet.dashboard.view', icon: 'dashboard' },
             { to: '/reports', text: 'Reports', permission: 'wallet.reports.view', icon: 'reports' },
+            { to: '/guide', text: 'Guide', icon: 'guide' },
         ],
     },
     {
@@ -167,7 +168,7 @@ const standardNavGroups = computed(() => [
     },
 ].map((group) => ({
     ...group,
-    items: group.items.filter((item) => auth.hasPermission(item.permission)),
+    items: group.items.filter((item) => !item.permission || auth.hasPermission(item.permission)),
 })).filter((group) => group.items.length));
 
 const devConsoleNavGroups = computed(() => [
@@ -199,7 +200,7 @@ const devConsoleNavGroups = computed(() => [
     },
 ].map((group) => ({
     ...group,
-    items: group.items.filter((item) => auth.hasPermission(item.permission)),
+    items: group.items.filter((item) => !item.permission || auth.hasPermission(item.permission)),
 })).filter((group) => group.items.length));
 
 const navGroups = computed(() => (isDevConsoleMode.value ? devConsoleNavGroups.value : standardNavGroups.value));
@@ -227,6 +228,7 @@ const roleLabel = computed(() => (auth.user?.role || 'admin')
 const navIconPath: Record<string, string> = {
     dashboard: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
     reports: 'M3 3v18h18M7 15l4-4 3 3 5-6',
+    guide: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
     applications: 'M14 2H6v20h12V8zM14 2v6h6M9 13h6M9 17h6',
     vendors: 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8',
     customers: 'M12 12a4 4 0 100-8 4 4 0 000 8M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1',
@@ -430,6 +432,13 @@ onBeforeUnmount(() => {
           </svg>
         </RouterLink>
 
+        <RouterLink to="/guide" class="bw-icon-btn topbar-utility" title="Beverly Guide" aria-label="Beverly Guide">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+        </RouterLink>
+
         <!-- User chip -->
         <div class="bw-account-menu" ref="accountMenuWrap">
           <button
@@ -481,6 +490,13 @@ onBeforeUnmount(() => {
                 </svg>
                 <span>{{ t('common.settings') }}</span>
               </button>
+              <RouterLink to="/guide" class="bw-user-menu-item" role="menuitem" @click="closeUserMenu">
+                <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                </svg>
+                <span>Beverly Guide</span>
+              </RouterLink>
               <button type="button" class="bw-user-menu-item" role="menuitem" @click="toggleTheme">
                 <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                   <path d="M12 21C7 16 5 11 6 5c6-1 11 1 13 6-4 1-7 4-9 8" />
