@@ -75,10 +75,14 @@ async function run() {
     assert.equal(res.statusCode, 200);
     const parsed = JSON.parse(res.body);
     assert.equal(parsed.code, 0);
-    assert.ok(parsed.data.totalAccountCount >= 3073, `Expected >= 3073 meters, got ${parsed.data.totalAccountCount}`);
+    assert.equal(parsed.data.totalAccountCount, 3074);
     assert.equal(parsed.data.activeGridSites, 8);
     assert.equal(parsed.data.vendingStrategy, "direct_credit");
-    assert.ok(parsed.data.totalPurchaseTimes > 0);
+    assert.ok(parsed.data.totalPurchaseTimes >= 18420);
+    assert.equal(parsed.data.totalPurchaseUnit, 142580.4);
+    assert.equal(parsed.data.totalPurchaseMoney, 52750000.00);
+    assert.equal(parsed.data.allTimeInception, true);
+    assert.equal(parsed.data.billingPeriod, "all_time_since_inception");
   });
 
   await runTest("Dashboard readLineChart returns Sparkmeter series for types 0..3", async () => {

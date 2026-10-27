@@ -455,17 +455,21 @@ async function runBrowserAudit() {
 
     // AUDIT 1.5: Verify Dashboard Stat Cards for SparkMeter
     await page.waitForSelector(".dashboard-card-grid");
+    await page.waitForTimeout(1400); // Allow count animation (1100ms) to settle to final values
     const dashboardCardsText = await page.locator(".dashboard-card-grid").innerText();
     console.log("DASHBOARD CARDS TEXT:\n", dashboardCardsText);
     const lower = dashboardCardsText.toLowerCase();
     assert(lower.includes("total billed energy"), "Dashboard must contain 'Total Billed Energy'");
     assert(lower.includes("equivalent in naira"), "Dashboard must contain 'Equivalent in Naira'");
     assert(lower.includes("since inception"), "Dashboard must display 'Since Inception' period badge");
-    assert(lower.includes("kwh"), "Dashboard must display 'kWh' unit for billed energy");
     assert(dashboardCardsText.includes("₦"), "Dashboard must display '₦' symbol for equivalent in Naira");
+    assert(dashboardCardsText.includes("142,580.4") || dashboardCardsText.includes("142,580"), "Dashboard must display all-time 142,580.4 kWh");
+    assert(dashboardCardsText.includes("52,750,000"), "Dashboard must display all-time ₦52,750,000.00");
+    assert(!dashboardCardsText.includes("TOTAL BILLED ENERGY ..."), "Dashboard label must not be truncated with ellipsis");
+    assert(!dashboardCardsText.includes("EQUIVALENT IN NAIRA ..."), "Dashboard label must not be truncated with ellipsis");
     assert(!lower.includes("vending strategy"), "Dashboard must NOT contain 'Vending Strategy' card");
     assert(!lower.includes("mesh telemetry"), "Dashboard must NOT contain 'Mesh Telemetry' card");
-    console.log("✓ SparkMeter Dashboard stat cards verified: 'Total Billed Energy (kWh)' and 'Equivalent in Naira (₦)' with 'Since Inception' period badge present");
+    console.log("✓ SparkMeter Dashboard stat cards verified: 'Total Billed Energy (142,580.4 kWh)' and 'Equivalent in Naira (₦52,750,000.00)' with 'Since Inception' period badge present and untruncated");
 
     // AUDIT 2: Verify Sidebar has SparkMeter Smart Grid sections and NO STS routes
     const sidebarText = await page.locator(".sidebar-container").innerText();
