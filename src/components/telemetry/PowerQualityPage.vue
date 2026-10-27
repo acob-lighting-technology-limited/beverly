@@ -895,7 +895,7 @@ export default {
   max-width: 1440px;
   margin: 0 auto;
   font-family: var(--bev-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text, #e2e8f0);
 }
 
 /* Header Styles */
@@ -905,7 +905,7 @@ export default {
   align-items: flex-start;
   flex-wrap: wrap;
   gap: var(--space-4, 16px);
-  border-bottom: 1px solid var(--bev-color-slate-200, #e2e8f0);
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
   padding-bottom: var(--space-5, 20px);
 }
 
@@ -947,7 +947,7 @@ export default {
 
 .pq-last-updated {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin-left: 4px;
 }
 
@@ -956,12 +956,12 @@ export default {
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-subtitle {
   font-size: 14px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin: 0;
   max-width: 680px;
   line-height: 1.5;
@@ -1051,12 +1051,12 @@ export default {
   font-size: 18px;
   font-weight: 700;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-spec-hint {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .pq-phase-legend {
@@ -1064,7 +1064,7 @@ export default {
   align-items: center;
   gap: 16px;
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .pq-legend-tag {
@@ -1126,13 +1126,13 @@ export default {
   font-size: 38px;
   font-weight: 800;
   line-height: 1;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-unit {
   font-size: 18px;
   font-weight: 600;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .pq-meter-bar {
@@ -1224,18 +1224,18 @@ export default {
   font-family: var(--bev-font-mono, monospace);
   font-size: 26px;
   font-weight: 700;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-kpi-unit {
   font-size: 13px;
   font-weight: 600;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .pq-kpi-subtext {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1282,12 +1282,12 @@ export default {
   font-size: 15px;
   font-weight: 700;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-diag-card__desc {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin: 2px 0 0 0;
 }
 
@@ -1332,16 +1332,17 @@ export default {
 .pq-gauge-needle {
   width: 4px;
   height: 26px;
-  background-color: var(--bev-color-slate-900, #0f172a);
+  background-color: var(--color-text-strong, #ffffff);
   border-radius: 2px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 .pq-gauge-tooltip {
   position: absolute;
   bottom: 28px;
-  background-color: var(--bev-color-slate-900, #0f172a);
-  color: #fff;
+  background-color: var(--color-surface-card, #0b140e);
+  color: var(--color-text-strong, #ffffff);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.15));
   font-size: 11px;
   font-weight: 700;
   padding: 2px 6px;
@@ -1396,12 +1397,12 @@ export default {
   font-size: 15px;
   font-weight: 700;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-chart-card__subtitle {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin: 2px 0 0 0;
 }
 
@@ -1416,7 +1417,7 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  color: var(--bev-color-slate-400, #94a3b8);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 /* Feeders & Stations Tables */
@@ -1445,12 +1446,12 @@ export default {
   font-size: 16px;
   font-weight: 700;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-table-card__subtitle {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin: 2px 0 0 0;
 }
 
@@ -1467,19 +1468,19 @@ export default {
 
 .pq-table th {
   padding: 10px 14px;
-  background-color: var(--bev-color-slate-50, #f8fafc);
-  color: var(--bev-color-slate-500, #64748b);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--color-text-muted, #94a3b8);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--bev-color-slate-200, #e2e8f0);
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
 }
 
 .pq-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--bev-color-slate-100, #f1f5f9);
-  color: var(--bev-color-slate-700, #334155);
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.06));
+  color: var(--color-text, #e2e8f0);
 }
 
 .pq-font-mono {
@@ -1488,22 +1489,22 @@ export default {
 
 .pq-font-semibold {
   font-weight: 600;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-num-highlight {
   font-weight: 700;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .pq-station-tag {
   display: inline-block;
   padding: 2px 8px;
-  background-color: var(--bev-color-slate-100, #f1f5f9);
+  background-color: rgba(255, 255, 255, 0.06);
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--bev-color-slate-700, #334155);
+  color: var(--color-text, #e2e8f0);
 }
 
 .pq-text-success { color: var(--bev-color-green-600, #059669); font-weight: 700; }

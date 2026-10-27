@@ -123,14 +123,25 @@
         <!-- Peak Demand -->
         <BaseCard class="dc-kpi-card dc-kpi-card--peak">
           <div class="dc-kpi-card__header">
-            <span class="dc-kpi-label">Peak Demand</span>
-            <BaseBadge variant="danger" class="dc-kpi-badge">Max Load</BaseBadge>
+            <div class="dc-kpi-card__title-wrap">
+              <span class="dc-kpi-label">Peak Demand</span>
+              <BaseBadge variant="danger" class="dc-kpi-badge">Max Load</BaseBadge>
+            </div>
+            <div class="dc-kpi-icon-pill dc-kpi-icon-pill--peak">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
           </div>
           <div class="dc-kpi-value-row">
             <span class="dc-kpi-val">{{ formatNumber(kpis.peakDemandKw) }}</span>
             <span class="dc-kpi-unit">kW</span>
           </div>
           <div class="dc-kpi-subtext">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="dc-subtext-icon" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
             <span>Occurred at <strong>{{ kpis.peakTime || '19:45' }}</strong> (Evening peak)</span>
           </div>
         </BaseCard>
@@ -138,46 +149,83 @@
         <!-- Baseload Demand -->
         <BaseCard class="dc-kpi-card dc-kpi-card--base">
           <div class="dc-kpi-card__header">
-            <span class="dc-kpi-label">Baseload Demand</span>
-            <BaseBadge variant="info" class="dc-kpi-badge">Min Steady</BaseBadge>
+            <div class="dc-kpi-card__title-wrap">
+              <span class="dc-kpi-label">Baseload Demand</span>
+              <BaseBadge variant="info" class="dc-kpi-badge">Min Steady</BaseBadge>
+            </div>
+            <div class="dc-kpi-icon-pill dc-kpi-icon-pill--base">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            </div>
           </div>
           <div class="dc-kpi-value-row">
-            <span class="dc-kpi-val">{{ formatNumber(kpis.baseloadDemandKw) }}</span>
+            <span class="dc-kpi-val">{{ formatNumber(kpis.baseloadDemandKw || kpis.baseloadKw) }}</span>
             <span class="dc-kpi-unit">kW</span>
           </div>
           <div class="dc-kpi-subtext">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="dc-subtext-icon" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
             <span>Occurred at <strong>{{ kpis.baseloadTime || '03:30' }}</strong> (Deep night)</span>
           </div>
         </BaseCard>
 
         <!-- Mean Grid Demand -->
-        <BaseCard class="dc-kpi-card">
+        <BaseCard class="dc-kpi-card dc-kpi-card--avg">
           <div class="dc-kpi-card__header">
-            <span class="dc-kpi-label">Average Demand</span>
-            <BaseBadge variant="neutral" class="dc-kpi-badge">24h Mean</BaseBadge>
+            <div class="dc-kpi-card__title-wrap">
+              <span class="dc-kpi-label">Average Demand</span>
+              <BaseBadge variant="neutral" class="dc-kpi-badge">24h Mean</BaseBadge>
+            </div>
+            <div class="dc-kpi-icon-pill dc-kpi-icon-pill--avg">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
+              </svg>
+            </div>
           </div>
           <div class="dc-kpi-value-row">
-            <span class="dc-kpi-val">{{ formatNumber(kpis.meanDemandKw) }}</span>
+            <span class="dc-kpi-val">{{ formatNumber(kpis.meanDemandKw || kpis.avgDemandKw) }}</span>
             <span class="dc-kpi-unit">kW</span>
           </div>
           <div class="dc-kpi-subtext">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="dc-subtext-icon" aria-hidden="true">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+              <polyline points="17 6 23 6 23 12" />
+            </svg>
             <span>Base-to-peak ratio: <strong>{{ baseToPeakRatio }}%</strong></span>
           </div>
         </BaseCard>
 
         <!-- Load Factor -->
-        <BaseCard class="dc-kpi-card">
+        <BaseCard class="dc-kpi-card dc-kpi-card--factor">
           <div class="dc-kpi-card__header">
-            <span class="dc-kpi-label">Grid Load Factor</span>
-            <BaseBadge :variant="loadFactorVariant" class="dc-kpi-badge">
-              {{ loadFactorQuality }}
-            </BaseBadge>
+            <div class="dc-kpi-card__title-wrap">
+              <span class="dc-kpi-label">Grid Load Factor</span>
+              <BaseBadge :variant="loadFactorVariant" class="dc-kpi-badge">
+                {{ loadFactorQuality }}
+              </BaseBadge>
+            </div>
+            <div class="dc-kpi-icon-pill dc-kpi-icon-pill--factor">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="19" y1="5" x2="5" y2="19" />
+                <circle cx="6.5" cy="6.5" r="2.5" />
+                <circle cx="17.5" cy="17.5" r="2.5" />
+              </svg>
+            </div>
           </div>
           <div class="dc-kpi-value-row">
             <span class="dc-kpi-val">{{ formatNumber(kpis.loadFactor) }}</span>
             <span class="dc-kpi-unit">%</span>
           </div>
           <div class="dc-kpi-subtext">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="dc-subtext-icon" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
             <span>Mean Demand / Peak Demand ratio</span>
           </div>
         </BaseCard>
@@ -185,14 +233,26 @@
         <!-- Total Energy Delivered -->
         <BaseCard class="dc-kpi-card dc-kpi-card--energy">
           <div class="dc-kpi-card__header">
-            <span class="dc-kpi-label">Total Energy Vended</span>
-            <BaseBadge variant="success" class="dc-kpi-badge">Output</BaseBadge>
+            <div class="dc-kpi-card__title-wrap">
+              <span class="dc-kpi-label">Total Energy Vended</span>
+              <BaseBadge variant="success" class="dc-kpi-badge">Output</BaseBadge>
+            </div>
+            <div class="dc-kpi-icon-pill dc-kpi-icon-pill--energy">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="2" y="7" width="16" height="11" rx="2" ry="2" />
+                <line x1="22" y1="11" x2="22" y2="14" />
+                <path d="M11 10l-3 3h4l-2 3" />
+              </svg>
+            </div>
           </div>
           <div class="dc-kpi-value-row">
-            <span class="dc-kpi-val">{{ formatInt(kpis.totalEnergyKwh) }}</span>
+            <span class="dc-kpi-val">{{ formatInt(Math.round(kpis.totalEnergyKwh || (kpis.totalEnergyMWh ? kpis.totalEnergyMWh * 1000 : 0))) }}</span>
             <span class="dc-kpi-unit">kWh</span>
           </div>
           <div class="dc-kpi-subtext">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="dc-subtext-icon" aria-hidden="true">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
             <span>Cumulative interval energy delivery</span>
           </div>
         </BaseCard>
@@ -367,13 +427,13 @@ export default {
       currentPage: 1,
       pageSize: 24,
       kpis: {
-        peakDemandKw: 214.8,
+        peakDemandKw: 242.8,
         peakTime: "19:45",
-        baseloadDemandKw: 38.2,
+        baseloadDemandKw: 41.5,
         baseloadTime: "03:30",
-        meanDemandKw: 112.5,
-        loadFactor: 52.4,
-        totalEnergyKwh: 2700.0
+        meanDemandKw: 128.4,
+        loadFactor: 52.9,
+        totalEnergyKwh: 3080.0
       },
       points: [],
       stationComparison: []
@@ -385,8 +445,10 @@ export default {
       return this.lastRefreshedAt.toLocaleTimeString();
     },
     baseToPeakRatio() {
-      if (!this.kpis.peakDemandKw) return 0;
-      return Math.round((this.kpis.baseloadDemandKw / this.kpis.peakDemandKw) * 100);
+      const peak = Number(this.kpis?.peakDemandKw);
+      const base = Number(this.kpis?.baseloadDemandKw ?? this.kpis?.baseloadKw);
+      if (!peak || isNaN(peak) || isNaN(base)) return 0;
+      return Math.round((base / peak) * 100);
     },
     loadFactorVariant() {
       const lf = Number(this.kpis.loadFactor || 0);
@@ -411,16 +473,19 @@ export default {
       return {
         tooltip: {
           trigger: "axis",
+          backgroundColor: "rgba(11, 20, 14, 0.95)",
+          borderColor: "rgba(74, 222, 128, 0.25)",
+          textStyle: { color: "#f8fafc" },
           formatter: (params) => {
             const p = params[0];
             const pt = this.points[p.dataIndex] || {};
             return `
-              <div style="font-family: var(--bev-font-sans); padding: 4px;">
-                <div style="font-weight: 700; color: #0f172a; margin-bottom: 4px;">Interval: ${p.name}</div>
-                <div>Active Demand: <b style="color: #0284c7;">${p.value} kW</b></div>
-                <div>Baseload Reference: <b>${pt.baseloadKw || 38.2} kW</b></div>
-                <div>Power Factor: <b>${pt.powerFactor || 0.92}</b></div>
-                <div>Line Current: <b>${pt.currentA || 0} A</b></div>
+              <div style="font-family: var(--bev-font-sans, system-ui); padding: 4px;">
+                <div style="font-weight: 700; color: #f8fafc; margin-bottom: 4px; font-size: 13px;">Interval: ${p.name}</div>
+                <div style="color: #94a3b8; font-size: 12px;">Active Demand: <b style="color: #38bdf8;">${p.value} kW</b></div>
+                <div style="color: #94a3b8; font-size: 12px;">Baseload Reference: <b style="color: #34d399;">${pt.baseloadKw || 41.5} kW</b></div>
+                <div style="color: #94a3b8; font-size: 12px;">Power Factor: <b style="color: #f8fafc;">${pt.powerFactor || 0.92}</b></div>
+                <div style="color: #94a3b8; font-size: 12px;">Line Current: <b style="color: #f8fafc;">${pt.currentA || 0} A</b></div>
               </div>
             `;
           }
@@ -434,18 +499,19 @@ export default {
         xAxis: {
           type: "category",
           data: times,
-          axisLine: { lineStyle: { color: "#e2e8f0" } },
+          axisLine: { lineStyle: { color: "rgba(255, 255, 255, 0.12)" } },
           axisLabel: {
-            color: "#64748b",
+            color: "#94a3b8",
             interval: 7 // Label every 2 hours (8 intervals of 15m)
           }
         },
         yAxis: {
           type: "value",
           name: "Active Power (kW)",
-          splitLine: { lineStyle: { color: "#f1f5f9" } },
+          nameTextStyle: { color: "#94a3b8" },
+          splitLine: { lineStyle: { color: "rgba(255, 255, 255, 0.06)" } },
           axisLabel: {
-            color: "#64748b",
+            color: "#94a3b8",
             formatter: "{value} kW"
           }
         },
@@ -506,12 +572,15 @@ export default {
 
       return {
         tooltip: {
-          trigger: "axis"
+          trigger: "axis",
+          backgroundColor: "rgba(11, 20, 14, 0.95)",
+          borderColor: "rgba(74, 222, 128, 0.25)",
+          textStyle: { color: "#f8fafc" }
         },
         legend: {
           data: ["Peak Demand (kW)", "Baseload Demand (kW)", "Average Demand (kW)"],
           bottom: 0,
-          textStyle: { color: "#64748b" }
+          textStyle: { color: "#94a3b8" }
         },
         grid: {
           top: 30,
@@ -522,14 +591,15 @@ export default {
         xAxis: {
           type: "category",
           data: stations,
-          axisLine: { lineStyle: { color: "#e2e8f0" } },
-          axisLabel: { color: "#64748b", rotate: 15 }
+          axisLine: { lineStyle: { color: "rgba(255, 255, 255, 0.12)" } },
+          axisLabel: { color: "#94a3b8", rotate: 15 }
         },
         yAxis: {
           type: "value",
           name: "Demand (kW)",
-          splitLine: { lineStyle: { color: "#f1f5f9" } },
-          axisLabel: { color: "#64748b", formatter: "{value} kW" }
+          nameTextStyle: { color: "#94a3b8" },
+          splitLine: { lineStyle: { color: "rgba(255, 255, 255, 0.06)" } },
+          axisLabel: { color: "#94a3b8", formatter: "{value} kW" }
         },
         series: [
           {
@@ -584,7 +654,17 @@ export default {
         });
         const payload = res?.data || res?.result || {};
         if (payload.kpis) {
-          this.kpis = payload.kpis;
+          const k = payload.kpis;
+          this.kpis = {
+            ...k,
+            peakDemandKw: Number(k.peakDemandKw ?? 242.8),
+            peakTime: k.peakTime || k.peakTimestamp || "19:45",
+            baseloadDemandKw: Number(k.baseloadDemandKw ?? k.baseloadKw ?? 41.5),
+            baseloadTime: k.baseloadTime || "03:30",
+            meanDemandKw: Number(k.meanDemandKw ?? k.avgDemandKw ?? 128.4),
+            loadFactor: Number(k.loadFactor ?? 52.9),
+            totalEnergyKwh: Number(k.totalEnergyKwh ?? (k.totalEnergyMWh ? k.totalEnergyMWh * 1000 : 3080))
+          };
         }
         if (Array.isArray(payload.points)) {
           this.points = payload.points;
@@ -712,7 +792,7 @@ export default {
   max-width: 1440px;
   margin: 0 auto;
   font-family: var(--bev-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text, #e2e8f0);
 }
 
 /* Header */
@@ -722,7 +802,7 @@ export default {
   align-items: flex-start;
   flex-wrap: wrap;
   gap: var(--space-4, 16px);
-  border-bottom: 1px solid var(--bev-color-slate-200, #e2e8f0);
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
   padding-bottom: var(--space-5, 20px);
 }
 
@@ -769,7 +849,7 @@ export default {
 
 .dc-last-updated {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin-left: 4px;
 }
 
@@ -778,12 +858,12 @@ export default {
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .dc-subtitle {
   font-size: 14px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin: 0;
   max-width: 680px;
   line-height: 1.5;
@@ -807,7 +887,7 @@ export default {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .dc-select {
@@ -847,31 +927,42 @@ export default {
   display: flex;
   align-items: center;
   gap: 12px;
-  background-color: var(--bev-color-red-50, #fef2f2);
-  color: var(--bev-color-red-600, #dc2626);
-  border: 1px solid var(--bev-color-red-200, #fecaca);
+  background-color: var(--bev-color-red-50, rgba(239, 68, 68, 0.1));
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
   padding: 12px 16px;
   border-radius: var(--radius-md, 8px);
   font-size: 14px;
 }
 
-/* KPI Section */
+/* ── KPI Section (ACOB ERP StatCard Style) ── */
 .dc-kpi-section {
   width: 100%;
 }
 
 .dc-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--space-4, 16px);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-4, 14px);
 }
 
 .dc-kpi-card {
   padding: 16px 18px;
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--color-surface-card, #0b140e);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  position: relative;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dc-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-border-strong, rgba(255, 255, 255, 0.18));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .dc-kpi-card--peak {
@@ -882,57 +973,128 @@ export default {
   border-top: 3px solid #0ea5e9;
 }
 
-.dc-kpi-card--energy {
+.dc-kpi-card--avg {
+  border-top: 3px solid #6366f1;
+}
+
+.dc-kpi-card--factor {
   border-top: 3px solid #10b981;
+}
+
+.dc-kpi-card--energy {
+  border-top: 3px solid #8b5cf6;
 }
 
 .dc-kpi-card__header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dc-kpi-card__title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .dc-kpi-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--bev-color-slate-500, #64748b);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted, #94a3b8);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dc-kpi-badge {
   font-size: 10px;
   padding: 1px 6px;
+  width: fit-content;
+}
+
+.dc-kpi-icon-pill {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md, 8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dc-kpi-icon-pill--peak {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.dc-kpi-icon-pill--base {
+  background: rgba(14, 165, 233, 0.12);
+  color: #38bdf8;
+}
+
+.dc-kpi-icon-pill--avg {
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+}
+
+.dc-kpi-icon-pill--factor {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.dc-kpi-icon-pill--energy {
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
 }
 
 .dc-kpi-value-row {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 4px;
 }
 
 .dc-kpi-val {
-  font-family: var(--bev-font-mono, monospace);
-  font-size: 28px;
+  font-family: var(--bev-font-sans, system-ui, -apple-system, sans-serif);
+  font-size: 26px;
   font-weight: 800;
-  color: var(--bev-color-slate-900, #0f172a);
+  line-height: 1.1;
+  color: var(--color-text-strong, #ffffff);
+  letter-spacing: -0.02em;
 }
 
 .dc-kpi-unit {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--bev-color-slate-500, #64748b);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .dc-kpi-subtext {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Charts Section */
+.dc-kpi-subtext strong {
+  color: var(--color-text-strong, #ffffff);
+  font-weight: 600;
+}
+
+.dc-subtext-icon {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+/* ── Charts Section ── */
 .dc-main-chart-section,
 .dc-station-comparison-section {
   width: 100%;
@@ -940,10 +1102,13 @@ export default {
 
 .dc-chart-card {
   padding: 20px;
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--color-surface-card, #0b140e);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .dc-chart-card__header {
@@ -958,12 +1123,12 @@ export default {
   font-size: 16px;
   font-weight: 700;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .dc-chart-card__subtitle {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin: 2px 0 0 0;
 }
 
@@ -980,9 +1145,9 @@ export default {
   border-radius: 12px;
 }
 
-.dc-legend-pill--load { background-color: rgba(14, 165, 233, 0.15); color: #0284c7; }
-.dc-legend-pill--peak { background-color: rgba(239, 68, 68, 0.12); color: #dc2626; }
-.dc-legend-pill--base { background-color: rgba(16, 185, 129, 0.15); color: #059669; }
+.dc-legend-pill--load { background-color: rgba(14, 165, 233, 0.15); color: #38bdf8; }
+.dc-legend-pill--peak { background-color: rgba(239, 68, 68, 0.15); color: #f87171; }
+.dc-legend-pill--base { background-color: rgba(16, 185, 129, 0.15); color: #34d399; }
 
 .dc-chart-wrap {
   width: 100%;
@@ -999,20 +1164,23 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  color: var(--bev-color-slate-400, #94a3b8);
+  color: var(--color-text-muted, #94a3b8);
 }
 
-/* Table Section */
+/* ── Table Section ── */
 .dc-table-section {
   width: 100%;
 }
 
 .dc-table-card {
   padding: 20px;
-  border-radius: var(--radius-lg, 12px);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--color-surface-card, #0b140e);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .dc-table-card__header {
@@ -1027,12 +1195,12 @@ export default {
   font-size: 16px;
   font-weight: 700;
   margin: 0;
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
 }
 
 .dc-table-card__subtitle {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
   margin: 2px 0 0 0;
 }
 
@@ -1045,7 +1213,7 @@ export default {
 .dc-table-count {
   font-size: 12px;
   font-weight: 600;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .dc-table-wrapper {
@@ -1061,19 +1229,23 @@ export default {
 
 .dc-table th {
   padding: 10px 14px;
-  background-color: var(--bev-color-slate-50, #f8fafc);
-  color: var(--bev-color-slate-500, #64748b);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--color-text-muted, #94a3b8);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--bev-color-slate-200, #e2e8f0);
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
 }
 
 .dc-table td {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--bev-color-slate-100, #f1f5f9);
-  color: var(--bev-color-slate-700, #334155);
+  border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.06));
+  color: var(--color-text, #e2e8f0);
+}
+
+.dc-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.03);
 }
 
 .dc-font-mono {
@@ -1081,32 +1253,33 @@ export default {
 }
 
 .dc-time-cell {
-  color: var(--bev-color-slate-900, #0f172a);
+  color: var(--color-text-strong, #ffffff);
+  font-weight: 600;
 }
 
 .dc-load-cell {
   font-weight: 700;
-  color: #0284c7;
+  color: #38bdf8;
 }
 
 .dc-subdued {
-  color: var(--bev-color-slate-400, #94a3b8);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .dc-text-peak {
-  color: #dc2626;
+  color: #f87171;
   font-weight: 700;
 }
 
 .dc-text-base {
-  color: #059669;
+  color: #34d399;
   font-weight: 600;
 }
 
 .dc-empty-row {
   text-align: center;
   padding: 24px;
-  color: var(--bev-color-slate-400, #94a3b8);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .dc-pagination-bar {
@@ -1120,12 +1293,19 @@ export default {
 
 .dc-page-info {
   font-size: 12px;
-  color: var(--bev-color-slate-500, #64748b);
+  color: var(--color-text-muted, #94a3b8);
 }
 
 .dc-page-buttons {
   display: flex;
   gap: 6px;
+}
+
+/* ── Responsive Layout Rules ── */
+@media (max-width: 1200px) {
+  .dc-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
@@ -1143,6 +1323,15 @@ export default {
   .dc-select,
   .dc-select--range {
     min-width: 100%;
+  }
+  .dc-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .dc-kpi-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
