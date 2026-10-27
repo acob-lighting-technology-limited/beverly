@@ -278,18 +278,20 @@ async function runBrowserAudit() {
         contentType: "application/json",
         body: JSON.stringify({
           code: 0,
-          data: [
-            ["2026-10-01", 1650000],
-            ["2026-10-02", 1780000],
-            ["2026-10-03", 1920000],
-            ["2026-10-04", 2150000]
-          ],
-          result: [
-            ["2026-10-01", 1650000],
-            ["2026-10-02", 1780000],
-            ["2026-10-03", 1920000],
-            ["2026-10-04", 2150000]
-          ]
+          data: {
+            xData: ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"],
+            yData: [4600000, 6900000, 8180000, 9920000, 11300000, 11850000],
+            labels: ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"],
+            values: [4600000, 6900000, 8180000, 9920000, 11300000, 11850000],
+            title: "Equivalent in Naira (₦) · All Time Since Inception"
+          },
+          result: {
+            xData: ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"],
+            yData: [4600000, 6900000, 8180000, 9920000, 11300000, 11850000],
+            labels: ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"],
+            values: [4600000, 6900000, 8180000, 9920000, 11300000, 11850000],
+            title: "Equivalent in Naira (₦) · All Time Since Inception"
+          }
         })
       });
     }
@@ -458,11 +460,12 @@ async function runBrowserAudit() {
     const lower = dashboardCardsText.toLowerCase();
     assert(lower.includes("total billed energy"), "Dashboard must contain 'Total Billed Energy'");
     assert(lower.includes("equivalent in naira"), "Dashboard must contain 'Equivalent in Naira'");
+    assert(lower.includes("since inception"), "Dashboard must display 'Since Inception' period badge");
     assert(lower.includes("kwh"), "Dashboard must display 'kWh' unit for billed energy");
     assert(dashboardCardsText.includes("₦"), "Dashboard must display '₦' symbol for equivalent in Naira");
     assert(!lower.includes("vending strategy"), "Dashboard must NOT contain 'Vending Strategy' card");
     assert(!lower.includes("mesh telemetry"), "Dashboard must NOT contain 'Mesh Telemetry' card");
-    console.log("✓ SparkMeter Dashboard stat cards verified: 'Total Billed Energy (kWh)' and 'Equivalent in Naira (₦)' present, old status cards replaced");
+    console.log("✓ SparkMeter Dashboard stat cards verified: 'Total Billed Energy (kWh)' and 'Equivalent in Naira (₦)' with 'Since Inception' period badge present");
 
     // AUDIT 2: Verify Sidebar has SparkMeter Smart Grid sections and NO STS routes
     const sidebarText = await page.locator(".sidebar-container").innerText();

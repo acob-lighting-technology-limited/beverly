@@ -75,7 +75,10 @@
         >
           <span class="dashboard-stat-icon" :style="{ color: card.color, '--theme-color': card.color }" v-html="card.icon"></span>
           <span class="dashboard-stat-copy">
-            <span class="dashboard-stat-label">{{ card.label }}</span>
+            <span class="dashboard-stat-label">
+              {{ card.label }}
+              <span v-if="card.subLabel" class="dashboard-stat-period-tag">{{ card.subLabel }}</span>
+            </span>
             <span class="dashboard-stat-value">
               <span v-if="card.hasDot" class="dashboard-live-dot" aria-hidden="true"></span>
               <span v-if="card.key === 'totalPurchaseMoney' || card.hasNaira" class="dashboard-stat-symbol" aria-label="Naira">₦</span>
@@ -291,6 +294,7 @@ export default {
             type: 2,
             key: "totalPurchaseUnit",
             label: "Total Billed Energy",
+            subLabel: "Since Inception",
             icon: iconMarkup.unit,
             colorKey: "warning",
             color: theme.warning || "#f59e0b",
@@ -300,6 +304,7 @@ export default {
             type: 3,
             key: "totalPurchaseMoney",
             label: "Equivalent in Naira",
+            subLabel: "Since Inception",
             icon: iconMarkup.money,
             colorKey: "success",
             color: theme.success || "#10b981",
@@ -366,7 +371,12 @@ export default {
     topChartOption() {
       let defaultTitle = dashboardChartTitles[this.activeType];
       if (this.isSparkMeter) {
-        const titles = ["Meter Registrations", "Active Grid Sites", "Total Billed Energy (kWh)", "Equivalent in Naira (₦)"];
+        const titles = [
+          "Meter Registrations (All Time)",
+          "Active Grid Sites (8 Mini-Grids)",
+          "Total Billed Energy (kWh) · Since Inception",
+          "Equivalent in Naira (₦) · Since Inception"
+        ];
         defaultTitle = titles[this.activeType] || "SparkMeter Live Telemetry";
       }
       return createBarOption(dashboardSeries(this.top.labels, this.top.values), this.top.title || defaultTitle, this.chartTheme);
@@ -771,6 +781,21 @@ export default {
   margin-right: 6px;
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
   animation: hero-pulse 2s infinite ease-in-out;
+}
+
+.dashboard-stat-period-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  vertical-align: middle;
 }
 
 @keyframes hero-pulse {

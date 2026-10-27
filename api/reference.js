@@ -2870,7 +2870,9 @@ async function handleSparkmeterPanelGroup(request, requestData, oemTarget) {
     totalPurchaseMoney,
     activeGridSites: 8,
     vendingStrategy: "direct_credit",
-    meshTelemetry: "online"
+    meshTelemetry: "online",
+    allTimeInception: true,
+    billingPeriod: "all_time_since_inception"
   };
 
   return {
@@ -2894,36 +2896,40 @@ async function handleSparkmeterLineChart(request, requestData, oemTarget) {
   const type = typeof parsed.type === "number" ? parsed.type : 3;
   const days = Math.min(Math.max(Number(parsed.days || 30), 1), 60);
   const now = new Date();
-  const xData = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 86400000);
-    xData.push(d.toISOString().slice(0, 10));
-  }
-
+  let xData = [];
   let yData = [];
   let title = "SparkMeter Series";
 
   if (type === 0) {
-    title = "SparkMeter Meter Count";
-    yData = xData.map((_, idx) => Math.min(3073, 3040 + idx * 2));
+    title = "SparkMeter Meter Count · Cumulative Inception";
+    xData = ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"];
+    yData = [1200, 1850, 2300, 2750, 3040, 3074];
   } else if (type === 1) {
-    title = "Direct Credit Top-up Events";
-    const base = [480, 520, 610, 490, 550, 580, 640, 710, 530, 560, 620, 590, 680, 720, 540, 510, 630, 670, 700, 560, 580, 640, 690, 730, 550, 580, 610, 660, 710, 620];
-    yData = xData.map((_, idx) => base[idx % base.length]);
+    title = "Active Mini-Grid Sites Commissioned";
+    xData = ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"];
+    yData = [3, 4, 6, 7, 8, 8];
   } else if (type === 2) {
-    title = "Total Billed Energy (kWh)";
-    const baseKwh = [4450, 4820, 5100, 4600, 4950, 5300, 5700, 6100, 4750, 4900, 5250, 5150, 5800, 6200, 4800, 4650, 5400, 5650, 5950, 4900, 5100, 5500, 5850, 6300, 4950, 5200, 5450, 5750, 6150, 5400];
-    yData = xData.map((_, idx) => baseKwh[idx % baseKwh.length]);
+    title = "Total Billed Energy (kWh) · All Time Since Inception";
+    xData = ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"];
+    yData = [12400.0, 18650.0, 22100.0, 26800.0, 30550.0, 32080.4];
   } else if (type === 3) {
-    title = "Equivalent in Naira (₦)";
-    const baseMoney = [1650000, 1780000, 1920000, 1710000, 1850000, 1980000, 2150000, 2350000, 1790000, 1860000, 2010000, 1950000, 2240000, 2410000, 1820000, 1750000, 2080000, 2190000, 2320000, 1880000, 1960000, 2120000, 2280000, 2480000, 1910000, 2020000, 2140000, 2260000, 2420000, 2100000];
-    yData = xData.map((_, idx) => baseMoney[idx % baseMoney.length]);
+    title = "Equivalent in Naira (₦) · All Time Since Inception";
+    xData = ["May 2026", "Jun 2026", "Jul 2026", "Aug 2026", "Sep 2026", "Oct 2026"];
+    yData = [4600000, 6900000, 8180000, 9920000, 11300000, 11850000];
   } else if (type === 4) {
     title = "Daily Grid Site Consumption";
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 86400000);
+      xData.push(d.toISOString().slice(0, 10));
+    }
     const baseCons = [4200, 4650, 5120, 4380, 4890, 5210, 5600, 6050, 4520, 4780, 5100, 4950, 5720, 6180, 4630, 4480, 5310, 5540, 5890, 4760, 4980, 5390, 5720, 6210, 4820, 5090, 5350, 5680, 6090, 5280];
     yData = xData.map((_, idx) => baseCons[idx % baseCons.length]);
   } else if (type === 6) {
     title = "Mesh Communication Success Rate";
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 86400000);
+      xData.push(d.toISOString().slice(0, 10));
+    }
     const baseSucc = [98.2, 98.7, 99.1, 98.4, 99.0, 99.2, 99.5, 99.3, 98.8, 98.9, 99.2, 99.1, 99.4, 99.6, 98.9, 98.5, 99.3, 99.4, 99.5, 98.9, 99.1, 99.3, 99.4, 99.7, 99.0, 99.2, 99.3, 99.5, 99.6, 99.2];
     yData = xData.map((_, idx) => baseSucc[idx % baseSucc.length]);
   } else if (type === 7) {
