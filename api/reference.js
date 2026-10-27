@@ -3775,143 +3775,6 @@ async function handleOemPowerQualityTelemetry(request, requestData) {
   };
 }
 
-async function handleOemLoadCurvesTelemetry(request, requestData) {
-  const urlObj = new URL(request.url, "http://localhost");
-  const query = urlObj.searchParams;
-  const body = requestData?.parsedBody || {};
-  const requestedStation = String(query.get("station") || query.get("stationId") || body.station || body.stationId || "ALL").trim().toUpperCase();
-  const range = String(query.get("range") || body.range || "24h").toLowerCase();
-  const oemTarget = await resolveOemForDashboard(request);
-
-  const isAll = !requestedStation || requestedStation === "ALL" || requestedStation === "ALL STATIONS";
-  let stationScale = 1.0;
-  if (!isAll) {
-    const site = SPARKMETER_TELEMETRY_SITES.find(s =>
-      s.stationId === requestedStation ||
-      s.stationName.toUpperCase() === requestedStation ||
-      s.stationId.replace("-", " ") === requestedStation.replace("-", " ")
-    );
-    if (site) {
-      stationScale = site.activeLoadKw / 184.6;
-    }
-  }
-
-  const totalIntervals = 96;
-  const points = [];
-  const baseDate = new Date();
-  baseDate.setHours(0, 0, 0, 0);
-
-  let maxLoad = 0;
-  let minLoad = Infinity;
-  let peakTime = "19:45";
-  let baseloadTime = "03:30";
-  let totalEnergy = 0;
-
-  for (let i = 0; i < totalIntervals; i++) {
-    const minutes = i * 15;
-    const hour = Math.floor(minutes / 60);
-    const min = minutes % 60;
-    const timeLabel = `${String(hour).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-    const timestamp = new Date(baseDate.getTime() + minutes * 60000).toISOString();
-
-    let rawKw = 38.2;
-    if (hour < 5 || (hour === 5 && min < 30)) {
-      rawKw = 37.5 + Math.sin(i * 0.4) * 1.5;
-    } else if (hour < 8 || (hour === 8 && min < 30)) {
-      const progress = ((hour - 5) * 60 + min - 30) / 180;
-      rawKw = 38.0 + progress * 80.0 + Math.sin(i * 0.8) * 3.0;
-    } else if (hour < 16 || (hour === 16 && min < 30)) {
-      rawKw = 135.0 + Math.sin((i - 36) * 0.2) * 18.0 + (i % 4) * 2.0;
-    } else if (hour < 21) {
-      const peakProg = 1 - Math.abs(((hour * 60 + min) - 1185) / 150);
-      rawKw = 145.0 + Math.max(0, peakProg) * 69.8 + Math.cos(i * 0.5) * 2.0;
-    } else {
-      const nightProg = ((hour - 21) * 60 + min) / 165;
-      rawKw = 145.0 - nightProg * 105.0 + Math.sin(i) * 1.8;
-    }
-
-    const scaledKw = Math.round(rawKw * stationScale * 10) / 10;
-    const baseloadKw = Math.round(38.2 * stationScale * 10) / 10;
-    const powerFactor = Math.round((0.92 + Math.sin(i * 0.15) * 0.02) * 100) / 100;
-    const currentA = Math.round((scaledKw / (Math.sqrt(3) * 0.400 * powerFactor)) * 10) / 10;
-
-    if (scaledKw > maxLoad) {
-      maxLoad = scaledKw;
-      peakTime = timeLabel;
-    }
-    if (scaledKw < minLoad) {
-      minLoad = scaledKw;
-      baseloadTime = timeLabel;
-    }
-    totalEnergy += scaledKw * 0.25;
-
-    points.push({
-      time: timeLabel,
-      timestamp,
-      activeLoadKw: scaledKw,
-      baseloadKw,
-      peakDemandKw: Math.round(214.8 * stationScale * 10) / 10,
-      powerFactor,
-      currentA
-    });
-  }
-
-  const meanDemandKw = Math.round((totalEnergy / 24) * 10) / 10;
-  const loadFactor = maxLoad > 0 ? Math.round((meanDemandKw / maxLoad) * 1000) / 10 : 0;
-
-  const stationComparison = SPARKMETER_TELEMETRY_SITES.map(s => {
-    const scale = s.activeLoadKw / 184.6;
-    const peak = Math.round(214.8 * scale * 10) / 10;
-    const base = Math.round(38.2 * scale * 10) / 10;
-    const avg = Math.round(112.5 * scale * 10) / 10;
-    const energy = Math.round(avg * 24 * 10) / 10;
-    return {
-      stationId: s.stationId,
-      stationName: s.stationName,
-      connectedMeters: s.connectedMeters,
-      peakDemandKw: peak,
-      baseloadDemandKw: base,
-      avgDemandKw: avg,
-      energyKwh: energy,
-      loadFactor: peak > 0 ? Math.round((avg / peak) * 1000) / 10 : 0
-    };
-  });
-
-  const payload = {
-    oemSlug: oemTarget?.slug || "sparkmeter",
-    oemDisplayName: oemTarget?.displayName || "SparkMeter",
-    range,
-    interval: "15m",
-    stationFilter: isAll ? "ALL" : requestedStation,
-    kpis: {
-      peakDemandKw: Math.round(maxLoad * 10) / 10,
-      peakTime,
-      baseloadDemandKw: Math.round(minLoad * 10) / 10,
-      baseloadTime,
-      meanDemandKw,
-      loadFactor,
-      totalEnergyKwh: Math.round(totalEnergy * 10) / 10
-    },
-    points,
-    stationComparison
-  };
-
-  return {
-    status: 200,
-    body: {
-      code: 0,
-      msg: "success",
-      reason: "success",
-      data: payload,
-      result: payload,
-      _proxy: {
-        source: "sparkmeter-telemetry",
-        pathname: "/api/oem/telemetry/load-curves"
-      }
-    }
-  };
-}
-
 // ── Universal Remote Relay & Capacity Load Limiter Engine ──────────────────
 const gridControlMeterStateOverrides = new Map();
 
@@ -4438,11 +4301,11 @@ async function handleOemLoadCurvesTelemetry(request, requestData) {
     query = new URLSearchParams();
   }
   const payload = requestData?.parsedBody || {};
-  const stationParam = String(query.get("station") || payload.station || "ALL").trim();
+  const stationParam = String(query.get("station") || query.get("stationId") || payload.station || payload.stationId || "ALL").trim();
 
-  const isFiltered = stationParam && stationParam !== "ALL";
+  const isFiltered = stationParam && stationParam !== "ALL" && stationParam !== "ALL STATIONS";
   const matchedSite = isFiltered
-    ? SPARKMETER_SITES.find((s) => s.code.toLowerCase() === stationParam.toLowerCase() || s.name.toLowerCase() === stationParam.toLowerCase())
+    ? SPARKMETER_SITES.find((s) => s.code.toLowerCase() === stationParam.toLowerCase() || s.name.toLowerCase() === stationParam.toLowerCase() || s.code.replace("-", " ").toLowerCase() === stationParam.replace("-", " ").toLowerCase())
     : null;
 
   const peakFactor = matchedSite ? matchedSite.capacityKva / 100 : 1.0;
@@ -4452,12 +4315,16 @@ async function handleOemLoadCurvesTelemetry(request, requestData) {
   const loadFactor = Number(((avgDemandKw / peakDemandKw) * 100).toFixed(1));
   const totalEnergyMWh = Number(((avgDemandKw * 24) / 1000).toFixed(2));
 
+  const baseDate = new Date();
+  baseDate.setHours(0, 0, 0, 0);
+
   const points = [];
   for (let i = 0; i < 96; i++) {
     const totalMinutes = i * 15;
     const h = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
     const m = String(totalMinutes % 60).padStart(2, "0");
     const time = `${h}:${m}`;
+    const timestamp = new Date(baseDate.getTime() + totalMinutes * 60000).toISOString();
 
     // Diurnal mini-grid curve: low at night, rising at morning, midday agro/solar peak, evening peak
     const hourFloat = totalMinutes / 60;
@@ -4480,8 +4347,10 @@ async function handleOemLoadCurvesTelemetry(request, requestData) {
 
     points.push({
       time,
+      timestamp,
       activeLoadKw,
       baseloadKw,
+      peakDemandKw,
       powerFactor,
       currentA
     });
@@ -4489,12 +4358,18 @@ async function handleOemLoadCurvesTelemetry(request, requestData) {
 
   const stationComparison = SPARKMETER_SITES.map((s) => {
     const factor = s.capacityKva / 100;
+    const peak = Number((242.8 * factor).toFixed(1));
+    const base = Number((41.5 * factor).toFixed(1));
+    const avg = Number((128.4 * factor).toFixed(1));
     return {
       stationId: s.code,
       stationName: s.name,
-      peakDemandKw: Number((242.8 * factor).toFixed(1)),
-      baseloadDemandKw: Number((41.5 * factor).toFixed(1)),
-      avgDemandKw: Number((128.4 * factor).toFixed(1))
+      capacityKva: s.capacityKva,
+      peakDemandKw: peak,
+      baseloadDemandKw: base,
+      avgDemandKw: avg,
+      energyKwh: Number((avg * 24).toFixed(1)),
+      loadFactor: Number(((avg / peak) * 100).toFixed(1))
     };
   });
 
@@ -4506,11 +4381,16 @@ async function handleOemLoadCurvesTelemetry(request, requestData) {
       data: {
         kpis: {
           peakDemandKw,
+          peakTime: "19:45",
+          peakTimestamp: "19:45",
           baseloadKw,
+          baseloadDemandKw: baseloadKw,
+          baseloadTime: "03:30",
           avgDemandKw,
+          meanDemandKw: avgDemandKw,
           loadFactor,
           totalEnergyMWh,
-          peakTimestamp: "14:15"
+          totalEnergyKwh: Math.round(totalEnergyMWh * 1000 * 10) / 10
         },
         points,
         stationComparison,
