@@ -33,7 +33,25 @@ assert.ok(
     'POST /api/v1/customer/usage/remote-read missing from mutationRoutePolicies in route-policy.ts'
 );
 
-// 2. OEM capability gating in backend
+// 2. Real API & Telemetry Data Fidelity (Zero Guesswork)
+assert.ok(
+    routeCode.includes("from('daily_meter_readings')"),
+    'daily_meter_readings query missing in /usage/telemetry'
+);
+assert.ok(
+    routeCode.includes("from('oem_telemetry_readings')"),
+    'oem_telemetry_readings query missing in /usage/telemetry'
+);
+assert.ok(
+    !routeCode.includes('Math.sin') && !routeCode.includes('Math.cos'),
+    'Synthetic trigonometric wave approximations (Math.sin/cos) strictly forbidden in customer telemetry'
+);
+assert.ok(
+    !routeCode.includes(': 2.45') && !routeCode.includes(': 45.20') && !routeCode.includes(': 112.50'),
+    'Fabricated fallback numbers strictly forbidden in customer telemetry'
+);
+
+// 3. OEM capability gating in backend
 assert.ok(
     routeCode.includes('resolveMeterOemInfo'),
     'resolveMeterOemInfo missing in customer.ts'
@@ -51,13 +69,13 @@ assert.ok(
     'forbidden_meter verification missing for unauthorized meters'
 );
 
-// 3. Frontend Router
+// 4. Frontend Router
 assert.ok(
     routerCode.includes("path: '/usage'") && routerCode.includes("name: 'usage'"),
     '/usage route missing in apps/customer/src/router/index.ts'
 );
 
-// 4. Frontend Usage view
+// 5. Frontend Usage view
 assert.ok(fs.existsSync(usageViewPath), 'Usage.vue does not exist in apps/customer/src/views/');
 const usageViewCode = fs.readFileSync(usageViewPath, 'utf8');
 assert.ok(usageViewCode.includes('Your usage'), 'Usage view missing "Your usage" title');
@@ -74,6 +92,22 @@ assert.ok(
     usageViewCode.includes('Daily') &&
     usageViewCode.includes('Live'),
     'Usage view missing timeframe selectors'
+);
+
+// Removal of Consumption records table
+assert.ok(
+    !usageViewCode.includes('Consumption records'),
+    'Consumption records section must be removed from Usage view'
+);
+assert.ok(
+    !usageViewCode.includes('historical-section'),
+    'historical-section table must be removed from Usage view'
+);
+
+// Real empty state handling
+assert.ok(
+    usageViewCode.includes('chart-empty-state'),
+    'Usage view must contain clean empty-state fallback when no telemetry is recorded'
 );
 
 // OEM capability gating in template
@@ -99,9 +133,9 @@ assert.ok(usageViewCode.includes('placeholder="Enter meter number"'), 'meter inp
 assert.ok(usageViewCode.includes("params.set('meter_id', selectedMeter.value)"), 'meter filter missing');
 assert.ok(usageViewCode.includes('@submit.prevent="searchMeter"'), 'meter search submission missing');
 
-// 5. Meters view link
+// 6. Meters view link
 const metersViewCode = fs.readFileSync(metersViewPath, 'utf8');
 assert.ok(metersViewCode.includes('to="/usage"'), 'Meters.vue should link to /usage');
 assert.ok(metersViewCode.includes('Usage'), 'Meters.vue button text should be Usage');
 
-console.log('All usage pipeline assertions passed successfully!');
+console.log('All usage pipeline assertions passed successfully with real data fidelity!');
