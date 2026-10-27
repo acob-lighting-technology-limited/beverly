@@ -2043,72 +2043,147 @@ const customer: FastifyPluginAsync = async (fastify) => {
             }
         } catch {}
 
-        // 2. Fetch latest telemetry reading
+        // 2. Fetch real meter readings and OEM telemetry
         let latestReading: any = null;
         let todayKwh = 0;
-        if (selectedMeter) {
-            const { data: readings } = await adminClient
-                .from('daily_meter_readings')
-                .select('*')
-                .eq('meter_id', selectedMeter)
-                .order('reading_date', { ascending: false })
-                .limit(30);
+        let dailyRows: any[] = [];
+        let oemRows: any[] = [];
 
-            if (readings && readings.length > 0) {
-                latestReading = readings[0];
+        if (selectedMeter) {
+            const [readingsRes, oemRes] = await Promise.all([
+                adminClient
+                    .from('daily_meter_readings')
+                    .select('reading_date, total1, remain1, usage1, power, interval_demand, voltage_a, current_a, relay_open, captured_at, row_json')
+                    .eq('meter_id', selectedMeter)
+                    .order('reading_date', { ascending: false })
+                    .limit(30),
+                adminClient
+                    .from('oem_telemetry_readings')
+                    .select('reading_at, energy_kwh, voltage_avg, current_avg, power_factor_avg, provider_credit_balance, meter_state, provider_payload')
+                    .eq('external_meter_id', selectedMeter)
+                    .order('reading_at', { ascending: false })
+                    .limit(50),
+            ]);
+
+            dailyRows = readingsRes.data ?? [];
+            oemRows = oemRes.data ?? [];
+
+            if (dailyRows.length > 0) {
+                latestReading = dailyRows[0];
                 const todayStr = new Date().toISOString().split('T')[0];
-                const todayRow = readings.find((r: any) => r.reading_date === todayStr);
+                const todayRow = dailyRows.find((r: any) => r.reading_date === todayStr);
                 if (todayRow) {
-                    todayKwh = Number(todayRow.row_json?.usage1 ?? todayRow.total1 ?? 0);
-                } else if (readings.length > 1) {
-                    const diff = Number(readings[0].total1 ?? 0) - Number(readings[1].total1 ?? 0);
+                    todayKwh = Number(todayRow.usage1 ?? todayRow.row_json?.usage1 ?? 0);
+                } else if (dailyRows.length > 1) {
+                    const diff = Number(dailyRows[0].total1 ?? 0) - Number(dailyRows[1].total1 ?? 0);
                     todayKwh = diff > 0 ? Math.round(diff * 100) / 100 : 0;
                 }
             }
         }
 
-        const latestPower = latestReading?.row_json?.power != null
-            ? Number(latestReading.row_json.power)
-            : 2.45;
-        const latestCredit = latestReading?.remain1 != null
-            ? Number(latestReading.remain1)
-            : 45.20;
-        const latestTotal = latestReading?.total1 != null
-            ? Number(latestReading.total1)
-            : 112.50;
-        const latestRelay = latestReading?.row_json?.relay_open === true || latestReading?.row_json?.relay_status === 'open'
-            ? 'Open'
-            : 'Closed';
+        const latestOem = oemRows.length > 0 ? oemRows[0] : null;
 
-        // 3. Synthesize series data for animated chart
-        const pointsCount = timeframe === 'daily' ? 7 : (timeframe === 'live' ? 12 : 24);
+        // Extract real latest metrics — strictly authentic readings only
+        let latestPower = 0;
+        if (latestReading?.power != null) {
+            latestPower = Number(latestReading.power);
+        } else if (latestReading?.row_json?.power != null) {
+            latestPower = Number(latestReading.row_json.power);
+        } else if (latestOem?.provider_payload?.power != null) {
+            latestPower = Number(latestOem.provider_payload.power);
+        } else if (latestOem?.voltage_avg != null && latestOem?.current_avg != null) {
+            const pf = Number(latestOem.power_factor_avg) || 1.0;
+            latestPower = Math.round((Number(latestOem.voltage_avg) * Number(latestOem.current_avg) * pf / 1000) * 100) / 100;
+        }
+
+        let latestCredit = 0;
+        if (latestReading?.remain1 != null) {
+            latestCredit = Number(latestReading.remain1);
+        } else if (latestOem?.provider_credit_balance != null) {
+            latestCredit = Number(latestOem.provider_credit_balance);
+        }
+
+        let latestTotal = 0;
+        if (latestReading?.total1 != null) {
+            latestTotal = Number(latestReading.total1);
+        } else if (latestOem?.energy_kwh != null) {
+            latestTotal = Number(latestOem.energy_kwh);
+        }
+
+        let latestRelay = 'Closed';
+        if (latestReading?.relay_open === true || latestReading?.row_json?.relay_open === true || latestOem?.meter_state === 'off') {
+            latestRelay = 'Open';
+        } else if (latestReading?.relay_open === false || latestOem?.meter_state === 'on') {
+            latestRelay = 'Closed';
+        } else if (!latestReading && !latestOem) {
+            latestRelay = 'Unavailable';
+        }
+
+        // 3. Assemble real series data — strictly no synthetic wave synthesis
         const series: Array<{ timestamp: string; label: string; value: number }> = [];
-        const baseVal = dataItem === 'credit_balance' ? latestCredit :
-            (dataItem === 'total_consumption' ? latestTotal :
-            (dataItem === 'relay_status' ? 1 : latestPower));
 
-        const now = Date.now();
-        for (let i = pointsCount - 1; i >= 0; i--) {
-            let label = '';
-            let ts = '';
-            let val = baseVal;
-            if (timeframe === 'daily') {
-                const d = new Date(now - i * 86400000);
-                label = d.toLocaleDateString('en-US', { weekday: 'short' });
-                ts = d.toISOString().split('T')[0];
-                val = Math.max(0, Math.round((baseVal + (Math.sin(i * 0.8) * (baseVal * 0.2))) * 100) / 100);
-            } else if (timeframe === 'live') {
-                const d = new Date(now - i * 5000);
-                label = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                ts = d.toISOString();
-                val = Math.max(0, Math.round((baseVal + (Math.sin(i * 1.5) * 0.15)) * 100) / 100);
-            } else {
-                const d = new Date(now - i * 3600000);
-                label = `${d.getHours()}:00`;
-                ts = d.toISOString();
-                val = Math.max(0, Math.round((baseVal + (Math.cos(i * 0.5) * (baseVal * 0.25))) * 100) / 100);
+        if (timeframe === 'daily') {
+            // Sourced directly from daily_meter_readings sorted chronologically
+            const chronological = [...dailyRows].reverse();
+            for (const r of chronological) {
+                const ts = String(r.reading_date);
+                const d = new Date(`${ts}T00:00:00`);
+                const label = Number.isNaN(d.getTime()) ? ts : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                let val = 0;
+                if (dataItem === 'credit_balance') {
+                    val = Number(r.remain1 ?? 0);
+                } else if (dataItem === 'total_consumption') {
+                    val = Number(r.total1 ?? 0);
+                } else if (dataItem === 'relay_status') {
+                    val = r.relay_open ? 0 : 1;
+                } else {
+                    val = Number(r.power ?? r.row_json?.power ?? (r.usage1 ? Number(r.usage1) / 24 : 0));
+                }
+                series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
             }
-            series.push({ timestamp: ts, label, value: val });
+        } else {
+            // Hourly or Live sourced directly from oem_telemetry_readings
+            if (oemRows.length > 0) {
+                const chronological = [...oemRows].reverse();
+                for (const r of chronological) {
+                    const ts = String(r.reading_at);
+                    const d = new Date(ts);
+                    const label = Number.isNaN(d.getTime()) ? ts : (timeframe === 'live'
+                        ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                    let val = 0;
+                    if (dataItem === 'credit_balance') {
+                        val = Number(r.provider_credit_balance ?? 0);
+                    } else if (dataItem === 'total_consumption') {
+                        val = Number(r.energy_kwh ?? 0);
+                    } else if (dataItem === 'relay_status') {
+                        val = r.meter_state === 'on' ? 1 : 0;
+                    } else {
+                        if (r.provider_payload?.power != null) {
+                            val = Number(r.provider_payload.power);
+                        } else if (r.voltage_avg != null && r.current_avg != null) {
+                            const pf = Number(r.power_factor_avg) || 1.0;
+                            val = (Number(r.voltage_avg) * Number(r.current_avg) * pf) / 1000;
+                        }
+                    }
+                    series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
+                }
+            } else if (dailyRows.length > 0 && timeframe === 'hourly') {
+                // If high-resolution IoT readings aren't present yet for this meter,
+                // project known daily rows rather than generating fake sine waves
+                const chronological = [...dailyRows].slice(0, 7).reverse();
+                for (const r of chronological) {
+                    const ts = String(r.reading_date);
+                    const d = new Date(`${ts}T00:00:00`);
+                    const label = Number.isNaN(d.getTime()) ? ts : d.toLocaleDateString('en-US', { weekday: 'short' });
+                    let val = 0;
+                    if (dataItem === 'credit_balance') val = Number(r.remain1 ?? 0);
+                    else if (dataItem === 'total_consumption') val = Number(r.total1 ?? 0);
+                    else if (dataItem === 'relay_status') val = r.relay_open ? 0 : 1;
+                    else val = Number(r.power ?? r.row_json?.power ?? 0);
+                    series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
+                }
+            }
         }
 
         return {
@@ -2120,9 +2195,9 @@ const customer: FastifyPluginAsync = async (fastify) => {
                 credit_balance: latestCredit,
                 total_consumption: latestTotal,
                 relay_status: latestRelay,
-                captured_at: latestReading?.captured_at ?? new Date().toISOString(),
+                captured_at: latestReading?.captured_at ?? latestOem?.reading_at ?? new Date().toISOString(),
             },
-            today_kwh: todayKwh || 11.2,
+            today_kwh: todayKwh,
             wallet_balance_minor: walletBalanceMinor,
             timeframe,
             data_item: dataItem,
@@ -2159,6 +2234,60 @@ const customer: FastifyPluginAsync = async (fastify) => {
             });
         }
 
+        // Fetch actual recorded reading for this meter
+        const [readingsRes, oemRes] = await Promise.all([
+            adminClient
+                .from('daily_meter_readings')
+                .select('reading_date, total1, remain1, power, relay_open, captured_at, row_json')
+                .eq('meter_id', meterId)
+                .order('reading_date', { ascending: false })
+                .limit(1),
+            adminClient
+                .from('oem_telemetry_readings')
+                .select('reading_at, energy_kwh, voltage_avg, current_avg, power_factor_avg, provider_credit_balance, meter_state, provider_payload')
+                .eq('external_meter_id', meterId)
+                .order('reading_at', { ascending: false })
+                .limit(1),
+        ]);
+
+        const latestDaily = readingsRes.data?.[0];
+        const latestOem = oemRes.data?.[0];
+
+        let realPower = 0;
+        if (latestDaily?.power != null) {
+            realPower = Number(latestDaily.power);
+        } else if (latestDaily?.row_json?.power != null) {
+            realPower = Number(latestDaily.row_json.power);
+        } else if (latestOem?.provider_payload?.power != null) {
+            realPower = Number(latestOem.provider_payload.power);
+        } else if (latestOem?.voltage_avg != null && latestOem?.current_avg != null) {
+            const pf = Number(latestOem.power_factor_avg) || 1.0;
+            realPower = Math.round((Number(latestOem.voltage_avg) * Number(latestOem.current_avg) * pf / 1000) * 100) / 100;
+        }
+
+        let realCredit = 0;
+        if (latestDaily?.remain1 != null) {
+            realCredit = Number(latestDaily.remain1);
+        } else if (latestOem?.provider_credit_balance != null) {
+            realCredit = Number(latestOem.provider_credit_balance);
+        }
+
+        let realTotal = 0;
+        if (latestDaily?.total1 != null) {
+            realTotal = Number(latestDaily.total1);
+        } else if (latestOem?.energy_kwh != null) {
+            realTotal = Number(latestOem.energy_kwh);
+        }
+
+        let realRelay = 'Closed';
+        if (latestDaily?.relay_open === true || latestDaily?.row_json?.relay_open === true || latestOem?.meter_state === 'off') {
+            realRelay = 'Open';
+        } else if (latestDaily?.relay_open === false || latestOem?.meter_state === 'on') {
+            realRelay = 'Closed';
+        } else if (!latestDaily && !latestOem) {
+            realRelay = 'Unavailable';
+        }
+
         return {
             ok: true,
             meter_id: meterId,
@@ -2166,10 +2295,10 @@ const customer: FastifyPluginAsync = async (fastify) => {
             status: 'completed',
             timestamp: new Date().toISOString(),
             readings: {
-                power: 2.45,
-                credit_balance: 45.2,
-                total_consumption: 112.5,
-                relay_status: 'Closed',
+                power: realPower,
+                credit_balance: realCredit,
+                total_consumption: realTotal,
+                relay_status: realRelay,
             },
         };
     });
