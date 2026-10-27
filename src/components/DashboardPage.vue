@@ -75,8 +75,8 @@
         >
           <span class="dashboard-stat-icon" :style="{ color: card.color, '--theme-color': card.color }" v-html="card.icon"></span>
           <span class="dashboard-stat-copy">
-            <span class="dashboard-stat-label">
-              {{ card.label }}
+            <span class="dashboard-stat-header">
+              <span class="dashboard-stat-label">{{ card.label }}</span>
               <span v-if="card.subLabel" class="dashboard-stat-period-tag">{{ card.subLabel }}</span>
             </span>
             <span class="dashboard-stat-value">
@@ -783,19 +783,37 @@ export default {
   animation: hero-pulse 2s infinite ease-in-out;
 }
 
-.dashboard-stat-period-tag {
+.dashboard-stat-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  max-width: 100%;
+  line-height: 1.2;
+}
+
+.dashboard-stat-header .dashboard-stat-label {
   display: inline-block;
-  margin-left: 6px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.dashboard-stat-period-tag {
+  display: inline-flex;
+  align-items: center;
   padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 9px;
+  border-radius: 9999px;
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   background: rgba(16, 185, 129, 0.12);
   color: #047857;
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  border: 1px solid rgba(16, 185, 129, 0.28);
   vertical-align: middle;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @keyframes hero-pulse {

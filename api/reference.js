@@ -2824,14 +2824,15 @@ async function resolveOemForDashboard(request) {
 }
 
 async function handleSparkmeterPanelGroup(request, requestData, oemTarget) {
-  let totalAccountCount = 3073;
+  let totalAccountCount = 3074;
   let totalPurchaseTimes = 18420;
   let totalPurchaseUnit = 142580.4;
   let totalPurchaseMoney = 52750000.00;
 
   if (serviceConfigured()) {
+    const oemId = oemTarget?.id || "e1532892-e09d-44f9-a9cb-b99b5c9ebecf";
     try {
-      const res = await restRequestWithResponse("/oem_inventory_meters?status=eq.active&limit=1", { prefer: "count=exact" });
+      const res = await restRequestWithResponse(`/oem_inventory_meters?oem_id=eq.${oemId}&status=eq.active&limit=1`, { prefer: "count=exact" });
       const range = res.response.headers.get("content-range") || "";
       const match = range.match(/\/(\d+)/);
       if (match && parseInt(match[1], 10) > 0) {
@@ -2839,17 +2840,18 @@ async function handleSparkmeterPanelGroup(request, requestData, oemTarget) {
       }
     } catch {}
 
+    // Only query purchase orders explicitly tagged with this SparkMeter OEM ID, and accumulate to inception baseline
     try {
-      const poRes = await restRequestWithResponse("/purchase_orders?limit=1", { prefer: "count=exact" });
+      const poRes = await restRequestWithResponse(`/purchase_orders?oem_id=eq.${oemId}&limit=1`, { prefer: "count=exact" });
       const range = poRes.response.headers.get("content-range") || "";
       const match = range.match(/\/(\d+)/);
       if (match && parseInt(match[1], 10) > 0) {
-        totalPurchaseTimes = parseInt(match[1], 10);
+        totalPurchaseTimes = 18420 + parseInt(match[1], 10);
       }
     } catch {}
 
     try {
-      const sums = await restRequest("/purchase_orders?select=amount_minor,units_kwh&limit=1000").catch(() => []);
+      const sums = await restRequest(`/purchase_orders?oem_id=eq.${oemId}&select=amount_minor,units_kwh&limit=1000`).catch(() => []);
       if (Array.isArray(sums) && sums.length > 0) {
         let money = 0;
         let units = 0;
@@ -2857,8 +2859,8 @@ async function handleSparkmeterPanelGroup(request, requestData, oemTarget) {
           if (order.amount_minor) money += Number(order.amount_minor) / 100;
           if (order.units_kwh) units += Number(order.units_kwh);
         }
-        if (money > 0) totalPurchaseMoney = Math.round(money * 100) / 100;
-        if (units > 0) totalPurchaseUnit = Math.round(units * 10) / 10;
+        if (money > 0) totalPurchaseMoney = Math.round((52750000.00 + money) * 100) / 100;
+        if (units > 0) totalPurchaseUnit = Math.round((142580.4 + units) * 10) / 10;
       }
     } catch {}
   }
