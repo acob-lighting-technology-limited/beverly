@@ -26,6 +26,7 @@ function portalHistoryBase(configuredBase: string): string {
 
 const routes: RouteRecordRaw[] = [
     { path: '/',           name: 'home',     component: () => import('../views/Home.vue'),      meta: { auth: true } },
+    { path: '/welcome',    name: 'welcome',  component: () => import('../views/Welcome.vue'),   meta: { guest: true } },
     { path: '/signup',     name: 'signup',   component: () => import('../views/Signup.vue'),    meta: { guest: true } },
     { path: '/login',      name: 'login',    component: () => import('../views/Login.vue'),     meta: { guest: true } },
     { path: '/recover',    name: 'recover',  component: () => import('../views/Recover.vue'),   meta: { guest: true } },
@@ -35,14 +36,15 @@ const routes: RouteRecordRaw[] = [
     { path: '/verify',     name: 'verify',   component: () => import('../views/Verify.vue') },
     { path: '/kyc',        name: 'kyc',      component: () => import('../views/Kyc.vue'),       meta: { auth: true } },
     { path: '/onboard-meter', name: 'onboard-meter', component: () => import('../views/OnboardMeter.vue'), meta: { auth: true } },
-    { path: '/buy-token',  name: 'buy-token', component: () => import('../views/BuyToken.vue'), meta: { auth: true, kyc: 1 } },
+    { path: '/buy-token',  name: 'buy-token', component: () => import('../views/BuyToken.vue'), meta: { auth: true } },
     { path: '/vend-pin', name: 'vend-pin', component: () => import('../views/VendPin.vue'), meta: { auth: true } },
     { path: '/buy-meter',    name: 'buy-meter',    component: () => import('../views/BuyMeter.vue'),    meta: { auth: true, kyc: 1 } },
     { path: '/meter-orders', name: 'meter-orders', component: () => import('../views/MeterOrders.vue'), meta: { auth: true } },
     { path: '/wallet',     name: 'wallet',   component: () => import('../views/Wallet.vue'),    meta: { auth: true } },
-    { path: '/wallet/fund', name: 'fund-wallet', component: () => import('../views/FundWallet.vue'), meta: { auth: true, kyc: 1 } },
+    { path: '/wallet/fund', name: 'fund-wallet', component: () => import('../views/FundWallet.vue'), meta: { auth: true } },
     { path: '/wallet/funding', name: 'funding-history', component: () => import('../views/FundingHistory.vue'), meta: { auth: true } },
-    { path: '/meters',     name: 'meters',   component: () => import('../views/Meters.vue'),    meta: { auth: true } },
+    { path: '/meters',      name: 'meters',      component: () => import('../views/Meters.vue'),      meta: { auth: true } },
+    { path: '/usage',       name: 'usage',       component: () => import('../views/Usage.vue'),       meta: { auth: true } },
     { path: '/consumption', name: 'consumption', component: () => import('../views/Consumption.vue'), meta: { auth: true } },
     { path: '/transactions', name: 'transactions', component: () => import('../views/Transactions.vue'), meta: { auth: true } },
     { path: '/receipts',      name: 'receipts',       component: () => import('../views/Receipts.vue'),       meta: { auth: true } },
@@ -81,11 +83,16 @@ router.beforeEach(async (to) => {
     }
     const kycRequired = auth.isAuthenticated && await isKycRequired();
     const requiredKyc = Number(to.meta.kyc ?? 0);
-    if (kycRequired && requiredKyc > 0 && (auth.customer?.kyc_tier ?? 0) < requiredKyc) {
-        return { name: 'kyc', query: { reason: `tier_${requiredKyc}` } };
+    if (kycRequired && requiredKyc > 0) {
+        if ((auth.customer?.kyc_tier ?? 0) < requiredKyc) {
+            await auth.refreshProfile();
+        }
+        if ((auth.customer?.kyc_tier ?? 0) < requiredKyc) {
+            return { name: 'kyc', query: { reason: `tier_${requiredKyc}` } };
+        }
     }
     if (to.name === 'buy-token') {
-        if (auth.customer && auth.customer.vend_pin_configured === undefined) {
+        if (auth.customer && !auth.customer.vend_pin_configured) {
             await auth.refreshProfile();
         }
         if (!auth.customer?.vend_pin_configured) {

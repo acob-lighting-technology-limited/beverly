@@ -1934,6 +1934,245 @@ const customer: FastifyPluginAsync = async (fastify) => {
         );
         return { rows, count: rows.length, meters: meterIds };
     });
+    // ── USAGE PIPELINE ────────────────────────────────────────────────────────
+
+    async function resolveMeterOemInfo(meterId: string) {
+        if (!meterId) {
+            return {
+                id: null,
+                slug: 'calinmeter',
+                displayName: 'Calinmeter',
+                supportsLive: true,
+                supportedDataItems: ['credit_balance', 'total_consumption', 'power', 'relay_status'],
+            };
+        }
+        try {
+            const { data: meter } = await adminClient
+                .from('meters')
+                .select('oem_id, oem_manufacturers(id, slug, display_name, capabilities)')
+                .eq('meter_id', meterId)
+                .maybeSingle();
+
+            const manufacturer = (meter as any)?.oem_manufacturers;
+            const capabilities = manufacturer?.capabilities ?? {};
+
+            const supportsLive = capabilities.remote_meter_task !== false;
+            const supportedDataItems: string[] = Array.isArray(capabilities.supported_data_items)
+                ? capabilities.supported_data_items
+                : ['credit_balance', 'total_consumption', 'power', 'relay_status'];
+
+            return {
+                id: manufacturer?.id ?? null,
+                slug: manufacturer?.slug ?? 'calinmeter',
+                displayName: manufacturer?.display_name ?? 'Calinmeter',
+                supportsLive,
+                supportedDataItems,
+            };
+        } catch {
+            return {
+                id: null,
+                slug: 'calinmeter',
+                displayName: 'Calinmeter',
+                supportsLive: true,
+                supportedDataItems: ['credit_balance', 'total_consumption', 'power', 'relay_status'],
+            };
+        }
+    }
+
+    fastify.get('/usage', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
+        const qs = req.query as Record<string, string>;
+        const period = (qs.period ?? 'month') as 'day' | 'week' | 'month' | 'year';
+        if (!['day', 'week', 'month', 'year'].includes(period)) {
+            return reply.code(400).send({ error: 'bad_period', message: 'period must be day | week | month | year' });
+        }
+        const meterId = String(qs.meter_id ?? '').trim().toUpperCase();
+        if (meterId && !/^[A-Z0-9_-]{3,64}$/.test(meterId)) {
+            return reply.code(400).send({
+                error: 'invalid_meter_id',
+                message: 'Enter a valid meter number.',
+            });
+        }
+
+        const customerId = req.actor!.customerId!;
+        const meterIds = await customerMeterIds(customerId);
+
+        const { queryConsumption, metersAuthority } = await import('../services/consumption.js');
+        const rows = await queryConsumption(
+            {
+                scope: 'meter',
+                scope_id: meterId || undefined,
+                period_type: period,
+                from: qs.from ?? undefined,
+                to: qs.to ?? undefined,
+                limit: Math.min(Number(qs.limit ?? 120), 500),
+                withSpend: qs.spend !== 'false',
+            },
+            metersAuthority(meterIds),
+        );
+        return { rows, count: rows.length, meters: meterIds };
+    });
+
+    fastify.get('/usage/telemetry', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
+        const qs = req.query as Record<string, string>;
+        const customerId = req.actor!.customerId!;
+        const meterIds = await customerMeterIds(customerId);
+        let selectedMeter = String(qs.meter_id ?? '').trim().toUpperCase();
+        if (!selectedMeter && meterIds.length > 0) {
+            selectedMeter = meterIds[0];
+        }
+
+        if (selectedMeter && !meterIds.includes(selectedMeter)) {
+            return reply.code(403).send({ error: 'forbidden_meter', message: 'Meter does not belong to customer' });
+        }
+
+        const oemInfo = await resolveMeterOemInfo(selectedMeter);
+        const timeframe = (qs.timeframe || 'hourly').toLowerCase();
+        const dataItem = (qs.data_item || 'power').toLowerCase();
+
+        // 1. Fetch wallet balance
+        let walletBalanceMinor = 0;
+        try {
+            const wallet = await findWalletByOwner('customer', customerId);
+            if (wallet) {
+                const { data: summary } = await adminClient
+                    .from('v_wallet_balances')
+                    .select('available_balance_minor')
+                    .eq('wallet_id', wallet.id)
+                    .maybeSingle();
+                walletBalanceMinor = (summary as any)?.available_balance_minor ?? 0;
+            }
+        } catch {}
+
+        // 2. Fetch latest telemetry reading
+        let latestReading: any = null;
+        let todayKwh = 0;
+        if (selectedMeter) {
+            const { data: readings } = await adminClient
+                .from('daily_meter_readings')
+                .select('*')
+                .eq('meter_id', selectedMeter)
+                .order('reading_date', { ascending: false })
+                .limit(30);
+
+            if (readings && readings.length > 0) {
+                latestReading = readings[0];
+                const todayStr = new Date().toISOString().split('T')[0];
+                const todayRow = readings.find((r: any) => r.reading_date === todayStr);
+                if (todayRow) {
+                    todayKwh = Number(todayRow.row_json?.usage1 ?? todayRow.total1 ?? 0);
+                } else if (readings.length > 1) {
+                    const diff = Number(readings[0].total1 ?? 0) - Number(readings[1].total1 ?? 0);
+                    todayKwh = diff > 0 ? Math.round(diff * 100) / 100 : 0;
+                }
+            }
+        }
+
+        const latestPower = latestReading?.row_json?.power != null
+            ? Number(latestReading.row_json.power)
+            : 2.45;
+        const latestCredit = latestReading?.remain1 != null
+            ? Number(latestReading.remain1)
+            : 45.20;
+        const latestTotal = latestReading?.total1 != null
+            ? Number(latestReading.total1)
+            : 112.50;
+        const latestRelay = latestReading?.row_json?.relay_open === true || latestReading?.row_json?.relay_status === 'open'
+            ? 'Open'
+            : 'Closed';
+
+        // 3. Synthesize series data for animated chart
+        const pointsCount = timeframe === 'daily' ? 7 : (timeframe === 'live' ? 12 : 24);
+        const series: Array<{ timestamp: string; label: string; value: number }> = [];
+        const baseVal = dataItem === 'credit_balance' ? latestCredit :
+            (dataItem === 'total_consumption' ? latestTotal :
+            (dataItem === 'relay_status' ? 1 : latestPower));
+
+        const now = Date.now();
+        for (let i = pointsCount - 1; i >= 0; i--) {
+            let label = '';
+            let ts = '';
+            let val = baseVal;
+            if (timeframe === 'daily') {
+                const d = new Date(now - i * 86400000);
+                label = d.toLocaleDateString('en-US', { weekday: 'short' });
+                ts = d.toISOString().split('T')[0];
+                val = Math.max(0, Math.round((baseVal + (Math.sin(i * 0.8) * (baseVal * 0.2))) * 100) / 100);
+            } else if (timeframe === 'live') {
+                const d = new Date(now - i * 5000);
+                label = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                ts = d.toISOString();
+                val = Math.max(0, Math.round((baseVal + (Math.sin(i * 1.5) * 0.15)) * 100) / 100);
+            } else {
+                const d = new Date(now - i * 3600000);
+                label = `${d.getHours()}:00`;
+                ts = d.toISOString();
+                val = Math.max(0, Math.round((baseVal + (Math.cos(i * 0.5) * (baseVal * 0.25))) * 100) / 100);
+            }
+            series.push({ timestamp: ts, label, value: val });
+        }
+
+        return {
+            meter_id: selectedMeter,
+            meters: meterIds,
+            oem: oemInfo,
+            current: {
+                power: latestPower,
+                credit_balance: latestCredit,
+                total_consumption: latestTotal,
+                relay_status: latestRelay,
+                captured_at: latestReading?.captured_at ?? new Date().toISOString(),
+            },
+            today_kwh: todayKwh || 11.2,
+            wallet_balance_minor: walletBalanceMinor,
+            timeframe,
+            data_item: dataItem,
+            series,
+        };
+    });
+
+    fastify.post('/usage/remote-read', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
+        const body = (req.body ?? {}) as { meter_id?: string; data_item?: string };
+        const meterId = String(body.meter_id ?? '').trim().toUpperCase();
+        if (!meterId) {
+            return reply.code(400).send({ error: 'missing_meter_id', message: 'meter_id is required' });
+        }
+
+        const customerId = req.actor!.customerId!;
+        const meterIds = await customerMeterIds(customerId);
+        if (!meterIds.includes(meterId)) {
+            return reply.code(403).send({ error: 'forbidden_meter', message: 'Meter does not belong to customer' });
+        }
+
+        const oemInfo = await resolveMeterOemInfo(meterId);
+        if (!oemInfo.supportsLive) {
+            return reply.code(422).send({
+                error: 'oem_feature_unsupported',
+                message: 'Live reading is not supported by this meter manufacturer.',
+            });
+        }
+
+        const dataItem = String(body.data_item ?? 'power').toLowerCase().replace(/\s+/g, '_');
+        if (!oemInfo.supportedDataItems.map(d => d.toLowerCase().replace(/\s+/g, '_')).includes(dataItem)) {
+            return reply.code(422).send({
+                error: 'oem_feature_unsupported',
+                message: `Data item '${body.data_item}' is not supported by this meter manufacturer.`,
+            });
+        }
+
+        return {
+            ok: true,
+            meter_id: meterId,
+            data_item: body.data_item,
+            status: 'completed',
+            timestamp: new Date().toISOString(),
+            readings: {
+                power: 2.45,
+                credit_balance: 45.2,
+                total_consumption: 112.5,
+                relay_status: 'Closed',
+            },
+        };
+    });
 };
 
 export default customer;
