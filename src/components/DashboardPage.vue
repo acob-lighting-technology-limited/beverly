@@ -78,9 +78,9 @@
             <span class="dashboard-stat-label">{{ card.label }}</span>
             <span class="dashboard-stat-value">
               <span v-if="card.hasDot" class="dashboard-live-dot" aria-hidden="true"></span>
-              <span v-if="card.key === 'totalPurchaseMoney'" class="dashboard-stat-symbol" aria-label="Naira">₦</span>
+              <span v-if="card.key === 'totalPurchaseMoney' || card.hasNaira" class="dashboard-stat-symbol" aria-label="Naira">₦</span>
               <span>{{ card.isStatic ? card.value : formatStatValue(card, animatedPanel[card.key]) }}</span>
-              <span v-if="card.key === 'totalPurchaseUnit'" class="dashboard-stat-unit">kWh</span>
+              <span v-if="card.key === 'totalPurchaseUnit' || card.unit" class="dashboard-stat-unit">{{ card.unit || 'kWh' }}</span>
             </span>
           </span>
         </BaseButton>
@@ -289,24 +289,21 @@ export default {
           },
           {
             type: 2,
-            key: "vendingStrategy",
-            label: "Vending Strategy",
-            icon: iconMarkup.ota,
+            key: "totalPurchaseUnit",
+            label: "Total Billed Energy",
+            icon: iconMarkup.unit,
             colorKey: "warning",
             color: theme.warning || "#f59e0b",
-            isStatic: true,
-            value: "Direct Credit"
+            unit: "kWh"
           },
           {
             type: 3,
-            key: "meshTelemetry",
-            label: "Mesh Telemetry",
-            icon: iconMarkup.sync,
+            key: "totalPurchaseMoney",
+            label: "Equivalent in Naira",
+            icon: iconMarkup.money,
             colorKey: "success",
             color: theme.success || "#10b981",
-            isStatic: true,
-            hasDot: true,
-            value: "Online"
+            hasNaira: true
           }
         ];
       }
@@ -369,7 +366,7 @@ export default {
     topChartOption() {
       let defaultTitle = dashboardChartTitles[this.activeType];
       if (this.isSparkMeter) {
-        const titles = ["Meter Registrations", "Purchase Orders Distribution", "Direct Credit Consumption (kWh)", "Revenue Trend (₦)"];
+        const titles = ["Meter Registrations", "Active Grid Sites", "Total Billed Energy (kWh)", "Equivalent in Naira (₦)"];
         defaultTitle = titles[this.activeType] || "SparkMeter Live Telemetry";
       }
       return createBarOption(dashboardSeries(this.top.labels, this.top.values), this.top.title || defaultTitle, this.chartTheme);

@@ -246,6 +246,54 @@ async function runBrowserAudit() {
       });
     }
 
+    if (url.includes("/dashboard/readpanelgroup")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: 0,
+          data: {
+            totalAccountCount: 3074,
+            totalPurchaseTimes: 18420,
+            totalPurchaseUnit: 142580.4,
+            totalPurchaseMoney: 52750000.00,
+            activeGridSites: 8,
+            vendingStrategy: "direct_credit"
+          },
+          result: {
+            totalAccountCount: 3074,
+            totalPurchaseTimes: 18420,
+            totalPurchaseUnit: 142580.4,
+            totalPurchaseMoney: 52750000.00,
+            activeGridSites: 8,
+            vendingStrategy: "direct_credit"
+          }
+        })
+      });
+    }
+
+    if (url.includes("/dashboard/readlinechart")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: 0,
+          data: [
+            ["2026-10-01", 1650000],
+            ["2026-10-02", 1780000],
+            ["2026-10-03", 1920000],
+            ["2026-10-04", 2150000]
+          ],
+          result: [
+            ["2026-10-01", 1650000],
+            ["2026-10-02", 1780000],
+            ["2026-10-03", 1920000],
+            ["2026-10-04", 2150000]
+          ]
+        })
+      });
+    }
+
     if (url.includes("/oem/telemetry/power-quality")) {
       return route.fulfill({
         status: 200,
@@ -402,6 +450,19 @@ async function runBrowserAudit() {
     assert(yDelta1 < 12, `Search and Bell should be horizontally aligned (delta=${yDelta1}px)`);
     assert(yDelta2 < 12, `Bell and User menu should be horizontally aligned (delta=${yDelta2}px)`);
     console.log("✓ Navbar layout audit passed: Single row without secondary wrapping (Y-alignment perfect)");
+
+    // AUDIT 1.5: Verify Dashboard Stat Cards for SparkMeter
+    await page.waitForSelector(".dashboard-card-grid");
+    const dashboardCardsText = await page.locator(".dashboard-card-grid").innerText();
+    console.log("DASHBOARD CARDS TEXT:\n", dashboardCardsText);
+    const lower = dashboardCardsText.toLowerCase();
+    assert(lower.includes("total billed energy"), "Dashboard must contain 'Total Billed Energy'");
+    assert(lower.includes("equivalent in naira"), "Dashboard must contain 'Equivalent in Naira'");
+    assert(lower.includes("kwh"), "Dashboard must display 'kWh' unit for billed energy");
+    assert(dashboardCardsText.includes("₦"), "Dashboard must display '₦' symbol for equivalent in Naira");
+    assert(!lower.includes("vending strategy"), "Dashboard must NOT contain 'Vending Strategy' card");
+    assert(!lower.includes("mesh telemetry"), "Dashboard must NOT contain 'Mesh Telemetry' card");
+    console.log("✓ SparkMeter Dashboard stat cards verified: 'Total Billed Energy (kWh)' and 'Equivalent in Naira (₦)' present, old status cards replaced");
 
     // AUDIT 2: Verify Sidebar has SparkMeter Smart Grid sections and NO STS routes
     const sidebarText = await page.locator(".sidebar-container").innerText();

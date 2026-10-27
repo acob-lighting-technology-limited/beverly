@@ -2911,11 +2911,11 @@ async function handleSparkmeterLineChart(request, requestData, oemTarget) {
     const base = [480, 520, 610, 490, 550, 580, 640, 710, 530, 560, 620, 590, 680, 720, 540, 510, 630, 670, 700, 560, 580, 640, 690, 730, 550, 580, 610, 660, 710, 620];
     yData = xData.map((_, idx) => base[idx % base.length]);
   } else if (type === 2) {
-    title = "SparkMeter Vended Energy (kWh)";
+    title = "Total Billed Energy (kWh)";
     const baseKwh = [4450, 4820, 5100, 4600, 4950, 5300, 5700, 6100, 4750, 4900, 5250, 5150, 5800, 6200, 4800, 4650, 5400, 5650, 5950, 4900, 5100, 5500, 5850, 6300, 4950, 5200, 5450, 5750, 6150, 5400];
     yData = xData.map((_, idx) => baseKwh[idx % baseKwh.length]);
   } else if (type === 3) {
-    title = "SparkMeter Purchase Money";
+    title = "Equivalent in Naira (₦)";
     const baseMoney = [1650000, 1780000, 1920000, 1710000, 1850000, 1980000, 2150000, 2350000, 1790000, 1860000, 2010000, 1950000, 2240000, 2410000, 1820000, 1750000, 2080000, 2190000, 2320000, 1880000, 1960000, 2120000, 2280000, 2480000, 1910000, 2020000, 2140000, 2260000, 2420000, 2100000];
     yData = xData.map((_, idx) => baseMoney[idx % baseMoney.length]);
   } else if (type === 4) {
