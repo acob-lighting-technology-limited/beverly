@@ -99,10 +99,27 @@ async function runTests() {
   assert.ok(dcData.kpis, "kpis object must be returned in load-curves");
   assert.ok(typeof dcData.kpis.peakDemandKw === "number", "peakDemandKw must be number");
   assert.ok(typeof dcData.kpis.baseloadKw === "number", "baseloadKw must be number");
+  assert.ok(typeof dcData.kpis.baseloadDemandKw === "number", "baseloadDemandKw alias must be number");
+  assert.equal(dcData.kpis.baseloadDemandKw, dcData.kpis.baseloadKw, "baseloadDemandKw must equal baseloadKw");
+  assert.ok(typeof dcData.kpis.avgDemandKw === "number", "avgDemandKw must be number");
+  assert.ok(typeof dcData.kpis.meanDemandKw === "number", "meanDemandKw alias must be number");
+  assert.equal(dcData.kpis.meanDemandKw, dcData.kpis.avgDemandKw, "meanDemandKw must equal avgDemandKw");
+  assert.ok(typeof dcData.kpis.totalEnergyKwh === "number" && dcData.kpis.totalEnergyKwh > 0, "totalEnergyKwh must be positive number");
+  assert.ok(typeof dcData.kpis.loadFactor === "number" && dcData.kpis.loadFactor > 0 && dcData.kpis.loadFactor <= 100, "loadFactor must be between 0 and 100");
+  
+  // Verify baseToPeakRatio formula eliminates NaN%
+  const calculatedBaseToPeak = Math.round((dcData.kpis.baseloadDemandKw / dcData.kpis.peakDemandKw) * 100);
+  assert.ok(!isNaN(calculatedBaseToPeak), "base-to-peak ratio must not be NaN");
+  assert.ok(calculatedBaseToPeak > 0 && calculatedBaseToPeak < 100, "base-to-peak ratio in valid percentage range");
+
   assert.ok(Array.isArray(dcData.points), "points must be array");
-  assert.ok(dcData.points.length > 0, "points must contain intervals");
+  assert.equal(dcData.points.length, 96, "points must contain exactly 96 15-minute intervals for 24h");
+  assert.ok(dcData.points[0].timestamp, "first point must have timestamp for CSV/Excel export");
+  assert.ok(!isNaN(Date.parse(dcData.points[0].timestamp)), "timestamp must be valid date");
+  assert.ok(typeof dcData.points[0].peakDemandKw === "number", "points must include peakDemandKw reference");
   assert.ok(Array.isArray(dcData.stationComparison), "stationComparison must be array");
-  console.log("✓ /api/oem/telemetry/load-curves passed contract validation");
+  assert.ok(dcData.stationComparison.length >= 8, "stationComparison must contain all mini-grid sites");
+  console.log("✓ /api/oem/telemetry/load-curves passed contract validation (all KPIs, dual aliases & intervals verified)");
 
   console.log("\n=======================================================");
   console.log("🎉 ALL SMART GRID TELEMETRY TDD TESTS PASSED! 🎉");
