@@ -189,26 +189,19 @@
                   </div>
                   <div class="bw-user-menu-separator"></div>
                   <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="openProfile">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                      <path d="M20 21a8 8 0 0 0-16 0"></path>
-                      <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>
                     <span>{{ translate('common.profile') }}</span>
                   </BaseButton>
                   <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="openSettings">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                      <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"></path>
-                      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .92V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.92 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.92-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .92-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.92V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .92 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.13.36.43.69.92 1H20a2 2 0 1 1 0 4h-.09c-.49.31-.79.64-.51 1z"></path>
-                    </svg>
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .92V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.92 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.92-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .92-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.92V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .92 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.13.36.43.69.92 1H20a2 2 0 1 1 0 4h-.09c-.49.31-.79.64-.51 1z"/></svg>
                     <span>{{ translate('common.settings') }}</span>
                   </BaseButton>
+                  <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="openGuide">
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h6M9 11h6"/></svg>
+                    <span>Beverly Guide</span>
+                  </BaseButton>
                   <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="switchOem">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                      <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-                      <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-                      <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-                      <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
-                    </svg>
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
                     <span>{{ translate('common.switchOem') }}</span>
                   </BaseButton>
                   <div class="user-theme-submenu">
@@ -244,29 +237,17 @@
                   </div>
                   <div class="bw-user-menu-separator"></div>
                   <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="openSearchFromMenu">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                      <circle cx="11" cy="11" r="7"></circle>
-                      <path d="m21 21-4.3-4.3"></path>
-                    </svg>
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                     <span>{{ translate('common.globalSearch') }}</span>
                     <kbd>Ctrl K</kbd>
                   </BaseButton>
                   <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="openFullscreenFromMenu">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                      <path d="M8 3H5a2 2 0 0 0-2 2v3"></path>
-                      <path d="M16 3h3a2 2 0 0 1 2 2v3"></path>
-                      <path d="M8 21H5a2 2 0 0 1-2-2v-3"></path>
-                      <path d="M16 21h3a2 2 0 0 0 2-2v-3"></path>
-                    </svg>
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
                     <span>{{ translate('common.fullscreen') }}</span>
                   </BaseButton>
                   <div class="bw-user-menu-separator"></div>
                   <BaseButton variant="quiet" class="bw-user-menu-item bw-user-menu-item--danger" role="menuitem" @click="handleSignOut">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                      <path d="m16 17 5-5-5-5"></path>
-                      <path d="M21 12H9"></path>
-                    </svg>
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
                     <span>{{ translate('common.signOut') }}</span>
                   </BaseButton>
                 </div>
@@ -314,6 +295,7 @@
           <RemoteRelayPage v-else-if="route.customComponent === 'RemoteRelayPage' || route.hash === '#/grid-control/remote-relay'" />
           <EnergyAuditPage v-else-if="route.customComponent === 'EnergyAuditPage' || route.hash === '#/analytics/energy-audit'" />
           <GatewayHealthPage v-else-if="route.customComponent === 'GatewayHealthPage' || route.hash === '#/mesh/gateways'" />
+          <GuidePage v-else-if="route.customComponent === 'GuidePage' || route.hash === '#/guide'" :route="route" />
           <TablePage v-else :route="route" />
         </main>
     </section>
@@ -373,6 +355,7 @@ import MeterKeyChangePage from "./components/MeterKeyChangePage.vue";
 import TablePage from "./components/TablePage.vue";
 import ProfilePage from "./components/ProfilePage.vue";
 import SettingsPage from "./components/SettingsPage.vue";
+import GuidePage from "./components/GuidePage.vue";
 import ToastNotification from "./components/ToastNotification.vue";
 import BaseButton from "./components/base/BaseButton.vue";
 import BaseIconButton from "./components/base/BaseIconButton.vue";
@@ -397,10 +380,7 @@ function savedSidebarWidth() {
 
 function savedSidebarCollapsed() {
   const value = localStorage.getItem(sidebarCollapsedKey);
-  // No stored preference yet → start collapsed (icon rail) so the shell opens
-  // compact on login. Once the user toggles, their choice is remembered below.
-  if (value === null) return true;
-  return value === "true";
+  return value === null ? true : value === "true";
 }
 import VendingMonitorPage from "./components/wallet/VendingMonitorPage.vue";
 import ReportsPage from "./components/ReportsPage.vue";
@@ -433,7 +413,7 @@ function normalizeThemeChoice(theme) {
 
 export default {
   name: "App",
-  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
+  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, GuidePage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
   data() {
     return {
       hash: window.location.hash || "#/login?redirect=%2Fdashboard",
@@ -489,22 +469,11 @@ export default {
 
       if (oem.vendingStrategy === "direct_credit" || oem.slug === "sparkmeter") {
         return {
-          remote_meter_task: false,
-          dlms_protocol: false,
-          dlt645_protocol: false,
-          gprs_support: false,
           wallet_vending: true,
           event_notification: true,
           tariff_management: true,
           load_profile: true,
-          firmware_update: false,
-          smart_grid_telemetry: true,
-          remote_relay_control: true,
-          grid_energy_audit: true,
-          mesh_network_health: true,
-          direct_credit_balance: true,
           ...raw,
-          // Explicit overrides ensure STS token & direct-credit incompatible features remain strictly hidden
           remote_meter_task: false,
           dlms_protocol: false,
           dlt645_protocol: false,
@@ -520,9 +489,6 @@ export default {
 
       if (oem.slug === "miyaji_ev") {
         return {
-          remote_meter_task: false,
-          dlms_protocol: false,
-          dlt645_protocol: false,
           gprs_support: true,
           wallet_vending: true,
           event_notification: true,
@@ -1079,6 +1045,12 @@ export default {
       this.closeUserMenu();
       this.profileOpen = false;
       this.settingsOpen = true;
+    },
+    openGuide() {
+      this.closeUserMenu();
+      this.profileOpen = false;
+      this.settingsOpen = false;
+      window.location.hash = '#/guide';
     },
     openPrimaryCreate() {
       if (!this.primaryCreateTarget) return;
