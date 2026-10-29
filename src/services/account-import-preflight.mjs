@@ -1,4 +1,5 @@
 import { postApi } from "./api.js";
+import { stationScopeKey } from "@beverly/tokens/station-identity";
 
 const indexPageSize = 500;
 const maxIndexPages = 60;
@@ -54,7 +55,7 @@ export function accountPreflightIssue(row, customer, meter) {
   }
   const customerStation = String(customer.stationId || "").trim();
   const meterStation = String(meter.stationId || "").trim();
-  if (customerStation && meterStation && customerStation.toUpperCase() !== meterStation.toUpperCase()) {
+  if (customerStation && meterStation && stationScopeKey(customerStation) !== stationScopeKey(meterStation)) {
     return {
       kind: "station-mismatch",
       blocking: true,
@@ -71,7 +72,7 @@ export function accountPreflightIssue(row, customer, meter) {
     };
   }
   const rowStation = String(row.stationId || "").trim();
-  if (rowStation && customerStation && rowStation.toUpperCase() !== customerStation.toUpperCase()) {
+  if (rowStation && customerStation && stationScopeKey(rowStation) !== stationScopeKey(customerStation)) {
     return {
       kind: "row-station-corrected",
       blocking: false,

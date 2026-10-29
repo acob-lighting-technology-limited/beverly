@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { buildWritePayload, confirmationMessage, isWriteEndpoint, needsAuthorizationPassword, usesArrayPayload, validateWriteForm } from "../src/services/write-helpers.mjs";
+import { buildWritePayload, confirmationMessage, isWriteEndpoint, needsAuthorizationPassword, normalizeAccountCtRatio, usesArrayPayload, validateWriteForm } from "../src/services/write-helpers.mjs";
 
 const gatewayRoute = { hash: "#/management/gateway" };
 const accountRoute = { hash: "#/management/account" };
@@ -18,7 +18,19 @@ assert.strictEqual(validateWriteForm("Add", accountRoute, { customerId: "1", met
 assert.strictEqual(validateWriteForm("Add", null, { customerId: "", meterId: "2", authorizationPassword: "secret" }, [{ name: "customerId", required: true }, { name: "meterId", required: true }]), "customerId is required");
 assert.strictEqual(validateWriteForm("Add", null, { customerId: "1", meterId: "2" }, [{ name: "customerId", required: true }, { name: "meterId", required: true }]), "authorizationPassword is required");
 assert.strictEqual(validateWriteForm("Delete", gatewayRoute, { gatewayId: "GW-1", confirmDelete: false }, [{ name: "gatewayId", required: true }]), "delete confirmation is required");
-assert.deepStrictEqual(buildWritePayload("/api/account/create", { customerId: "1", authorizationPassword: "secret", confirmationText: "ok" }), [{ customerId: "1" }]);
+assert.deepStrictEqual(buildWritePayload("/api/account/create", { customerId: "1", authorizationPassword: "secret", confirmationText: "ok" }), [{ customerId: "1", ctRatio: "1" }]);
+assert.deepStrictEqual(
+  buildWritePayload("/api/account/create", { customerId: "1", meterId: "M-1", tariffId: "RESIDENTIAL", stationId: "MUSHA", ctRatio: "" }),
+  [{ customerId: "1", meterId: "M-1", tariffId: "RESIDENTIAL", stationId: "MUSHA", ctRatio: "1" }]
+);
+assert.strictEqual(normalizeAccountCtRatio("200/5"), "40");
+assert.strictEqual(normalizeAccountCtRatio("0"), "");
+assert.strictEqual(
+  validateWriteForm("Add", accountRoute, { customerId: "1", meterId: "M-1", tariffId: "RESIDENTIAL", stationId: "MUSHA", ctRatio: "0" }, [
+    { name: "customerId", required: true }, { name: "meterId", required: true }, { name: "tariffId", required: true }, { name: "stationId", required: true }, { name: "ctRatio", required: true }
+  ]),
+  "ctRatio must be a positive number or ratio"
+);
 assert.deepStrictEqual(buildWritePayload("/api/token/creditToken/generate", { customerId: "1", authorizationPassword: "secret" }), { customerId: "1" });
 assert.deepStrictEqual(
   buildWritePayload(

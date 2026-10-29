@@ -47,6 +47,13 @@ function request(port, method, targetPath, body, headers = {}) {
   });
 }
 
+async function readBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const text = Buffer.concat(chunks).toString("utf8");
+  return text ? JSON.parse(text) : null;
+}
+
 function createProxyServer() {
   return startServer((req, res) => {
     const apiResponse = {
@@ -93,8 +100,11 @@ async function main() {
   if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 
   let rejectCreateWithBusinessError = false;
-  const upstream = await startServer((req, res) => {
+  const receivedCreates = [];
+  const upstream = await startServer(async (req, res) => {
     if (req.url.startsWith("/api/account/create")) {
+      const payload = await readBody(req);
+      receivedCreates.push(...(Array.isArray(payload) ? payload : [payload]));
       if (rejectCreateWithBusinessError) {
         // Upstream answered — it just refused the data. Mirrors the real code 99
         // "The meter and the customer are not under the same Station."
@@ -131,7 +141,6 @@ async function main() {
         customerId: "CUS-9001",
         meterId: "MTR-9001",
         tariffId: "RESIDENTIAL",
-        ctRatio: "200/5",
         stationId: "TUNGA",
         remark: "fallback test"
       }], {
@@ -143,6 +152,7 @@ async function main() {
       assert.strictEqual(created.body.code, 202);
       assert.strictEqual(created.body._proxy.source, "local-queue");
       assert.strictEqual(created.body.result.synced, false);
+      assert.strictEqual(receivedCreates[0].ctRatio, "1", "blank account CT ratio must use the direct-meter default upstream");
 
       const queue = await request(proxy.address().port, "POST", "/api/local/accountBindings/read", {
         status: "pending"

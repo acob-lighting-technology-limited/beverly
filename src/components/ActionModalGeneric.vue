@@ -36,7 +36,7 @@
             <em v-if="field.required" class="req-star">*</em>{{ field.label }}
           </span>
           <!-- Station select -->
-          <BaseSelect v-if="field.type === 'select'" v-model="form[field.name]" :name="field.name">
+          <BaseSelect v-if="field.type === 'select'" v-model="form[field.name]" :name="field.name" :disabled="accountStationIsDerived(field)">
             <option value="">Please Select</option>
             <option v-for="option in fieldOptions(field)" :key="option.value" :value="option.value">{{ option.label }}</option>
           </BaseSelect>
@@ -112,6 +112,7 @@
           </div>
           <!-- Default text input -->
           <BaseInput v-else v-model="form[field.name]" :name="field.name" :readonly="field.readonly" :class="{ 'input-readonly': field.readonly }" autocomplete="off" />
+          <small v-if="field.help" class="modal-field-help">{{ field.help }}</small>
         </div>
         <label v-if="action === 'Delete'" class="modal-field modal-span-two">
           <span>Delete Confirmation</span>
@@ -338,6 +339,11 @@ export default {
       if (Array.isArray(field.options) && field.options.length) return field.options;
       return [];
     },
+    accountStationIsDerived(field) {
+      return this.isAccountRoute
+        && field.name === "stationId"
+        && Boolean(this.form.customerStationId || this.form.meterStationId);
+    },
     async loadRoles() {
       this.rolesLoading = true;
       try {
@@ -475,16 +481,6 @@ export default {
         return;
       }
       try {
-        if (this.route.hash.includes("management/account") && (this.action === "Add" || this.action === "Edit")) {
-          const customerStation = this.form.customerStationId || "";
-          const meterStation = this.form.meterStationId || "";
-          if (customerStation && meterStation && customerStation !== meterStation) {
-            const msg = `Mismatch: Customer is in ${customerStation}, Meter is in ${meterStation}`;
-            this.error = msg;
-            toastError(msg);
-            return;
-          }
-        }
         let importRows = this.importRows;
         if (this.action === "Import" && this.isAccountRoute) {
           if (this.createMissingCustomers && this.preflightMissingCustomers.length) {

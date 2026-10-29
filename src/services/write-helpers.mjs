@@ -1,5 +1,6 @@
 // @ts-check
 import { isManagementRoute } from "./management-forms.mjs";
+import { stationScopeKey } from "@beverly/tokens/station-identity";
 
 const crudPattern = /\/(?:create|update|delete|import)\w*\b/i;
 const writePattern = /\/(?:create|update|delete|import|generate|cancel|reset|modify|addread|upload)\w*\b/i;
@@ -32,6 +33,19 @@ export function confirmationMessage(action = "", routeTitle = "") {
   if (action === "Import" && routeTitle === "File Upload") return `Confirm upload for ${routeTitle}`;
   if (action === "Import") return `Confirm import for ${routeTitle}`;
   return `Confirm ${action.toLowerCase()} for ${routeTitle}`;
+}
+
+/** @param {unknown} value */
+export function normalizeAccountCtRatio(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "1";
+  const parts = text.split("/").map((part) => Number(part.trim()));
+  const ratio = parts.length === 1
+    ? Number(parts[0])
+    : parts.length === 2 && Number(parts[1]) !== 0
+      ? Number(parts[0]) / Number(parts[1])
+      : NaN;
+  return Number.isFinite(ratio) && ratio > 0 ? String(ratio) : "";
 }
 
 /**
@@ -69,6 +83,20 @@ export function validateWriteForm(action, route, form, fields) {
     if (values.lng !== "" && values.lng !== undefined && values.lng !== null) {
       const longitude = Number(values.lng);
       if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return "lng must be between -180 and 180";
+    }
+  }
+
+  if (route?.hash === "#/management/account" && ["Add", "Edit"].includes(action)) {
+    if (!normalizeAccountCtRatio(values.ctRatio)) return "ctRatio must be a positive number or ratio";
+    const customerStation = String(values.customerStationId || "").trim();
+    const meterStation = String(values.meterStationId || "").trim();
+    const stationId = String(values.stationId || "").trim();
+    if (customerStation && meterStation && stationScopeKey(customerStation) !== stationScopeKey(meterStation)) {
+      return `Mismatch: Customer is in ${customerStation}, Meter is in ${meterStation}`;
+    }
+    const assignedStation = meterStation || customerStation;
+    if (assignedStation && stationId && stationScopeKey(assignedStation) !== stationScopeKey(stationId)) {
+      return `Station must match the selected record: ${assignedStation}`;
     }
   }
 
@@ -153,6 +181,10 @@ export function buildWritePayload(endpoint, form = {}, fields = []) {
       continue;
     }
     payload[key] = normalizeWriteValue(endpoint, key, value);
+  }
+  if (/\/api\/account\/(?:create|update)\b/i.test(endpoint)) {
+    const ctRatio = normalizeAccountCtRatio(payload.ctRatio);
+    if (ctRatio) payload.ctRatio = ctRatio;
   }
   return usesArrayPayload(endpoint) ? [payload] : payload;
 }
