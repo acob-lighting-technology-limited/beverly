@@ -107,7 +107,7 @@ function selectFaqTab(id: string) {
             </Eyebrow>
 
             <MaskText
-              text="One grid. Every energy workflow."
+              text="Prepayment vending, live telemetry, and energy wallets."
               as="h1"
               class="guide-h1 font-bold tracking-tight text-foreground"
               :delay="0.1"
@@ -115,8 +115,7 @@ function selectFaqTab(id: string) {
 
             <Reveal :delay="0.3">
               <p class="guide-lead text-muted-foreground mt-4 sm:mt-6 text-base sm:text-lg">
-                Beverly is the operational nervous system for your smart mini-grid infrastructure.
-                From Calinmeter and SparkMeter token generation to real-time IoT power quality telemetry and double-entry energy wallets—everything connects here.
+                Manage STS prepayment tokens, track hourly power quality from field meters, and balance station accounts without spreadsheets.
               </p>
             </Reveal>
 
@@ -161,10 +160,10 @@ function selectFaqTab(id: string) {
             <div class="max-w-2xl mb-8">
               <Eyebrow>The shift</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                Why mini-grids run on Beverly.
+                From paper logbooks to live meter controls.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Energy distribution in remote and commercial markets used to mean manual scratch tokens, lost vending slips, and unmetered bypass. Beverly replaces guesswork with certainty.
+                Managing remote mini-grids used to mean manual scratch cards, unrecorded vends, and undetected bypass. Beverly provides direct meter control and verified accounting.
               </p>
             </div>
           </Reveal>
@@ -196,10 +195,10 @@ function selectFaqTab(id: string) {
             <div class="max-w-2xl mb-10">
               <Eyebrow>Module directory</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                Your modules.
+                Operational modules.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Every tool is built around an operational task: issuing tokens, balancing feeder meters, reviewing audits, and reconciling daily cash flows.
+                Every tool handles an operational duty: generating STS tokens, inspecting feeder demand, approving equipment, and balancing cash ledgers.
               </p>
             </div>
           </Reveal>
@@ -296,10 +295,10 @@ function selectFaqTab(id: string) {
             <div class="max-w-2xl mb-10">
               <Eyebrow>Architecture</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                Built for mission-critical reliability.
+                Engineered for remote sites and weak networks.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Mini-grids operate in challenging network conditions. Beverly separates offline STS vending from cloud telemetry aggregation so field tokens vend reliably even during internet dropouts.
+                Mini-grids face frequent network dropouts. Beverly generates offline-capable STS tokens at the meter while syncing load telemetry whenever connectivity restores.
               </p>
             </div>
           </Reveal>
@@ -351,10 +350,10 @@ function selectFaqTab(id: string) {
             <div class="max-w-2xl mb-10">
               <Eyebrow>Start here</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                Your first week in Beverly.
+                Getting started on station operations.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Follow this quick sequence to get comfortable navigating your stations, issuing tokens, inspecting feeder demand, and verifying settlement accounts.
+                A straightforward checklist to verify your assigned stations, issue a test token, inspect telemetry, and reconcile daily collections.
               </p>
             </div>
           </Reveal>
@@ -399,10 +398,10 @@ function selectFaqTab(id: string) {
             <div class="max-w-2xl mb-10">
               <Eyebrow>Questions</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                Things people ask.
+                Frequently asked questions.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Common questions about STS tokens, offline operation, relay disconnects, and regulatory compliance.
+                Practical guidance on STS tokens, Key Change sequences, tamper detection, and accounting procedures.
               </p>
             </div>
           </Reveal>
@@ -416,6 +415,8 @@ function selectFaqTab(id: string) {
                   :key="grp.id"
                   role="tab"
                   :aria-selected="grp.id === activeFaqTab"
+                  :aria-controls="`faq-panel-${grp.id}`"
+                  :id="`faq-tab-${grp.id}`"
                   type="button"
                   class="guide-faq-tab flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium text-left transition-colors"
                   :class="grp.id === activeFaqTab ? 'bg-primary text-primary-foreground font-semibold' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'"
@@ -434,9 +435,14 @@ function selectFaqTab(id: string) {
 
             <!-- Accordion Items (Right col) -->
             <div class="lg:col-span-8">
-              <div role="tabpanel" class="space-y-3">
+              <div
+                role="tabpanel"
+                :id="`faq-panel-${currentFaqGroup.id}`"
+                :aria-labelledby="`faq-tab-${currentFaqGroup.id}`"
+                class="space-y-3"
+              >
                 <div
-                  v-for="item in currentFaqGroup.items"
+                  v-for="(item, idx) in currentFaqGroup.items"
                   :key="item.q"
                   class="rounded-xl border border-border bg-card overflow-hidden transition-all"
                   :class="{ 'border-primary/40': openQuestion === item.q }"
@@ -445,6 +451,8 @@ function selectFaqTab(id: string) {
                     type="button"
                     class="w-full flex items-center justify-between p-5 text-left transition-colors hover:bg-muted/30"
                     :aria-expanded="openQuestion === item.q"
+                    :aria-controls="`faq-answer-${idx}`"
+                    :id="`faq-question-${idx}`"
                     @click="toggleQuestion(item.q)"
                   >
                     <span class="text-base font-semibold text-foreground pr-4">
@@ -453,6 +461,7 @@ function selectFaqTab(id: string) {
                     <span
                       class="flex-shrink-0 w-6 h-6 rounded-full border border-border flex items-center justify-center text-muted-foreground transition-transform duration-200"
                       :class="{ 'rotate-45 bg-primary border-primary text-primary-foreground': openQuestion === item.q }"
+                      aria-hidden="true"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                         <line x1="12" y1="5" x2="12" y2="19" />
@@ -463,6 +472,9 @@ function selectFaqTab(id: string) {
 
                   <div
                     v-show="openQuestion === item.q"
+                    :id="`faq-answer-${idx}`"
+                    role="region"
+                    :aria-labelledby="`faq-question-${idx}`"
                     class="px-5 pb-5 text-sm text-muted-foreground leading-relaxed border-t border-border/50 pt-4"
                   >
                     {{ item.a }}
@@ -480,11 +492,10 @@ function selectFaqTab(id: string) {
           <div class="relative z-10 max-w-2xl mx-auto">
             <Eyebrow class="justify-center mb-3">Secured by design</Eyebrow>
             <h2 class="guide-h2 text-foreground font-semibold mb-3">
-              Need a hand? You're covered.
+              Operational Support & Help Desk
             </h2>
             <p class="guide-lead text-muted-foreground mx-auto mb-8">
-              Chat directly with AcoBot for quick answers, or raise a Help Desk ticket when field equipment requires investigation.
-              Your data stays protected the whole way.
+              If you run into issues on site or need assistance with a disputed payment, submit a support ticket or reach out to the operations team.
             </p>
 
             <ul class="flex flex-wrap justify-center gap-2 mb-8" aria-label="Security standards">
