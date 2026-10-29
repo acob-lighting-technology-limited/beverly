@@ -5,6 +5,7 @@ import AppShell from '../components/AppShell.vue';
 import StationMultiSelect from '../components/StationMultiSelect.vue';
 import { api, shortDate } from '../lib/api';
 import { useStaffAuthStore } from '../stores/auth';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 interface PermissionCatalogItem {
@@ -184,7 +185,7 @@ function permissionCount(roleKey: string) { return permissionCountByRole.value.g
 function permissionGroups(roleKey: string) { return [...(permissionGroupsByRole.value.get(roleKey) ?? [])]; }
 function stationLabel(user: StaffRow) {
     if (user.station_ids?.includes('*')) return 'All stations';
-    return (user.station_ids?.length ? user.station_ids : user.station_id ? [user.station_id] : []).join(', ') || 'Unassigned';
+    return (user.station_ids?.length ? user.station_ids : user.station_id ? [user.station_id] : []).map(stationDisplayLabel).join(', ') || 'Unassigned';
 }
 function accountStatus(user: StaffRow) {
     if (staffStatusLoading.value) return 'Syncing';
@@ -686,7 +687,7 @@ onMounted(() => { window.addEventListener('beforeunload', warnUnsaved); void loa
                   <div><dt>Staff</dt><dd>{{ draft.fullName }}</dd></div>
                   <div><dt>Email</dt><dd>{{ draft.email }}</dd></div>
                   <div><dt>Role</dt><dd>{{ roles.find(r => r.role_key === draft.roleKey)?.role_name }}</dd></div>
-                  <div><dt>Stations</dt><dd>{{ draft.allStations ? 'All current and future stations' : draft.stationIds.join(', ') }}</dd></div>
+                  <div><dt>Stations</dt><dd>{{ draft.allStations ? 'All current and future stations' : draft.stationIds.map(stationDisplayLabel).join(', ') }}</dd></div>
                   <div class="ac-invite-email"><dt>Email invitation</dt><dd>One secure invitation lets the staff member create their password and activate their account.</dd></div>
                 </dl>
               </div>

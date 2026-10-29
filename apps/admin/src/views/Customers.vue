@@ -16,6 +16,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
 import WalletDataViewSwitch from '@beverly/tokens/WalletDataViewSwitch.vue';
@@ -168,7 +169,7 @@ function exportPdfDoc() {
             title: 'Customers',
             columns: ['Name', 'Station IDs', 'Phone', 'KYC', 'Status', 'Balance'],
             rows: customers.value.map((c) => [
-                c.full_name ?? '—', c.station_ids.join(', ') || '—', c.phone ?? '—', `T${c.kyc_tier}`, c.status, naira(c.balance_minor),
+                c.full_name ?? '—', c.station_ids.map(stationDisplayLabel).join(', ') || '—', c.phone ?? '—', `T${c.kyc_tier}`, c.status, naira(c.balance_minor),
             ]),
         }],
     });
@@ -305,7 +306,7 @@ watch([fStatus, fTier], () => loadList());
                 <div class="bw-mono row-sub">{{ c.email || c.id.slice(0, 8) }}</div>
               </td>
               <td class="bw-mono">{{ c.phone || '—' }}</td>
-              <td><span class="bw-badge info bw-mono">{{ c.station_ids.join(', ') || 'Unassigned' }}</span></td>
+              <td><span class="bw-badge info bw-mono">{{ c.station_ids.map(stationDisplayLabel).join(', ') || 'Unassigned' }}</span></td>
               <td><span :class="['bw-badge', tierBadge(c.kyc_tier)]">Tier {{ c.kyc_tier }}</span></td>
               <td class="bw-money" style="text-align: right">{{ naira(c.balance_minor) }}</td>
               <td><span :class="['bw-badge', statusBadge(c.status)]">{{ c.status }}</span></td>
@@ -338,7 +339,7 @@ watch([fStatus, fTier], () => loadList());
           <div class="cc-grid">
             <div>
               <p class="cc-label">Station IDs</p>
-              <span class="bw-badge info bw-mono">{{ c.station_ids.join(', ') || 'Unassigned' }}</span>
+              <span class="bw-badge info bw-mono">{{ c.station_ids.map(stationDisplayLabel).join(', ') || 'Unassigned' }}</span>
             </div>
             <div>
               <p class="cc-label">Balance</p>

@@ -4,6 +4,7 @@ import AppShell from '../components/AppShell.vue';
 import { api, naira } from '../lib/api';
 import { downloadAuthedCsv } from '../lib/export';
 import { downloadReportPdf, type ReportFamily } from '../lib/report-pdf';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 type ReportAudience = 'all' | 'vendor' | 'customer';
 type ReportGrouping = 'site' | 'vendor' | 'customer';
@@ -611,7 +612,7 @@ onMounted(() => {
         <select v-model="siteId" class="bw-input" :disabled="loading" @change="selectSite">
           <option value="">All permitted sites</option>
           <option v-for="station in stations" :key="station.stationId" :value="station.stationId">
-            {{ station.name }} · {{ station.stationId }}
+            {{ stationDisplayLabel(station.name || station.stationId) }}
           </option>
         </select>
       </label>
@@ -856,7 +857,7 @@ onMounted(() => {
           <thead><tr><th>Station</th><th>Vends</th><th>Revenue</th></tr></thead>
           <tbody>
             <tr v-for="s in report?.breakdowns.topStations" :key="s.station_id">
-              <td class="bw-mono bw-text-sm">{{ STATION_NAMES[s.station_id] || s.station_id }}</td>
+              <td class="bw-mono bw-text-sm">{{ stationDisplayLabel(STATION_NAMES[s.station_id] || s.station_id) }}</td>
               <td>{{ fmtNum(s.count) }}</td>
               <td>{{ fmtMoney(s.revenueMinor) }}</td>
             </tr>

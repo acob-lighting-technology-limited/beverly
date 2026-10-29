@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
@@ -363,7 +364,7 @@ function createAnother() {
                 <dt>CAC</dt><dd class="bw-mono">{{ form.cacNumber || '—' }}</dd>
                 <dt>TIN</dt><dd class="bw-mono">{{ form.tin || '—' }}</dd>
                 <dt>Address</dt><dd>{{ form.operatingAddress || '—' }}</dd>
-                <dt>Stations</dt><dd class="bw-mono">{{ form.operatingStations.length ? form.operatingStations.join(', ') : '—' }}</dd>
+                <dt>Stations</dt><dd class="bw-mono">{{ form.operatingStations.length ? form.operatingStations.map(stationDisplayLabel).join(', ') : '—' }}</dd>
               </dl>
             </div>
 

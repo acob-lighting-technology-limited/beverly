@@ -22,6 +22,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
 import WalletDataViewSwitch from '@beverly/tokens/WalletDataViewSwitch.vue';
 import RemoteSendTrackerModal from '@beverly/tokens/RemoteSendTrackerModal.vue';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import WalletRowActions from '@beverly/tokens/WalletRowActions.vue';
 import WalletTablePagination from '@beverly/tokens/WalletTablePagination.vue';
 import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
@@ -168,7 +169,7 @@ const purchaseExportColumns: WalletExportColumn<Purchase>[] = [
     { key: 'buyer', header: 'Customer', value: (p) => p.customer_name ?? '' },
     { key: 'meter_id', header: 'Meter', value: (p) => p.meter_id },
     { key: 'meter_type', header: 'Phase', value: (p) => meterTypeLabel(p.meter_type) },
-    { key: 'station_id', header: 'StationID', value: (p) => p.station_id ?? '' },
+    { key: 'station_id', header: 'Station', value: (p) => stationDisplayLabel(p.station_id) },
     { key: 'purchase_way', header: 'Purchase Way', value: (p) => p.purchase_way ?? p.purchase_mode },
     { key: 'wallet_name', header: 'Wallet', value: (p) => p.wallet_name ?? '' },
     { key: 'amount', header: 'Amount (NGN)', value: (p) => (p.amount_minor ?? 0) / 100 },
@@ -514,7 +515,7 @@ watch([fStatus, fActorType], () => loadList());
             subtitle="Choose exact transaction contents."
             :loading="loading"
             :status-options="purchaseStatusOptions"
-            :station-options="stationOptions.map(item => ({ value: item.stationId, label: `${item.name || item.stationId} · ${item.stationId}` }))"
+            :station-options="stationOptions.map(item => ({ value: item.stationId, label: stationDisplayLabel(item.name || item.stationId) }))"
             :actor-options="purchaseActorOptions"
             show-actor-type-selector
             :initial-status="fStatus"
@@ -535,7 +536,7 @@ watch([fStatus, fActorType], () => loadList());
         <div class="filter-grid">
           <div><label class="bw-label">Status</label><select class="bw-input" v-model="fStatus"><option value="">All</option><option v-for="option in purchaseStatusOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></div>
           <div><label class="bw-label">Actor</label><select class="bw-input" v-model="fActorType"><option value="">All</option><option value="vendor">Vendor</option><option value="customer">Customer</option></select></div>
-          <div><label class="bw-label">Station</label><select class="bw-input bw-mono" v-model="fStation"><option value="">All</option><option v-for="station in stationOptions" :key="station.stationId" :value="station.stationId">{{ station.name || station.stationId }}{{ station.oemName ? ` · ${station.oemName}` : '' }}</option></select></div>
+          <div><label class="bw-label">Station</label><select class="bw-input bw-mono" v-model="fStation"><option value="">All</option><option v-for="station in stationOptions" :key="station.stationId" :value="station.stationId">{{ stationDisplayLabel(station.name || station.stationId) }}{{ station.oemName ? ` · ${station.oemName}` : '' }}</option></select></div>
           <div><label class="bw-label">Phase</label><select class="bw-input" v-model="fMeterType"><option value="">All</option><option value="single_phase">Single Phase</option><option value="three_phase">Three Phase</option></select></div>
           <div><label class="bw-label">Search</label><input class="bw-input bw-mono" v-model="fQ" placeholder="meter / customer / id" @keyup.enter="loadList()" /></div>
           <div><label class="bw-label">Since</label><input class="bw-input" type="datetime-local" v-model="fSince" /></div>
@@ -578,7 +579,7 @@ watch([fStatus, fActorType], () => loadList());
                   {{ meterTypeLabel(p.meter_type) }}
                 </span>
               </td>
-              <td class="bw-mono bw-muted">{{ p.station_id || '—' }}</td>
+              <td class="bw-mono bw-muted">{{ stationDisplayLabel(p.station_id) || '—' }}</td>
               <td class="bw-money" style="text-align: right">{{ naira(p.amount_minor) }}</td>
               <td class="bw-money" style="text-align: right">{{ naira(p.vat_amount_minor ?? 0) }}</td>
               <td><span :class="['bw-badge', statusBadge(p.status)]">{{ p.status }}</span></td>
@@ -622,7 +623,7 @@ watch([fStatus, fActorType], () => loadList());
           </div>
           <div class="pc-row">
             <span class="pc-label">Station</span>
-            <span class="bw-mono">{{ p.station_id || '—' }}</span>
+            <span class="bw-mono">{{ stationDisplayLabel(p.station_id) || '—' }}</span>
           </div>
           <div class="pc-row">
             <span class="pc-label">Phase</span>
@@ -714,7 +715,7 @@ watch([fStatus, fActorType], () => loadList());
                 <dt>Wallet</dt><dd>{{ detail.purchase.wallet_name || '—' }}</dd>
                 <dt>Meter</dt><dd class="bw-mono">{{ detail.purchase.meter_id }}</dd>
                 <dt>Phase</dt><dd>{{ meterTypeLabel(detail.purchase.meter_type) }}</dd>
-                <dt>Station</dt><dd class="bw-mono">{{ detail.purchase.station_id || '—' }}</dd>
+                <dt>Station</dt><dd class="bw-mono">{{ stationDisplayLabel(detail.purchase.station_id) || '—' }}</dd>
                 <dt>Mode</dt><dd>{{ detail.purchase.purchase_mode }}</dd>
                 <dt>Amount paid</dt><dd>{{ naira(detail.purchase.amount_minor) }}</dd>
                 <dt>Energy value</dt><dd>{{ naira(detail.purchase.energy_amount_minor ?? 0) }}</dd>

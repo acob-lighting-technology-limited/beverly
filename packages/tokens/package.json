@@ -20,6 +20,8 @@
     "NotificationDetailModal.vue.d.ts",
     "notification-content.js",
     "notification-content.d.ts",
+    "station-identity.js",
+    "station-identity.d.ts",
     "WalletPagination.vue",
     "WalletPagination.vue.d.ts",
     "WalletTablePagination.vue",
@@ -128,6 +130,11 @@
       "types": "./notification-content.d.ts",
       "import": "./notification-content.js",
       "default": "./notification-content.js"
+    },
+    "./station-identity": {
+      "types": "./station-identity.d.ts",
+      "import": "./station-identity.js",
+      "default": "./station-identity.js"
     },
     "./vending-vat": {
       "types": "./vending-vat.d.ts",

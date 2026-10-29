@@ -10,6 +10,7 @@ import { naira, kwh } from '../lib/format';
 import { downloadReceipt, purchaseReceipt, viewReceipt } from '../lib/receipts';
 import { presentVendorVendFailure } from '../lib/vend-errors';
 import { useVendorAuthStore } from '../stores/auth';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 type Step = 'meter' | 'amount' | 'preview' | 'success' | 'failed';
 
@@ -869,7 +870,7 @@ async function remoteSendGeneratedToken() {
           <div><span>Customer</span><strong>{{ meter?.customerName }}</strong></div>
           <div><span>Meter</span><strong class="bw-mono">{{ meter?.meterId }}</strong></div>
           <div><span>Tariff</span><strong>{{ meter?.tariffId }}</strong></div>
-          <div><span>Station</span><strong>{{ meter?.stationId }}</strong></div>
+          <div><span>Station</span><strong>{{ stationDisplayLabel(meter?.stationId) }}</strong></div>
           <div><span>Phase</span><strong>{{ meterTypeLabel(meter?.isThreePhase) }}</strong></div>
         </section>
 
@@ -923,7 +924,7 @@ async function remoteSendGeneratedToken() {
           <div class="bw-row"><span class="bw-muted">Customer</span><span class="bw-spacer"></span><strong>{{ meter?.customerName }}</strong></div>
           <div class="bw-row"><span class="bw-muted">Meter</span><span class="bw-spacer"></span><span class="bw-mono">{{ meter?.meterId }}</span></div>
           <div class="bw-row"><span class="bw-muted">Phase</span><span class="bw-spacer"></span><span>{{ meterTypeLabel(meter?.isThreePhase) }}</span></div>
-          <div class="bw-row"><span class="bw-muted">Station</span><span class="bw-spacer"></span><span>{{ meter?.stationId }}</span></div>
+          <div class="bw-row"><span class="bw-muted">Station</span><span class="bw-spacer"></span><span>{{ stationDisplayLabel(meter?.stationId) }}</span></div>
           <div class="bw-row"><span class="bw-muted">Tariff</span><span class="bw-spacer"></span><span>{{ meter?.tariffId }}</span></div>
           <div v-if="meter?.vendingStrategy === 'direct_credit' || (meter as any)?.vending_strategy === 'direct_credit'" class="bw-row"><span class="bw-muted">Credit Type</span><span class="bw-spacer"></span><span class="bw-badge success">Direct Meter Credit</span></div>
         </div>
@@ -986,7 +987,7 @@ async function remoteSendGeneratedToken() {
               <div><dt>Meter</dt><dd class="bw-mono">{{ meter?.meterId }}</dd></div>
               <div><dt>Amount</dt><dd>{{ naira(preview?.amountMinor) }}</dd></div>
               <div><dt>Phase</dt><dd>{{ meterTypeLabel(meter?.isThreePhase) }}</dd></div>
-              <div><dt>Station</dt><dd>{{ meter?.stationId }}</dd></div>
+              <div><dt>Station</dt><dd>{{ stationDisplayLabel(meter?.stationId) }}</dd></div>
               <div><dt>Energy value</dt><dd>{{ naira(result?.purchaseOrder?.energy_amount_minor ?? preview?.energyAmountMinor) }}</dd></div>
               <div><dt>VAT ({{ Number(result?.purchaseOrder?.vat_rate_basis_points ?? preview?.vatRateBasisPoints ?? 0) / 100 }}%)</dt><dd>{{ naira(result?.purchaseOrder?.vat_amount_minor ?? preview?.taxAmountMinor) }}</dd></div>
             </dl>
@@ -1027,7 +1028,7 @@ async function remoteSendGeneratedToken() {
             <dl class="receipt-facts" style="margin-top: var(--s-4); border-top: 1px solid var(--border); padding-top: var(--s-3)">
               <div><dt>Customer</dt><dd>{{ meter?.customerName }}</dd></div>
               <div><dt>Meter ID</dt><dd class="bw-mono">{{ meter?.meterId }}</dd></div>
-              <div><dt>Site / Station</dt><dd>{{ meter?.stationId }}</dd></div>
+              <div><dt>Site / Station</dt><dd>{{ stationDisplayLabel(meter?.stationId) }}</dd></div>
               <div><dt>Tariff</dt><dd>{{ meter?.tariffId }}</dd></div>
               <div><dt>Energy Value</dt><dd>{{ naira(result?.purchaseOrder?.energy_amount_minor ?? preview?.energyAmountMinor) }}</dd></div>
               <div><dt>Delivery</dt><dd><span class="bw-badge success">Directly Credited (Over-the-Air)</span></dd></div>
@@ -1088,7 +1089,7 @@ async function remoteSendGeneratedToken() {
             <div><dt>Customer</dt><dd>{{ failedVend?.customerName || meter?.customerName || '—' }}</dd></div>
             <div><dt>Meter</dt><dd class="bw-mono">{{ failedVend?.meterId || meter?.meterId || '—' }}</dd></div>
             <div><dt>Amount Attempted</dt><dd>{{ naira(failedVend?.amountMinor ?? preview?.amountMinor) }}</dd></div>
-            <div><dt>Station</dt><dd>{{ failedVend?.stationId || meter?.stationId || '—' }}</dd></div>
+            <div><dt>Station</dt><dd>{{ stationDisplayLabel(failedVend?.stationId || meter?.stationId) || '—' }}</dd></div>
           </div>
         </section>
 

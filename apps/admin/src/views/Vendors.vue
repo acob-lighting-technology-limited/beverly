@@ -12,6 +12,7 @@ import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import { api, shortDate, ApiError } from '../lib/api';
 import { useStaffAuthStore } from '../stores/auth';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 const router = useRouter();
 const auth = useStaffAuthStore();
@@ -49,7 +50,7 @@ const vendorExportColumns: WalletExportColumn<Vendor>[] = [
     { key: 'created_at', header: 'Created', value: (vendor) => shortDate(vendor.created_at) },
     { key: 'legal_name', header: 'Legal Name', value: (vendor) => vendor.legal_name },
     { key: 'trading_name', header: 'Trading Name', value: (vendor) => vendor.trading_name || '' },
-    { key: 'station_id', header: 'Station ID', value: (vendor) => vendor.station_id || '' },
+    { key: 'station_id', header: 'Station', value: (vendor) => stationDisplayLabel(vendor.station_id) },
     { key: 'contact_email', header: 'Email', value: (vendor) => vendor.contact_email },
     { key: 'contact_phone', header: 'Phone', value: (vendor) => vendor.contact_phone },
     { key: 'risk_level', header: 'Risk', value: (vendor) => vendor.risk_level },
@@ -282,7 +283,7 @@ onMounted(() => {
           <select class="bw-select station-select" v-model="stationId" aria-label="Filter by station ID" @change="load">
             <option value="">All station IDs</option>
             <option v-for="station in stations" :key="station.stationId" :value="station.stationId">
-              {{ station.stationId }}{{ station.name ? ` · ${station.name}` : '' }}
+              {{ stationDisplayLabel(station.name || station.stationId) }}
             </option>
           </select>
           <div class="bw-action-btns">
@@ -299,7 +300,7 @@ onMounted(() => {
             <tr>
               <th>Created</th>
               <th>Legal name</th>
-              <th>Station ID</th>
+              <th>Station</th>
               <th>Contact</th>
               <th>Risk</th>
               <th>Status</th>
@@ -313,7 +314,7 @@ onMounted(() => {
                 <strong>{{ v.legal_name }}</strong>
                 <div v-if="v.trading_name" class="bw-muted" style="font-size: var(--t-xs)">{{ v.trading_name }}</div>
               </td>
-              <td><span class="bw-badge info bw-mono">{{ v.station_id || 'Unassigned' }}</span></td>
+              <td><span class="bw-badge info bw-mono">{{ stationDisplayLabel(v.station_id) || 'Unassigned' }}</span></td>
               <td>
                 <div class="bw-mono" style="font-size: var(--t-xs)">{{ v.contact_email }}</div>
                 <div class="bw-muted bw-mono" style="font-size: var(--t-xs)">{{ v.contact_phone }}</div>
@@ -347,8 +348,8 @@ onMounted(() => {
           </div>
           <div class="bw-tc-mid">
             <div class="bw-tc-pair">
-              <span class="bw-tc-pair-label">Station ID</span>
-              <span class="bw-badge info bw-mono">{{ v.station_id || 'Unassigned' }}</span>
+              <span class="bw-tc-pair-label">Station</span>
+              <span class="bw-badge info bw-mono">{{ stationDisplayLabel(v.station_id) || 'Unassigned' }}</span>
             </div>
             <div class="bw-tc-pair">
               <span class="bw-tc-pair-label">Contact</span>

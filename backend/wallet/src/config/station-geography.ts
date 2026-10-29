@@ -1,3 +1,5 @@
+import { stationScopeKey } from '@beverly/tokens/station-identity';
+
 export interface StationGeography {
     state: 'Nasarawa' | 'Ondo' | 'Kaduna';
     country: 'Nigeria';
@@ -11,14 +13,11 @@ const STATION_GEOGRAPHY: Readonly<Record<string, StationGeography>> = Object.fre
     TUNGA: { state: 'Nasarawa', country: 'Nigeria' },
     BONDU: { state: 'Ondo', country: 'Nigeria' },
     KADUNA: { state: 'Kaduna', country: 'Nigeria' },
-    'MILE 9 & 10': { state: 'Ondo', country: 'Nigeria' },
-    'MILE 9': { state: 'Ondo', country: 'Nigeria' },
-    'MILE_9': { state: 'Ondo', country: 'Nigeria' },
-    'MILE 9 AND 10': { state: 'Ondo', country: 'Nigeria' },
+    MILE910: { state: 'Ondo', country: 'Nigeria' },
 });
 
 function canonicalStationId(value: string): string {
-    return value.trim().toUpperCase().replace(/\s+/g, ' ');
+    return stationScopeKey(value);
 }
 
 export function stationGeography(stationId: string, name?: string): StationGeography | null {

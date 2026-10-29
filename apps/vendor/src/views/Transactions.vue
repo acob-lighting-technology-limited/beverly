@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import { computed, onMounted, ref } from 'vue';
 import AppShell from '../components/AppShell.vue';
 import WalletDataViewSwitch from '@beverly/tokens/WalletDataViewSwitch.vue';
@@ -190,7 +191,7 @@ const transactionExportColumns: WalletExportColumn<PurchaseOrder>[] = [
     { key: 'customer', header: 'Customer', value: (row) => row.customer_name ?? '' },
     { key: 'meter', header: 'Meter', value: (row) => row.meter_id },
     { key: 'phase', header: 'Phase', value: (row) => meterTypeLabel(row.meter_type) },
-    { key: 'station', header: 'Station', value: (row) => row.station_id ?? '' },
+    { key: 'station', header: 'Station', value: (row) => stationDisplayLabel(row.station_id) },
     { key: 'mode', header: 'Mode', value: (row) => row.purchase_mode },
     { key: 'paid', header: 'Paid (NGN)', value: (row) => (row.amount_minor / 100).toFixed(2) },
     { key: 'energy', header: 'Energy (NGN)', value: (row) => ((row.energy_amount_minor ?? row.amount_minor) / 100).toFixed(2) },
@@ -407,7 +408,7 @@ onMounted(async () => {
                   {{ meterTypeLabel(p.meter_type) }}
                 </span>
               </td>
-              <td class="bw-muted">{{ p.station_id || '—' }}</td>
+              <td class="bw-muted">{{ stationDisplayLabel(p.station_id) || '—' }}</td>
               <td><span class="bw-badge neutral">{{ p.purchase_mode }}</span></td>
               <td class="bw-money" style="text-align:right">{{ naira(p.amount_minor) }}</td>
               <td class="bw-money" style="text-align:right">{{ naira(p.energy_amount_minor ?? p.amount_minor) }}</td>

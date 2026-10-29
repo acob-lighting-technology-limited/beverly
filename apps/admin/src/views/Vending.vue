@@ -11,6 +11,7 @@ import type { WalletExportOption, WalletExportSelection } from '@beverly/tokens/
 import { api, naira, shortDate } from '../lib/api';
 import { printReceipt, purchaseReceipt, viewReceipt } from '../lib/receipts';
 import { useStaffAuthStore } from '../stores/auth';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 interface Purchase {
     id: string;
@@ -86,7 +87,7 @@ const vendingExportColumns: WalletExportColumn<Purchase>[] = [
     { key: 'customer_name', header: 'Customer', value: (purchase) => purchase.customer_name || '' },
     { key: 'meter_id', header: 'Meter', value: (purchase) => purchase.meter_id },
     { key: 'meter_type', header: 'Phase', value: (purchase) => meterTypeLabel(purchase.meter_type) },
-    { key: 'station_id', header: 'Station', value: (purchase) => purchase.station_id || '' },
+    { key: 'station_id', header: 'Station', value: (purchase) => stationDisplayLabel(purchase.station_id) },
     { key: 'purchase_mode', header: 'Mode', value: (purchase) => purchase.purchase_mode },
     { key: 'purchase_way', header: 'Purchase Way', value: (purchase) => purchase.purchase_way || purchase.purchase_mode },
     { key: 'wallet_name', header: 'Wallet', value: (purchase) => purchase.wallet_name || '' },
@@ -482,7 +483,7 @@ onUnmounted(() => {
         </select>
         <select v-model="station" class="bw-select" aria-label="Filter by station">
           <option value="">All stations</option>
-          <option v-for="s in stations" :key="s.stationId" :value="s.stationId">{{ s.name || s.stationId }}</option>
+          <option v-for="s in stations" :key="s.stationId" :value="s.stationId">{{ stationDisplayLabel(s.name || s.stationId) }}</option>
         </select>
         <select v-model="meterType" class="bw-select" aria-label="Filter by phase">
           <option value="">All phases</option>
@@ -524,7 +525,7 @@ onUnmounted(() => {
                   {{ meterTypeLabel(p.meter_type) }}
                 </span>
               </td>
-              <td>{{ p.station_id || '—' }}</td>
+              <td>{{ stationDisplayLabel(p.station_id) || '—' }}</td>
               <td><span class="bw-badge neutral">{{ p.purchase_mode }}</span></td>
               <td class="bw-money" style="text-align:right">{{ naira(p.amount_minor) }}</td>
               <td class="bw-money" style="text-align:right">{{ naira(p.vat_amount_minor ?? 0) }}</td>
@@ -565,7 +566,7 @@ onUnmounted(() => {
             </div>
             <div class="bw-tc-pair" v-if="p.station_id">
               <span class="bw-tc-pair-label">Station</span>
-              <span class="bw-tc-pair-val">{{ p.station_id }}</span>
+              <span class="bw-tc-pair-val">{{ stationDisplayLabel(p.station_id) }}</span>
             </div>
             <div class="bw-tc-pair">
               <span class="bw-tc-pair-label">Phase</span>

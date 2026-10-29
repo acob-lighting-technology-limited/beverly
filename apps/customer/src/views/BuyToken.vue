@@ -6,6 +6,7 @@ import { api, ApiError } from '../lib/api';
 import { naira, kwh } from '../lib/format';
 import { downloadReceipt, printReceipt, purchaseReceipt, viewReceipt } from '../lib/receipts';
 import { useAuthStore } from '../stores/auth';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 const auth    = useAuthStore();
 const step    = ref<1 | 2 | 3 | 4 | 5>(1);
@@ -552,7 +553,7 @@ async function remoteSendGeneratedToken() {
           <div><span>Meter</span><strong class="bw-mono">{{ selMeter?.meter_id }}</strong></div>
           <div><span>Phase</span><strong>{{ meterTypeLabel(selMeter?.meter_type) }}</strong></div>
           <div><span>Tariff</span><strong>{{ selMeter?.tariff_id || '-' }}</strong></div>
-          <div><span>Station</span><strong>{{ selMeter?.station_id || '-' }}</strong></div>
+          <div><span>Station</span><strong>{{ stationDisplayLabel(selMeter?.station_id) || '-' }}</strong></div>
         </section>
         <label class="bw-label">Energy amount (₦)</label>
         <input class="bw-input bw-mono" v-model="amountRaw" type="number" min="500"

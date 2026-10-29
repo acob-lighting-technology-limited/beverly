@@ -5,6 +5,7 @@ import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import { api } from '../lib/api';
 import { shortDate } from '../lib/format';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 interface Meter {
     id: string;
@@ -72,7 +73,7 @@ const meterExportColumns: WalletExportColumn<Meter>[] = [
     { key: 'meter_id', header: 'Meter', value: (meter) => meter.meter_id },
     { key: 'nickname', header: 'Nickname', value: (meter) => meter.nickname || '' },
     { key: 'meter_type', header: 'Meter Type', value: (meter) => meterTypeLabel(meter.meter_type) },
-    { key: 'station_id', header: 'Station', value: (meter) => meter.station_id || '' },
+    { key: 'station_id', header: 'Station', value: (meter) => stationDisplayLabel(meter.station_id) },
     { key: 'status', header: 'Status', value: (meter) => statusLabel(meter.status) || 'Approved' },
 ];
 
@@ -264,7 +265,7 @@ function formatHistoryDate(value: string) {
             <span v-if="statusLabel(meter.status)" :class="['bw-badge', statusBadgeClass(meter.status)]">
               {{ statusLabel(meter.status) }}
             </span>
-            <span v-if="meter.station_id" class="bw-muted" style="font-size: var(--t-xs)">{{ meter.station_id }}</span>
+            <span v-if="meter.station_id" class="bw-muted" style="font-size: var(--t-xs)">{{ stationDisplayLabel(meter.station_id) }}</span>
           </div>
           <p v-if="meter.status === 'rejected' && meter.rejection_reason" class="bw-muted" style="font-size: var(--t-xs); margin-top:4px">
             {{ meter.rejection_reason }}

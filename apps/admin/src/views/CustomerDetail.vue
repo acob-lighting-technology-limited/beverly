@@ -20,6 +20,7 @@ import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
 import { api, naira, shortDate, ApiError } from '../lib/api';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 const route = useRoute();
 const router = useRouter();
@@ -149,7 +150,7 @@ const filteredWalletEntries = computed(() => (wallet.value?.entries ?? []).filte
 }));
 const filteredPurchases = computed(() => purchases.value.filter((purchase: any) => {
   const query = purchaseQuery.value.trim().toLowerCase();
-  return (!query || [purchase.meter_id, purchase.station_id, purchase.id].filter(Boolean).join(' ').toLowerCase().includes(query))
+  return (!query || [purchase.meter_id, purchase.station_id, stationDisplayLabel(purchase.station_id), purchase.id].filter(Boolean).join(' ').toLowerCase().includes(query))
     && (purchaseStatus.value === 'all' || purchase.status === purchaseStatus.value);
 }));
 const filteredFunding = computed(() => funding.value.filter((row: any) => {
@@ -198,7 +199,7 @@ const detailExportColumns = computed<WalletExportColumn<any>[]>(() => {
   if (tab.value === 'purchases') return [
     { key: 'created_at', header: 'When', value: (row) => shortDate(row.created_at) },
     { key: 'meter_id', header: 'Meter', value: (row) => row.meter_id },
-    { key: 'station_id', header: 'Station', value: (row) => row.station_id || '' },
+    { key: 'station_id', header: 'Station', value: (row) => stationDisplayLabel(row.station_id) },
     { key: 'amount_minor', header: 'Paid', value: (row) => naira(row.amount_minor) },
     { key: 'energy_amount_minor', header: 'Energy', value: (row) => naira(row.energy_amount_minor ?? row.amount_minor) },
     { key: 'vat_amount_minor', header: 'VAT', value: (row) => naira(row.vat_amount_minor ?? 0) },
@@ -240,7 +241,7 @@ onMounted(loadDetail);
             <h1 class="head-name">{{ detail.customer.full_name || 'Unnamed customer' }}</h1>
             <p class="head-meta bw-mono">{{ detail.customer.phone }} · {{ detail.customer.email || 'no email' }}</p>
             <div class="head-badges">
-              <span class="bw-badge info bw-mono">Station ID{{ detail.customer.station_ids?.length === 1 ? '' : 's' }} · {{ detail.customer.station_ids?.join(', ') || 'Unassigned' }}</span>
+              <span class="bw-badge info bw-mono">Station{{ detail.customer.station_ids?.length === 1 ? '' : 's' }} · {{ detail.customer.station_ids?.map(stationDisplayLabel).join(', ') || 'Unassigned' }}</span>
               <span :class="['bw-badge', statusBadge(detail.customer.status)]">{{ detail.customer.status }}</span>
               <span :class="['bw-badge', tierBadge(detail.customer.kyc_tier)]">KYC Tier {{ detail.customer.kyc_tier }}</span>
               <span class="bw-badge neutral">{{ detail.customer.kyc_status }}</span>
@@ -380,7 +381,7 @@ onMounted(loadDetail);
               <tr v-for="p in filteredPurchases" :key="p.id">
                 <td class="bw-mono bw-muted" style="font-size: var(--t-xs)">{{ shortDate(p.created_at) }}</td>
                 <td class="bw-mono">{{ p.meter_id }}</td>
-                <td class="bw-mono bw-muted">{{ p.station_id || '—' }}</td>
+                <td class="bw-mono bw-muted">{{ stationDisplayLabel(p.station_id) || '—' }}</td>
                 <td class="bw-money" style="text-align: right">{{ naira(p.amount_minor) }}</td>
                 <td class="bw-money" style="text-align: right">{{ naira(p.energy_amount_minor ?? p.amount_minor) }}</td>
                 <td class="bw-money" style="text-align: right">{{ naira(p.vat_amount_minor ?? 0) }}</td>

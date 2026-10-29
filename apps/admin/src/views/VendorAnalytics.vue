@@ -28,6 +28,7 @@ import { onMounted, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import { api, naira, shortDate } from '../lib/api';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 
@@ -331,7 +332,7 @@ onMounted(load);
               >
                 <span class="va-station-rank bw-muted">{{ i + 1 }}</span>
                 <div class="va-station-info">
-                  <p class="va-station-name">{{ st.station_name ?? st.station_id }}</p>
+                  <p class="va-station-name">{{ stationDisplayLabel(st.station_name ?? st.station_id) }}</p>
                   <p class="va-station-meta bw-muted bw-mono">{{ st.vendor_count }} vendor{{ st.vendor_count !== 1 ? 's' : '' }}</p>
                 </div>
                 <span class="bw-money va-station-vol">{{ naira(st.vend_volume_minor) }}</span>
