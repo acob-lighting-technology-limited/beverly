@@ -1,7 +1,6 @@
 /**
  * Beverly Guide Content Model & Copy
- * Modeled after the Matrix Guide (https://matrix.acoblighting.com/guide) and
- * adapted for Beverly's smart metering, STS tokens, telemetry, and energy wallet.
+ * Humanized for field operations: STS prepayment tokens, mini-grid telemetry, and energy wallets.
  */
 
 export interface GuideModule {
@@ -57,27 +56,27 @@ export interface GuideFaqGroup {
 }
 
 export const guideStats: GuideStat[] = [
-  { value: 24, suffix: '+', label: 'Connected modules' },
-  { value: 1, label: 'Unified energy grid' },
-  { value: 100, suffix: '%', label: 'Paperless & auditable' },
-  { value: 'Live', label: 'Across all mini-grid stations' },
+  { value: 14, suffix: '+', label: 'Operational tools' },
+  { value: 100, suffix: '%', label: 'Audit trail coverage' },
+  { value: '24/7', label: 'Field telemetry' },
+  { value: 0, label: 'Paper scratch cards' },
 ];
 
 export const guideStory: GuideStoryItem[] = [
   {
-    kicker: 'Before',
-    title: 'Fragmented systems & manual tokens',
-    body: 'Manual STS token generation, unlinked scratch cards, scattered spreadsheets, and zero real-time visibility into station consumption or power quality.',
+    kicker: 'Past',
+    title: 'Paper records and lost revenue',
+    body: 'Station staff relied on paper notebooks, scratch cards, and unverified bank slips. Tamper flags went unnoticed, and power losses were only discovered at month-end.',
   },
   {
-    kicker: 'The shift',
-    title: 'One unified smart energy platform',
-    body: 'Calinmeter STS protocols, SparkMeter Koios v1/v2 telemetry, and digital wallet ledgers unified under an accountable, role-protected control plane.',
+    kicker: 'Transition',
+    title: 'Direct digital controls',
+    body: 'Calinmeter and SparkMeter equipment integrated with a single ledger. Prepayment tokens, meter key changes, and feeder telemetry operate through verified role-based access.',
   },
   {
-    kicker: 'Now',
-    title: 'Total grid & revenue visibility',
-    body: 'Leadership, operations, and field teams see vending transactions, station balance, tamper alarms, and customer consumption live, at a glance.',
+    kicker: 'Today',
+    title: 'Clear balances and real-time alerts',
+    body: 'Station managers monitor token purchases, feeder loads, tamper alarms, and customer consumption as they happen—with bank deposits matching meter ledgers.',
   },
 ];
 
@@ -90,31 +89,31 @@ export const guideModuleGroups: GuideModuleGroup[] = [
         name: 'Credit Token Vending',
         href: '/vending',
         icon: 'credit-token',
-        summary: 'STS-compliant credit token generation with instant 20-digit token output and audit receipts.',
+        summary: 'Generate 20-digit STS credit tokens with encrypted keypad sequences and printable customer receipts.',
       },
       {
         name: 'Meter Key Change (KCT)',
         href: '/vending',
         icon: 'key-change',
-        summary: 'Re-key STS meters to accept new tariff groups, supply group codes, or transfer authority.',
+        summary: 'Update Supply Group Codes (SGC) and tariff rates on installed meters with two-part sequential tokens.',
       },
       {
         name: 'Meter Orders & Staging',
         href: '/meter-orders',
         icon: 'meter-orders',
-        summary: 'Manage inventory, serial ranges, field technician allocations, and staging approvals.',
+        summary: 'Track meter inventory, allocate batches to field technicians, and approve commissioning.',
       },
       {
         name: 'Meter Approvals Pipeline',
         href: '/meter-approvals',
         icon: 'meter-approvals',
-        summary: 'Dual-authorized maker-checker review for newly commissioned smart meters.',
+        summary: 'Require two-person maker-checker approval before activating new smart meters on the grid.',
       },
       {
         name: 'Station Onboarding Studio',
         href: '/vending',
         icon: 'station-studio',
-        summary: 'Automate mini-grid gateway, meter, customer, and tariff bundle provisioning.',
+        summary: 'Provision new mini-grid stations, bulk meters, tariffs, and customer accounts in one setup wizard.',
       },
     ],
   },
@@ -126,49 +125,49 @@ export const guideModuleGroups: GuideModuleGroup[] = [
         name: 'Wallets & Balance Ledger',
         href: '/wallets',
         icon: 'wallets',
-        summary: 'Double-entry energy ledger tracking master station balances, vendor floats, and fees.',
+        summary: 'Double-entry energy ledger tracking master station balances, vendor floats, and commission fees.',
       },
       {
         name: 'Wallet Funding Approvals',
         href: '/funding',
         icon: 'funding',
-        summary: 'Review and approve Paystack, bank transfer, and manual merchant wallet funding requests.',
+        summary: 'Review bank transfer proofs and Paystack deposits before crediting merchant vending balances.',
       },
       {
         name: 'Vendor Float Transfers',
         href: '/vendor-transfers',
         icon: 'vendor-transfers',
-        summary: 'Disburse energy vending credit to authorized station vendors and retail points.',
+        summary: 'Disburse vending float balances to verified retail merchants and station cashiers.',
       },
       {
         name: 'Vending Purchases Monitor',
         href: '/purchases',
         icon: 'purchases',
-        summary: 'Live feed of all customer STS token purchases across all distribution feeds.',
+        summary: 'Review token purchase records, payment channels, and vending timestamps across all stations.',
       },
       {
         name: 'Customer Refund Engine',
         href: '/refunds',
         icon: 'refunds',
-        summary: 'Process reversal and refund workflows with ledger-backed trace integrity.',
+        summary: 'Process transaction reversals with audit validation against the double-entry ledger.',
       },
       {
         name: 'Disputes & Escrow',
         href: '/disputes',
         icon: 'disputes',
-        summary: 'Resolve failed bank transactions, card chargebacks, and station ledger discrepancies.',
+        summary: 'Investigate disputed bank payments, chargebacks, and station ledger discrepancies.',
       },
       {
         name: 'Vendor Settlement',
         href: '/settlement',
         icon: 'settlement',
-        summary: 'Weekly and monthly vendor payout reconciliation and automated commission calculations.',
+        summary: 'Calculate monthly vendor commissions and reconcile payout balances against bank accounts.',
       },
       {
         name: 'End-of-Day Reconciliation',
         href: '/reconciliation',
         icon: 'reconciliation',
-        summary: 'Automated delta reconciliation comparing telemetry consumption with token revenue.',
+        summary: 'Daily delta checks comparing energy consumed on field meters with vending revenue.',
       },
     ],
   },
@@ -180,37 +179,37 @@ export const guideModuleGroups: GuideModuleGroup[] = [
         name: 'Reports & Analytics Centre',
         href: '/reports',
         icon: 'reports',
-        summary: 'Generate audited station revenue, consumption trend, and tariff performance reports.',
+        summary: 'Download station revenue, customer usage, and tariff collection reports in structured formats.',
       },
       {
         name: 'Customer Consumption Feed',
         href: '/consumption',
         icon: 'consumption',
-        summary: 'Hourly and daily consumption profiles aggregated across IoT gateways.',
+        summary: 'Hourly and daily consumption profiles from IoT gateways and bulk meters.',
       },
       {
         name: 'Station Daily Interval Data',
         href: '/reports',
         icon: 'interval-data',
-        summary: 'High-resolution interval readings, daily usage curves, and styled Excel exports.',
+        summary: 'Export 15-minute load curves, peak demand figures, and power quality readings to Excel.',
       },
       {
         name: 'Abnormal Alarms & Tamper',
         href: '/reports',
         icon: 'abnormal-alarms',
-        summary: 'Detect potential meter bypass, unmetered loads, and zero-consumption anomalies.',
+        summary: 'Flag zero-consumption anomalies, reverse energy flow, and unauthorized physical meter openings.',
       },
       {
         name: 'Station Site Energy Audit',
         href: '/reports',
         icon: 'energy-audit',
-        summary: 'Mini-grid feeder balancing comparing station bulk meters against sum of customer meters.',
+        summary: 'Feeder-level energy audits comparing bulk station meters with the sum of customer meters to locate line losses.',
       },
       {
         name: 'Broadcast Announcements',
         href: '/announcements',
         icon: 'announcements',
-        summary: 'Broadcast operational maintenance alerts, tariff changes, and holiday schedules to portals.',
+        summary: 'Send service notices, planned outage warnings, and tariff adjustment announcements to portal users.',
       },
     ],
   },
@@ -222,49 +221,49 @@ export const guideModuleGroups: GuideModuleGroup[] = [
         name: 'Vendors Register',
         href: '/vendors',
         icon: 'vendors',
-        summary: 'Manage authorized retail energy vendors, operating stations, and vending quotas.',
+        summary: 'Register authorized retail vending points, set credit thresholds, and assign station boundaries.',
       },
       {
         name: 'Vendor Applications',
         href: '/applications',
         icon: 'applications',
-        summary: 'Review and approve new vendor onboarding submissions, KYC documents, and station grants.',
+        summary: 'Review merchant applications, identity documents, and station operating permissions.',
       },
       {
         name: 'Customer Directory',
         href: '/customers',
         icon: 'customers',
-        summary: 'Customer account directory, assigned meters, KYC tier status, and vending history.',
+        summary: 'Directory of customer accounts, assigned meter serials, addresses, and purchase histories.',
       },
       {
         name: 'KYC Reviews',
         href: '/kyc-reviews',
         icon: 'kyc',
-        summary: 'Verify identity documents, address proof, and regulatory compliance for vendors and customers.',
+        summary: 'Review identity documents and proof of address against regulatory compliance tiers.',
       },
       {
         name: 'Fraud & Risk Engine',
         href: '/fraud',
         icon: 'fraud',
-        summary: 'Monitor vending velocity anomalies, abnormal consumption drop-offs, and suspicious logins.',
+        summary: 'Flag sudden velocity spikes, rapid off-hours token purchases, and suspicious account access.',
       },
       {
         name: 'Audit Trail',
         href: '/audit',
         icon: 'audit',
-        summary: 'Immutable chronological log of all administrator, operator, and vending actions.',
+        summary: 'Chronological log of staff actions, balance adjustments, and permission updates.',
       },
       {
         name: 'Roles & Staff Permissions',
         href: '/roles-permissions',
         icon: 'roles-permissions',
-        summary: 'Granular role-based access control protecting critical financial and relay commands.',
+        summary: 'Control staff access rights to ensure financial and relay commands require proper authorization.',
       },
       {
         name: 'NDPR Privacy Compliance',
         href: '/privacy',
         icon: 'privacy',
-        summary: 'Manage data protection, subject access requests, and customer consent records.',
+        summary: 'Manage customer data protection records in compliance with the Nigeria Data Protection Act.',
       },
     ],
   },
@@ -272,23 +271,23 @@ export const guideModuleGroups: GuideModuleGroup[] = [
 
 export const guideHighlights: GuideHighlight[] = [
   {
-    tag: 'Prepaid Engine',
-    title: 'STS token generation without downtime.',
-    body: 'Standard Transfer Specification (STS IEC 62055-41) tokens generated instantly. Handles credit recharge, key changes (KCT), tamper clearing, and power limit adjustments with offline cryptographic assurance.',
+    tag: 'Prepayment Vending',
+    title: 'Offline-resilient STS token generation.',
+    body: 'Standard Transfer Specification (STS IEC 62055-41) tokens vend without internet dependence at the field meter. Credit tokens, key changes (KCT), and tamper resets use established 20-digit cryptographic sequences.',
     icon: 'credit-token',
     href: '/vending',
   },
   {
-    tag: 'Grid Intelligence',
-    title: 'Live IoT telemetry and remote relay control.',
-    body: 'Continuous power quality tracking (voltage, current, power factor) and 15-minute interval demand curves. Operators dispatch over-the-air relay reconnect/disconnect without physical site visits.',
+    tag: 'Smart Grid Telemetry',
+    title: 'Feeder telemetry and remote relay control.',
+    body: 'Continuous power quality tracking (voltage, current, power factor) and 15-minute interval demand curves. Where smart meters support internal disconnects, operators dispatch disconnect or power-limiting commands remotely.',
     icon: 'telemetry',
     href: '/reports',
   },
   {
-    tag: 'Accountable Money',
-    title: 'Double-entry ledger with instant Paystack sync.',
-    body: 'Every vending kobo is locked to an immutable double-entry ledger. Vendor funding, customer token sales, fees, and daily station reconciliations balance to the penny with full audit trace.',
+    tag: 'Financial Integrity',
+    title: 'Double-entry energy ledger.',
+    body: 'Every vending transaction records matching debits and credits. Vendor floats, customer token purchases, payment processing fees, and daily reconciliations balance with clear audit evidence.',
     icon: 'wallets',
     href: '/wallets',
   },
@@ -296,26 +295,26 @@ export const guideHighlights: GuideHighlight[] = [
 
 export const firstWeekSteps: GuideStep[] = [
   {
-    title: 'Tour your station topology',
-    body: 'Check the Dashboard and Station Overview to verify your assigned mini-grid feeds, bulk meter status, and customer counts.',
+    title: 'Review your assigned stations',
+    body: 'Open the Dashboard to check active feeder lines, bulk meter readings, and customer totals for your station.',
     href: '/dashboard',
     cta: 'View Dashboard',
   },
   {
-    title: 'Issue your first STS credit token',
-    body: 'Open the Vending module, select a customer account or meter number, input kWh units, and generate an instant 20-digit STS token receipt.',
+    title: 'Vend a test credit token',
+    body: 'Open Vending, find a test customer account, enter the required units, and confirm the 20-digit token receipt prints or displays correctly.',
     href: '/vending',
     cta: 'Open Vending',
   },
   {
-    title: 'Monitor live telemetry & alarms',
-    body: 'Visit the Reports Centre to inspect interval usage curves, abnormal alarm flags, and potential bypass incidents across distribution feeders.',
+    title: 'Check feeder telemetry and alarms',
+    body: 'Open Reports to inspect 15-minute demand curves and review whether any tamper or zero-consumption flags require investigation.',
     href: '/reports',
     cta: 'Inspect Reports',
   },
   {
-    title: 'Review financial reconciliation',
-    body: 'Check the Wallets & Ledger module to confirm daily vending totals match bank settlement and vendor floating accounts.',
+    title: 'Reconcile daily float and token sales',
+    body: 'Open Wallets & Ledger to verify that merchant float balances match cash collected and bank deposits for the day.',
     href: '/wallets',
     cta: 'View Wallets',
   },
@@ -327,16 +326,16 @@ export const guideFaqGroups: GuideFaqGroup[] = [
     title: 'Account & Roles',
     items: [
       {
-        q: 'How do permissions work in Beverly?',
-        a: 'Beverly implements granular Role-Based Access Control (RBAC). Super Admins have complete visibility, while Operations Managers, Account Managers, and Field Engineers receive scoped capabilities strictly aligned with their operational duties.',
+        q: 'How do user permissions work in Beverly?',
+        a: 'Beverly enforces Role-Based Access Control (RBAC). Super Administrators manage system-wide settings, while Operations Managers, Accounts Officers, and Field Technicians receive permissions strictly scoped to their operational duties.',
       },
       {
-        q: 'Can a staff member manage multiple stations?',
-        a: 'Yes. Staff profiles can be scoped to a single station (e.g. Ruwan Jema) or granted multi-station access across regional clusters.',
+        q: 'Can a staff member manage multiple mini-grid stations?',
+        a: 'Yes. Staff profiles can be restricted to a single site (such as Ruwan Jema) or granted multi-station access across an entire operational cluster.',
       },
       {
-        q: 'How do I reset my password or update MFA?',
-        a: 'Navigate to Security Settings (/security) from the user profile menu to update your password or configure multi-factor authentication.',
+        q: 'How do I reset my password or configure two-factor authentication?',
+        a: 'Open Security Settings (/security) from the user menu to update your account password or configure two-factor authentication.',
       },
     ],
   },
@@ -345,20 +344,20 @@ export const guideFaqGroups: GuideFaqGroup[] = [
     title: 'Vending & Tokens',
     items: [
       {
-        q: 'What is an STS Token?',
-        a: 'STS (Standard Transfer Specification) is the international standard (IEC 62055-41) for prepaid electricity metering. It generates an encrypted 20-digit numeric token that customers enter into their keypad.',
+        q: 'What is an STS prepayment token?',
+        a: 'STS (Standard Transfer Specification) is the international standard (IEC 62055-41) for prepaid electricity metering. It produces an encrypted 20-digit numeric token that the customer enters directly on their meter keypad.',
       },
       {
         q: 'What is a Key Change Token (KCT)?',
-        a: 'A Key Change Token re-keys the meter to update its Supply Group Code (SGC) or Tariff index. Two 20-digit tokens are generated and entered sequentially into the meter before new credit tokens can be loaded.',
+        a: 'A Key Change Token reconfigures the encryption keys on a meter to update its Supply Group Code (SGC) or tariff index. Two 20-digit tokens are generated and entered sequentially into the meter before new credit tokens can be accepted.',
       },
       {
-        q: 'What happens if a token is lost or damaged?',
-        a: 'Every generated token is logged permanently in Token Records. Operators can retrieve, re-print, or SMS the token receipt at any time without re-charging the customer.',
+        q: 'What should an operator do if a customer loses their token receipt?',
+        a: 'Every generated token remains permanently logged in Token Records. Operators can look up the meter number, retrieve the token, and reprint or re-send the receipt without charging the customer again.',
       },
       {
-        q: 'Can tokens be refunded?',
-        a: 'Tokens can be reversed through the Refunds Engine (/refunds) if the meter was entered incorrectly, provided the reversal is verified against the double-entry ledger.',
+        q: 'How are mistaken token purchases reversed?',
+        a: 'Tokens can be reversed through the Refunds module (/refunds) if an incorrect meter number was entered, provided the reversal is verified against the double-entry station ledger.',
       },
     ],
   },
@@ -367,16 +366,16 @@ export const guideFaqGroups: GuideFaqGroup[] = [
     title: 'Smart Grid & Telemetry',
     items: [
       {
-        q: 'How often does telemetry sync from field meters?',
-        a: 'Smart meters transmit telemetry periodically based on gateway configuration (typically hourly or daily). The daily governance cron reconciles and aggregates readings every UTC midnight.',
+        q: 'How frequently do smart meters transmit telemetry?',
+        a: 'Meters transmit load readings at intervals configured on the station gateway (typically hourly or daily). The overnight reconciliation job processes and aggregates readings at midnight UTC.',
       },
       {
-        q: 'What is an Abnormal Alarm?',
-        a: 'An Abnormal Alarm triggers when an active customer shows continuous zero consumption despite connected load, or when power draw exceeds the assigned maximum power limit, signaling potential bypass.',
+        q: 'What triggers an abnormal alarm?',
+        a: 'An abnormal alarm is flagged when an active customer shows zero consumption over extended periods despite a live supply connection, or when demand exceeds the configured power threshold, pointing to potential bypass.',
       },
       {
-        q: 'Can meters be disconnected remotely?',
-        a: 'Yes, for smart meters equipped with internal relays (such as SparkMeter or GPRS-enabled meters), authorized operators can dispatch over-the-air relay disconnect or load limiting commands.',
+        q: 'Can field meters be disconnected remotely?',
+        a: 'Yes. On smart meters equipped with internal motorized switches (such as SparkMeter or GPRS-enabled units), authorized operators can send remote disconnect or power-limiting commands from the portal.',
       },
     ],
   },
@@ -385,12 +384,12 @@ export const guideFaqGroups: GuideFaqGroup[] = [
     title: 'Security & Compliance',
     items: [
       {
-        q: 'How does Beverly comply with NDPR?',
-        a: 'Beverly adheres strictly to the Nigeria Data Protection Regulation. Customer contact details are minimized, telemetry data is encrypted at rest, and all staff access is audited.',
+        q: 'How is customer information protected under NDPA/NDPR?',
+        a: 'Beverly adheres to the Nigeria Data Protection Act. Customer records are restricted, telemetry data is encrypted at rest, and all staff access events are recorded in the audit log.',
       },
       {
-        q: 'Where do I find help when something fails?',
-        a: 'Open the Support Desk (/support) to raise a tracked support ticket, or chat directly with the built-in AcoBot assistant in the bottom-right corner for quick navigation assistance.',
+        q: 'Where can operators get help during an outage or system fault?',
+        a: 'Open Support (/support) to submit a tracked issue, or use the built-in assistant in the bottom corner for quick navigation help.',
       },
     ],
   },
@@ -398,11 +397,11 @@ export const guideFaqGroups: GuideFaqGroup[] = [
 
 export const securityPoints = [
   'STS Standard Compliant',
-  'AES-GCM Keyring Encryption',
-  'Immutable Double-Entry Ledger',
+  'AES-GCM Key Encryption',
+  'Double-Entry Energy Ledger',
   'Role-Based Access Control',
   'Maker-Checker Verification',
-  'NDPR Data Protection',
-  'Multi-Tenant Data Isolation',
-  'Full Audit Logging',
+  'NDPA/NDPR Data Protection',
+  'Multi-Tenant Station Isolation',
+  'Complete Audit Logging',
 ];

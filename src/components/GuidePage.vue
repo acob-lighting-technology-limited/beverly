@@ -49,11 +49,10 @@ function selectFaqTab(id) {
         Beverly guide
       </p>
 
-      <h1 class="crm-guide-h1">One grid. Every energy workflow.</h1>
+      <h1 class="crm-guide-h1">Prepayment vending, live telemetry, and energy wallets.</h1>
 
       <p class="crm-guide-lead">
-        Beverly is the operational nervous system for your smart mini-grid infrastructure.
-        From Calinmeter and SparkMeter token generation to real-time IoT power quality telemetry and double-entry energy wallets—everything connects here.
+        Manage STS prepayment tokens, track hourly power quality from field meters, and balance station accounts without spreadsheets.
       </p>
 
       <div class="crm-hero-actions">
@@ -90,9 +89,9 @@ function selectFaqTab(id) {
         <span class="crm-eyebrow-accent" aria-hidden="true"></span>
         The shift
       </p>
-      <h2 class="crm-guide-h2">Why mini-grids run on Beverly.</h2>
+      <h2 class="crm-guide-h2">From paper logbooks to live meter controls.</h2>
       <p class="crm-guide-lead">
-        Energy distribution in remote and commercial markets used to mean manual scratch tokens, lost vending slips, and unmetered bypass. Beverly replaces guesswork with certainty.
+        Managing remote mini-grids used to mean manual scratch cards, unrecorded vends, and undetected bypass. Beverly provides direct meter control and verified accounting.
       </p>
 
       <div class="crm-story-grid">
@@ -102,7 +101,7 @@ function selectFaqTab(id) {
           class="crm-guide-card crm-story-card"
         >
           <span
-            :class="['crm-story-pill', { 'is-now': item.kicker === 'Now' }]"
+            :class="['crm-story-pill', { 'is-now': item.kicker === 'Today' }]"
           >
             {{ item.kicker }}
           </span>
@@ -118,9 +117,9 @@ function selectFaqTab(id) {
         <span class="crm-eyebrow-accent" aria-hidden="true"></span>
         Module directory
       </p>
-      <h2 class="crm-guide-h2">Your modules.</h2>
+      <h2 class="crm-guide-h2">Operational modules.</h2>
       <p class="crm-guide-lead">
-        Every tool is built around an operational task: issuing tokens, balancing feeder meters, reviewing audits, and reconciling daily cash flows.
+        Every tool handles an operational duty: generating STS tokens, inspecting feeder demand, approving equipment, and balancing cash ledgers.
       </p>
 
       <div class="crm-groups-stack">
@@ -212,7 +211,7 @@ function selectFaqTab(id) {
         <span class="crm-eyebrow-accent" aria-hidden="true"></span>
         Start here
       </p>
-      <h2 class="crm-guide-h2">Your first week in Beverly.</h2>
+      <h2 class="crm-guide-h2">Getting started on station operations.</h2>
 
       <div class="crm-steps-grid">
         <div
@@ -244,7 +243,7 @@ function selectFaqTab(id) {
         <span class="crm-eyebrow-accent" aria-hidden="true"></span>
         Questions
       </p>
-      <h2 class="crm-guide-h2">Things people ask.</h2>
+      <h2 class="crm-guide-h2">Frequently asked questions.</h2>
 
       <div class="crm-faq-layout">
         <!-- Topic Tabs -->
@@ -300,10 +299,9 @@ function selectFaqTab(id) {
           <span class="crm-eyebrow-accent" aria-hidden="true"></span>
           Secured by design
         </p>
-        <h2 class="crm-guide-h2 text-center">Need a hand? You're covered.</h2>
+        <h2 class="crm-guide-h2 text-center">Operational Support & Help Desk</h2>
         <p class="crm-guide-lead text-center">
-          Chat directly with AcoBot for quick answers, or raise a Help Desk ticket when field equipment requires investigation.
-          Your data stays protected the whole way.
+          If you run into issues on site or need assistance with a disputed payment, submit a support ticket or reach out to the operations team.
         </p>
         <ul class="crm-security-tags" aria-label="Security standards">
           <li v-for="point in securityPoints" :key="point" class="crm-badge">
