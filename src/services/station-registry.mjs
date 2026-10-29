@@ -6,6 +6,7 @@
 
 import { postApi } from "./api.js";
 import { normalizeCollection } from "./response-normalizers.mjs";
+import { stationDisplayLabel } from "@beverly/tokens/station-identity";
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -23,9 +24,7 @@ export function formatStationDisplayLabel(stationId, rawLabel = "") {
   const target = normLabel || normId;
   if (!target) return "";
   const upper = target.toUpperCase();
-  if (upper === "MILE 9" || upper === "MILE_9" || upper === "MILE 9 & 10" || upper === "MILE 9 AND 10") {
-    return "Mile 9 & 10";
-  }
+  if (stationDisplayLabel(target) === "Mile 9 & 10") return "Mile 9 & 10";
   if (target === upper && target.length > 1 && !/^\d+$/.test(target)) {
     return target.charAt(0).toUpperCase() + target.slice(1).toLowerCase();
   }

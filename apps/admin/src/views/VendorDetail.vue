@@ -24,6 +24,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
 import { api, naira, shortDate, ApiError } from '../lib/api';
 import { useStaffAuthStore } from '../stores/auth';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 const route  = useRoute();
 const router = useRouter();
@@ -198,7 +199,7 @@ const detailExportColumns = computed<WalletExportColumn<any>[]>(() => {
     if (tab.value === 'transactions') return [
         { key: 'created_at', header: 'When', value: (row) => shortDate(row.created_at) },
         { key: 'meter_id', header: 'Meter', value: (row) => row.meter_id ?? row.meter_number ?? '' },
-        { key: 'station_id', header: 'Station', value: (row) => row.station_id ?? row.station ?? '' },
+        { key: 'station_id', header: 'Station', value: (row) => stationDisplayLabel(row.station_id ?? row.station) },
         { key: 'amount_minor', header: 'Paid', value: (row) => naira(row.amount_minor ?? row.amount) },
         { key: 'energy_amount_minor', header: 'Energy', value: (row) => naira(row.energy_amount_minor ?? row.amount_minor ?? row.amount) },
         { key: 'vat_amount_minor', header: 'VAT', value: (row) => naira(row.vat_amount_minor ?? 0) },
@@ -482,7 +483,7 @@ onMounted(loadDetail);
             <p v-if="detail.vendor.trading_name" class="head-trade">Trading as <strong>{{ detail.vendor.trading_name }}</strong></p>
             <p class="head-meta bw-mono">{{ detail.vendor.contact_email }} · {{ detail.vendor.contact_phone }}</p>
             <div class="head-badges">
-              <span class="bw-badge info bw-mono">Station ID · {{ detail.vendor.station_id || 'Unassigned' }}</span>
+              <span class="bw-badge info bw-mono">Station · {{ stationDisplayLabel(detail.vendor.station_id) || 'Unassigned' }}</span>
               <span :class="['bw-badge', vStatusBadge(detail.vendor.status)]">{{ detail.vendor.status }}</span>
               <span class="bw-badge info">KYC Tier {{ detail.vendor.kyc_tier ?? 1 }}</span>
               <span :class="['bw-badge', detail.vendor.kyc_status === 'verified' ? 'success' : detail.vendor.kyc_status === 'rejected' ? 'danger' : 'warn']">{{ detail.vendor.kyc_status ?? 'verified' }}</span>
@@ -600,7 +601,7 @@ onMounted(loadDetail);
           :subtitle="detail?.trading_name || detail?.legal_name || 'Vendor record'"
           :loading="loading || tabLoading"
           :status-options="detailStatusOptions"
-          :station-options="detail?.vendor?.station_id ? [{ value: detail.vendor.station_id, label: detail.vendor.station_id }] : []"
+          :station-options="detail?.vendor?.station_id ? [{ value: detail.vendor.station_id, label: stationDisplayLabel(detail.vendor.station_id) }] : []"
           :date-value="['wallet', 'transactions', 'funding', 'staff'].includes(tab) ? (row: any) => row.created_at : undefined"
           :status-value="(row: any) => row.status"
           :station-value="(row: any) => row.station_id || row.station"
@@ -663,7 +664,7 @@ onMounted(loadDetail);
                 :key="station.stationId"
                 :value="station.stationId"
                 :disabled="station.status === 'disabled'"
-              >{{ station.stationId }} · {{ station.name }}</option>
+              >{{ stationDisplayLabel(station.name || station.stationId) }}</option>
             </select>
           </label>
           <div class="vendor-edit-actions wide">
@@ -704,7 +705,7 @@ onMounted(loadDetail);
             <dt>LGA / State</dt>    <dd>{{ detail.vendor.lga }}{{ detail.vendor.state ? ', ' + detail.vendor.state : '' }}</dd>
           </template>
           <template v-if="detail.vendor.station_id">
-            <dt>Station</dt>        <dd class="bw-mono">{{ detail.vendor.station_id }}</dd>
+            <dt>Station</dt>        <dd class="bw-mono">{{ stationDisplayLabel(detail.vendor.station_id) }}</dd>
           </template>
           <template v-if="detail.invitation">
             <dt>Email ownership</dt>
@@ -804,7 +805,7 @@ onMounted(loadDetail);
               <tr v-for="tx in detailPagedRows" :key="tx.id">
                 <td class="bw-mono bw-muted" style="font-size: var(--t-xs)">{{ shortDate(tx.created_at) }}</td>
                 <td class="bw-mono">{{ tx.meter_id ?? tx.meter_number ?? '—' }}</td>
-                <td class="bw-mono bw-muted">{{ tx.station_id ?? tx.station ?? '—' }}</td>
+                <td class="bw-mono bw-muted">{{ stationDisplayLabel(tx.station_id ?? tx.station) || '—' }}</td>
                 <td>{{ tx.vended_by || '—' }}</td>
                 <td class="bw-money" style="text-align:right">{{ naira(tx.amount_minor ?? tx.amount) }}</td>
                 <td class="bw-money" style="text-align:right">{{ naira(tx.energy_amount_minor ?? tx.amount_minor ?? tx.amount) }}</td>
@@ -1026,7 +1027,7 @@ onMounted(loadDetail);
                 </thead>
                 <tbody>
                   <tr v-for="s in analytics.top_stations" :key="s.station_id">
-                    <td class="bw-mono" style="font-size:var(--t-xs)">{{ s.station_id }}</td>
+                    <td class="bw-mono" style="font-size:var(--t-xs)">{{ stationDisplayLabel(s.station_id) }}</td>
                     <td style="text-align:right">{{ s.count }}</td>
                     <td class="bw-money" style="text-align:right">{{ naira(s.amount_minor) }}</td>
                   </tr>

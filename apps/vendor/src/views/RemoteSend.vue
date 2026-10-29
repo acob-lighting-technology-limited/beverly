@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import { ref, computed, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
@@ -535,7 +536,7 @@ function downloadResultReceipt() {
         <p class="bw-label">Customer</p>
         <h2 class="bw-h2" style="margin: 0">{{ meter?.customerName }}</h2>
         <p class="bw-muted bw-mono" style="font-size: var(--t-sm); margin-top: 4px">
-          {{ meter?.meterId }} · {{ meter?.stationId }} · {{ meter?.tariffId }}
+          {{ meter?.meterId }} · {{ stationDisplayLabel(meter?.stationId) }} · {{ meter?.tariffId }}
         </p>
 
         <span :class="['bw-badge', meter?.isThreePhase ? 'info' : 'neutral']" style="margin-top: var(--s-2)">
@@ -579,7 +580,7 @@ function downloadResultReceipt() {
           <div class="bw-row"><span class="bw-muted">Customer</span><span class="bw-spacer"></span><strong>{{ meter?.customerName }}</strong></div>
           <div class="bw-row"><span class="bw-muted">Meter</span><span class="bw-spacer"></span><span class="bw-mono">{{ meter?.meterId }}</span></div>
           <div class="bw-row"><span class="bw-muted">Phase</span><span class="bw-spacer"></span><span>{{ meterTypeLabel(meter?.isThreePhase) }}</span></div>
-          <div class="bw-row"><span class="bw-muted">Station</span><span class="bw-spacer"></span><span>{{ meter?.stationId }}</span></div>
+          <div class="bw-row"><span class="bw-muted">Station</span><span class="bw-spacer"></span><span>{{ stationDisplayLabel(meter?.stationId) }}</span></div>
           <div class="bw-row"><span class="bw-muted">Tariff</span><span class="bw-spacer"></span><span>{{ meter?.tariffId }}</span></div>
           <div class="bw-row"><span class="bw-muted">Delivery</span><span class="bw-spacer"></span><span>Direct to meter</span></div>
         </div>
@@ -681,7 +682,7 @@ function downloadResultReceipt() {
             <div><dt>Customer</dt><dd>{{ failedSend?.customerName || meter?.customerName || '—' }}</dd></div>
             <div><dt>Meter</dt><dd class="bw-mono">{{ failedSend?.meterId || meter?.meterId || '—' }}</dd></div>
             <div><dt>Amount Attempted</dt><dd>{{ naira(failedSend?.amountMinor ?? preview?.amountMinor) }}</dd></div>
-            <div><dt>Station</dt><dd>{{ failedSend?.stationId || meter?.stationId || '—' }}</dd></div>
+            <div><dt>Station</dt><dd>{{ stationDisplayLabel(failedSend?.stationId || meter?.stationId) || '—' }}</dd></div>
           </div>
         </div>
 

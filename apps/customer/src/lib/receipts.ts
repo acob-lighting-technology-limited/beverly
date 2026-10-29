@@ -1,4 +1,5 @@
 import { downloadReceiptPdf as downloadCanonicalReceiptPdf, receiptHtml as canonicalReceiptHtml } from '../../../../src/services/receipt-tools.mjs';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 type ReceiptField = { label: string; value: unknown; wide?: boolean; token?: boolean };
 
@@ -326,7 +327,7 @@ export function purchaseReceipt(row: any): ReceiptModel {
       field('Vended By', vendedBy, { wide: true }),
       field('Meter ID', row.meter_id),
       field('Meter Type', row.meter_type || 'Prepaid Single Phase'),
-      field('Station', row.station_id || row.station_name),
+      field('Station', stationDisplayLabel(row.station_id || row.station_name)),
       field('Tariff', tariffName),
       field('Tariff Price', tariffPrice),
       field('Payment', row.payment_method || (row.mode === 'remote_send' ? 'Wallet & Wireless Remote' : 'Wallet Self-Vend')),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import { computed, ref } from 'vue';
 import AppShell from '../components/AppShell.vue';
 import ProfilePictureCropModal from '../components/ProfilePictureCropModal.vue';
@@ -74,7 +75,7 @@ const profileSections = computed<ProfileSection[]>(() => {
             rows: [
                 { label: 'Vendor Name', value: user?.organization_name },
                 { label: 'Vendor Code', value: user?.vendor_code },
-                { label: 'Site', value: user?.site },
+                { label: 'Site', value: stationDisplayLabel(user?.site) },
                 { label: 'Wallet Number', value: user?.wallet_number },
                 { label: 'Account Status', value: titleCase(accountStatus), tone: statusTone(accountStatus) },
             ],
@@ -212,7 +213,7 @@ async function uploadProcessedProfilePicture(file: File) {
           </div>
           <div>
             <span>Site</span>
-            <strong>{{ auth.user?.site || 'No site assigned' }}</strong>
+            <strong>{{ stationDisplayLabel(auth.user?.site) || 'No site assigned' }}</strong>
           </div>
           <div>
             <span>Status</span>

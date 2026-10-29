@@ -4,6 +4,7 @@
  */
 import { ref, computed, onMounted } from 'vue';
 import { api } from '../lib/api';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 interface Station {
     stationId: string;
@@ -109,8 +110,7 @@ function toggleAll() {
           >
             <label>
               <input type="checkbox" :checked="modelValue.includes(s.stationId)" :disabled="disabled || allStations" @change="toggle(s.stationId)" />
-              <span class="msel-id">{{ s.stationId }}</span>
-              <span v-if="s.name && s.name !== s.stationId" class="msel-name">{{ s.name }}</span>
+              <span class="msel-id">{{ stationDisplayLabel(s.name || s.stationId) }}</span>
               <span v-if="s.oemName" class="msel-name">{{ s.oemName }}</span>
             </label>
           </li>

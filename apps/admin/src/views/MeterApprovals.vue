@@ -119,7 +119,7 @@
               </td>
               <td>
                 <span>{{ phaseLabel(meter.meter_type) }}</span>
-                <span class="bw-mono bw-text-sm meter-secondary">{{ meter.station_id || 'No station' }}</span>
+                <span class="bw-mono bw-text-sm meter-secondary">{{ stationDisplayLabel(meter.station_id) || 'No station' }}</span>
               </td>
               <td class="bw-text-sm">{{ fmtDate(meter.created_at) }}</td>
               <td><span :class="['bw-badge', statusClass(meter.status)]">{{ statusLabel(meter.status) }}</span></td>
@@ -159,7 +159,7 @@
           </div>
           <div :class="['identity-signal', namesMatch(meter) ? 'is-match' : 'is-review']">
             <span>{{ namesMatch(meter) ? 'Names match' : 'Names differ — verify evidence' }}</span>
-            <span>{{ phaseLabel(meter.meter_type) }} · {{ meter.station_id || 'No station' }}</span>
+            <span>{{ phaseLabel(meter.meter_type) }} · {{ stationDisplayLabel(meter.station_id) || 'No station' }}</span>
           </div>
           <p class="meter-submitted">Submitted {{ fmtDate(meter.created_at) }}</p>
           <div v-if="meter.status === 'pending'" class="meter-card-actions">
@@ -207,7 +207,7 @@
         </div>
         <div class="review-meta">
           <span class="bw-mono">{{ approving.meter_id }}</span>
-          <span>{{ phaseLabel(approving.meter_type) }} · {{ approving.station_id || 'No station' }}</span>
+          <span>{{ phaseLabel(approving.meter_type) }} · {{ stationDisplayLabel(approving.station_id) || 'No station' }}</span>
         </div>
       </div>
       <label class="ownership-check">
@@ -235,7 +235,7 @@
         <div><span>Customer</span><strong>{{ unlinking.customers?.full_name || 'Unnamed customer' }}</strong></div>
         <div><span>Meter</span><strong class="bw-mono">{{ unlinking.meter_id }}</strong></div>
         <div><span>Current access</span><strong>{{ statusLabel(unlinking.status) }}</strong></div>
-        <div><span>Station</span><strong>{{ unlinking.station_id || 'Unavailable' }}</strong></div>
+        <div><span>Station</span><strong>{{ stationDisplayLabel(unlinking.station_id) || 'Unavailable' }}</strong></div>
       </div>
       <div class="unlink-impact" role="note">
         <strong>This removes the association only.</strong>
@@ -278,6 +278,7 @@
 </template>
 
 <script setup lang="ts">
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { api } from '../lib/api';
 import AppShell from '../components/AppShell.vue';
@@ -363,7 +364,7 @@ const meterExportColumns: WalletExportColumn<CustomerMeterRecord>[] = [
   { key: 'meter_id', header: 'Meter', value: (meter) => meter.meter_id },
   { key: 'meter_name', header: 'Registered Name', value: (meter) => meter.meter_name || '' },
   { key: 'meter_type', header: 'Phase', value: (meter) => meter.meter_type?.replace(/_/g, ' ') || '' },
-  { key: 'station_id', header: 'Station', value: (meter) => meter.station_id || '' },
+  { key: 'station_id', header: 'Station', value: (meter) => stationDisplayLabel(meter.station_id) },
   { key: 'status', header: 'Status', value: (meter) => statusLabel(meter.status) },
 ];
 

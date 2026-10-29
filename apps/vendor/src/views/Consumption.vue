@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import { computed, onMounted, ref, watch } from 'vue';
 import AppShell from '../components/AppShell.vue';
 import WalletTableSkeleton from '@beverly/tokens/WalletTableSkeleton.vue';
@@ -156,7 +157,7 @@ onMounted(load);
           <span class="eyebrow">Analytics</span>
           <h1>Consumption</h1>
           <p class="sub">Review energy usage and sales.</p>
-          <p v-if="stationId" class="station">Station {{ stationId }}</p>
+          <p v-if="stationId" class="station">Station {{ stationDisplayLabel(stationId) }}</p>
         </div>
 
         <div class="controls">

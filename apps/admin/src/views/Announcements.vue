@@ -5,6 +5,7 @@ import MessageSuccessHover from '../components/MessageSuccessHover.vue';
 import { ApiError, api, shortDate } from '../lib/api';
 import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
 import { formatNotificationBody } from '@beverly/tokens/notification-content';
+import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
 
@@ -85,7 +86,7 @@ const announcementExportColumns: WalletExportColumn<Announcement>[] = [
     { key: 'title', header: 'Title', value: (item) => item.title },
     { key: 'body', header: 'Message', value: (item) => item.body },
     { key: 'audience', header: 'Audience', value: (item) => item.audience },
-    { key: 'station_ids', header: 'Stations', value: (item) => item.station_ids?.join(', ') || 'All permitted' },
+    { key: 'station_ids', header: 'Stations', value: (item) => item.station_ids?.map(stationDisplayLabel).join(', ') || 'All permitted' },
     { key: 'target_mode', header: 'Target Mode', value: (item) => item.target_mode },
     { key: 'channel', header: 'Medium', value: (item) => formatChannel(item.channel) },
     { key: 'recipient_count', header: 'Recipients', value: (item) => item.recipient_count },
@@ -503,7 +504,7 @@ onBeforeUnmount(() => {
         </div>
         <label class="an-field"><span>Stations</span>
           <select v-model="selectedStationIds" class="bw-input" multiple aria-label="Announcement stations">
-            <option v-for="station in stations" :key="station.stationId" :value="station.stationId">{{ station.stationName || station.stationId }}</option>
+            <option v-for="station in stations" :key="station.stationId" :value="station.stationId">{{ stationDisplayLabel(station.stationName || station.stationId) }}</option>
           </select>
           <small>No selection includes every permitted station.</small>
         </label>
@@ -620,7 +621,7 @@ onBeforeUnmount(() => {
             <span>{{ shortDate(selectedHistory.created_at) }}</span>
             <span>{{ formatChannel(selectedHistory.channel) }}</span>
             <span>{{ selectedHistory.delivery_status || 'unknown' }}</span>
-            <span>{{ selectedHistory.station_ids?.length ? selectedHistory.station_ids.join(', ') : 'All stations' }}</span>
+            <span>{{ selectedHistory.station_ids?.length ? selectedHistory.station_ids.map(stationDisplayLabel).join(', ') : 'All stations' }}</span>
           </div>
           <div class="an-detail-message">
             <template v-for="(block, index) in selectedHistoryBlocks" :key="`${block.kind}-${index}`">

@@ -1,3 +1,5 @@
+import { stationDisplayLabel, stationScopeKey } from '@beverly/tokens/station-identity';
+
 export type StationVendScopeErrorCode =
     | 'station_assignment_required'
     | 'meter_station_unavailable'
@@ -24,7 +26,7 @@ export const SPARKMETER_SITE_TO_STATION: Record<string, string> = {
 export function normalizeStationId(value: string | null | undefined): string {
     const raw = String(value ?? '').trim().toLowerCase();
     const resolved = SPARKMETER_SITE_TO_STATION[raw] || value;
-    return String(resolved ?? '').trim().toUpperCase().replace(/[\s_\-&]+/g, '');
+    return stationScopeKey(resolved);
 }
 
 export function assertStationVendAllowed(
@@ -48,7 +50,7 @@ export function assertStationVendAllowed(
     }
     if (assigned !== meter) {
         throw new StationVendScopeError(
-            `This meter belongs to ${meter}. Your account is assigned to ${assigned}.`,
+            `This meter belongs to ${stationDisplayLabel(meterStationId)}. Your account is assigned to ${stationDisplayLabel(assignedStationId)}.`,
             'cross_station_vend_forbidden',
         );
     }
