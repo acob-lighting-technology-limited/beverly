@@ -5,7 +5,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const accepted = new Map([
-  ["uuid", "Present only through ExcelJS; no non-vulnerable ExcelJS release is available."]
+  ["uuid", "Present only through ExcelJS; no non-vulnerable ExcelJS release is available."],
+  ["deepmerge", "Present through html-to-text; no non-vulnerable deepmerge release is available."]
 ]);
 
 function sourceFiles(root) {
