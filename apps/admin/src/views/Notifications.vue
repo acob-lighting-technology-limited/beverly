@@ -13,7 +13,7 @@ interface Notification {
     type: string;
     title: string;
     body: string;
-    metadata?: { path?: string };
+    metadata?: { path?: string; disputeId?: string };
     read: boolean;
     created_at: string;
 }
@@ -79,9 +79,15 @@ async function openNotification(item: Notification) {
 }
 
 async function followNotificationPath() {
-    const path = selectedNotification.value?.metadata?.path;
+    const notification = selectedNotification.value;
+    const path = notification?.metadata?.path;
+    const disputeId = notification?.metadata?.disputeId;
     if (!path) return;
     selectedNotification.value = null;
+    if (notification?.type.startsWith('dispute_') && disputeId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(disputeId)) {
+        await router.push({ path: '/disputes', query: { dispute: disputeId } });
+        return;
+    }
     await router.push(path);
 }
 

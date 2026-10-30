@@ -521,6 +521,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'GET /customers': 'wallet.customers.view',
     'GET /customers/summary': 'wallet.customers.view',
     'GET /customers/:id': 'wallet.customers.view',
+    'GET /customers/:id/meters': 'wallet.customers.view',
     'GET /customers/:id/wallet': 'wallet.customers.view',
     'GET /customers/:id/purchases': 'wallet.vending.monitor',
     'GET /customers/:id/funding': 'wallet.funding.view',
@@ -2854,6 +2855,23 @@ const route: FastifyPluginAsync = async (fastify) => {
     // ── Customer meter link review & search routes ── extracted to admin-meter-approvals.ts
     await fastify.register(adminMeterApprovalsRoutes);
 
+    async function readCustomerMeterLinks(customerId: string, stationIds: string[] | null, approvedOnly = false) {
+        const links: any[] = [];
+        const pageSize = 1000;
+        for (let start = 0; ; start += pageSize) {
+            let query = adminClient.from('customer_meters')
+                .select('id, meter_id, meter_type, station_id, tariff_id, nickname, alias, meter_name, status, oem_installation_id, created_at')
+                .eq('customer_id', customerId)
+                .order('id').range(start, start + pageSize - 1);
+            if (stationIds) query = query.in('station_id', stationIds);
+            if (approvedOnly) query = query.eq('status', 'approved');
+            const { data, error } = await query;
+            if (error) throw error;
+            links.push(...(data ?? []));
+            if ((data?.length ?? 0) < pageSize) return links;
+        }
+    }
+
     // Single customer profile + aggregates.
     fastify.get('/customers/:id', async (req, reply) => {
         const id = (req.params as { id: string }).id;
@@ -2861,24 +2879,26 @@ const route: FastifyPluginAsync = async (fastify) => {
             .from('customers')
             .select('id, auth_user_id, full_name, phone, email, kyc_tier, kyc_status, status, created_at')
             .eq('id', id).maybeSingle();
-        if (error || !customer) return reply.code(404).send({ error: 'not_found', message: 'Customer not found.' });
+        if (error) throw error;
+        if (!customer) return reply.code(404).send({ error: 'not_found', message: 'Customer not found.' });
 
         const { data: wallet } = await adminClient
             .from('wallets').select('*').eq('owner_type', 'customer').eq('owner_id', id).maybeSingle();
         const { getBalance } = await import('../services/ledger.js');
         const balance = wallet ? await getBalance((wallet as any).id).catch(() => null) : null;
 
+        const assignedStations = staffStations(req);
         const [meters, purchaseAgg, funding] = await Promise.all([
-            adminClient.from('customer_meters').select('id, station_id').eq('customer_id', id),
-            pagedAmountTotal((start, end) => adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
-                .eq('customer_id', id).in('status', ['delivered', 'completed']).order('id').range(start, end)),
+            readCustomerMeterLinks(id, assignedStations),
+            pagedAmountTotal((start, end) => scopeStations(adminClient.from('purchase_orders').select('amount_minor', { count: 'exact' })
+                .eq('actor_type', 'customer').eq('actor_id', id).in('status', ['delivered', 'completed']), assignedStations).order('id').range(start, end)),
             ledgerFundingSummary((wallet as any)?.id),
         ]);
 
         return {
             customer: {
                 ...customer,
-                station_ids: [...new Set((meters.data ?? [])
+                station_ids: [...new Set(meters
                     .map((meter: any) => String(meter.station_id ?? '').toUpperCase())
                     .filter(Boolean))],
             },
@@ -2887,13 +2907,20 @@ const route: FastifyPluginAsync = async (fastify) => {
             holds_minor:     balance?.activeHoldsMinor ?? 0,
             available_minor: balance?.availableMinor ?? 0,
             stats: {
-                meterCount:        meters.data?.length ?? 0,
+                meterCount:        meters.filter((meter) => meter.status === 'approved').length,
                 purchaseCount:     purchaseAgg.count,
                 purchaseValueMinor: purchaseAgg.amountMinor,
                 fundingCount:      funding.fundingCount,
                 fundingValueMinor: funding.fundingValueMinor,
             },
         };
+    });
+
+    fastify.get('/customers/:id/meters', async (req, reply) => {
+        const assignedStations = staffStations(req);
+        if (!requireStationScope(reply, assignedStations)) return reply;
+        const id = (req.params as { id: string }).id;
+        return { meters: await readCustomerMeterLinks(id, assignedStations) };
     });
 
     // Customer wallet ledger.
@@ -2919,20 +2946,51 @@ const route: FastifyPluginAsync = async (fastify) => {
     });
 
     // Customer purchase history.
-    fastify.get('/customers/:id/purchases', async (req) => {
+    fastify.get('/customers/:id/purchases', async (req, reply) => {
         const id = (req.params as { id: string }).id;
-        const { limit, cursor } = req.query as { limit?: string; cursor?: string };
-        let query = adminClient.from('purchase_orders').select('*')
-            .eq('customer_id', id)
-            .order('created_at', { ascending: false })
-            .order('id', { ascending: false })
-            .limit(Math.min(Number(limit ?? 50), 200));
-        query = applyPurchasePageCursor(query, cursor);
-        const { data, error } = await query;
-        if (error) throw error;
-        const rows = data ?? [];
-        const nextCursor = rows.length === Math.min(Number(limit ?? 50), 200) ? purchasePageCursor(rows[rows.length - 1]) : null;
-        return { purchases: rows, nextCursor };
+        const { limit, cursor, scope, meterId } = req.query as { limit?: string; cursor?: string; scope?: string; meterId?: string };
+        const assignedStations = staffStations(req);
+        if (!requireStationScope(reply, assignedStations)) return reply;
+        const pageSize = Math.min(Math.max(Number.parseInt(limit ?? '50', 10) || 50, 1), 200);
+        let meterIds: string[] = [];
+        let links: any[] = [];
+        if (scope === 'linked') {
+            links = await readCustomerMeterLinks(id, assignedStations, true);
+            meterIds = [...new Set(links.map((link) => String(link.meter_id ?? '').trim()).filter(Boolean))];
+            if (meterId && !meterIds.includes(meterId)) return reply.code(404).send({ error: 'meter_not_found', message: 'Approved linked meter not found.' });
+            if (meterId) meterIds = [meterId];
+            if (!meterIds.length) return { purchases: [], nextCursor: null };
+        } else if (scope || meterId) {
+            return reply.code(400).send({ error: 'invalid_scope', message: 'Choose linked meter history.' });
+        }
+        const matches: any[] = [];
+        let scanCursor = cursor;
+        const scanLimit = scope === 'linked' ? Math.max(pageSize, 100) : pageSize;
+        for (;;) {
+            let query = adminClient.from('purchase_orders').select('*')
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: false })
+                .limit(scanLimit);
+            query = scope === 'linked' ? query.in('meter_id', meterIds) : query.eq('actor_type', 'customer').eq('actor_id', id);
+            if (assignedStations) query = query.in('station_id', assignedStations);
+            query = applyPurchasePageCursor(query, scanCursor);
+            const { data, error } = await query;
+            if (error) throw error;
+            const rows = data ?? [];
+            for (const row of rows as any[]) {
+                if (scope === 'linked') {
+                    const link = links.find((candidate) => candidate.meter_id === row.meter_id && candidate.station_id && candidate.station_id === row.station_id);
+                    if (!link) continue;
+                    if (link.oem_installation_id && row.oem_installation_id && link.oem_installation_id !== row.oem_installation_id) continue;
+                    matches.push({ ...row, match_basis: link.oem_installation_id && row.oem_installation_id ? 'meter_station_installation' : 'meter_station' });
+                } else matches.push(row);
+                if (matches.length === pageSize) return { purchases: matches, nextCursor: purchasePageCursor(row) };
+            }
+            if (rows.length < scanLimit) return { purchases: matches, nextCursor: null };
+            const next = purchasePageCursor(rows[rows.length - 1]);
+            if (next === scanCursor) throw new Error('Purchase pagination did not advance.');
+            scanCursor = next;
+        }
     });
 
     // Customer funding history combines gateway payments and bank proofs.
@@ -3797,8 +3855,9 @@ const route: FastifyPluginAsync = async (fastify) => {
 
     // ── disputes ──
     fastify.get('/disputes', async (req) => {
-        const { status } = req.query as { status?: string };
-        return { disputes: await listAllDisputes({ status, limit: 200 }) };
+        const { status, limit, cursor } = req.query as { status?: string; limit?: string; cursor?: string };
+        const pageSize = Math.min(Math.max(Number.parseInt(limit ?? '200', 10) || 200, 1), 200);
+        return listAllDisputes({ status, limit: pageSize, cursor });
     });
 
     fastify.get('/disputes/:id', async (req, reply) => {

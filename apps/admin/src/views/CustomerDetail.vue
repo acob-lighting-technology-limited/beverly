@@ -26,7 +26,7 @@ const route = useRoute();
 const router = useRouter();
 const id = route.params.id as string;
 
-type Tab = 'overview' | 'wallet' | 'purchases' | 'funding';
+type Tab = 'overview' | 'meters' | 'wallet' | 'purchases' | 'funding';
 const tab = ref<Tab>('overview');
 const overviewView = ref<'grid' | 'table'>('grid');
 
@@ -37,6 +37,16 @@ const banner = ref<{ tone: 'success' | 'error'; text: string } | null>(null);
 // Lazy per-tab data
 const wallet = ref<any>(null);
 const purchases = ref<any[]>([]);
+interface MeterLink { id: string; meter_id: string; station_id?: string | null; status: string; nickname?: string | null; alias?: string | null; meter_name?: string | null; meter_type?: string | null }
+const meters = ref<MeterLink[]>([]);
+const metersLoading = ref(true);
+const metersError = ref('');
+const purchasesLoaded = ref(false);
+const purchasesError = ref('');
+const purchasesLoading = ref(false);
+const purchaseScope = ref<'linked' | 'account'>('linked');
+let purchaseRequest = 0;
+const selectedMeter = ref('all');
 const funding = ref<any[]>([]);
 const tabLoading = ref(false);
 const walletQuery = ref('');
@@ -55,6 +65,25 @@ async function loadDetail() {
     } finally { loading.value = false; }
 }
 
+async function loadMeters() {
+    metersLoading.value = true;
+    metersError.value = '';
+    try {
+        const result = await api.get<{ meters: MeterLink[] }>(`/api/v1/admin/customers/${id}/meters`);
+        if (!Array.isArray(result.meters)) throw new Error('Meter links are unavailable.');
+        meters.value = result.meters;
+        if (selectedMeter.value !== 'all' && !meters.value.some((meter) => meter.status === 'approved' && meter.meter_id === selectedMeter.value)) selectedMeter.value = 'all';
+        if (purchasesLoaded.value && purchaseScope.value === 'linked') {
+            purchases.value = [];
+            purchasesLoaded.value = false;
+            if (tab.value === 'purchases') void switchTab('purchases');
+        }
+    } catch (e: any) {
+        meters.value = [];
+        metersError.value = e?.message ?? 'Could not load linked meters.';
+    } finally { metersLoading.value = false; }
+}
+
 async function switchTab(t: Tab) {
     tab.value = t;
     if (t === 'wallet' && !wallet.value) {
@@ -63,18 +92,37 @@ async function switchTab(t: Tab) {
         catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load wallet history.' }; }
         finally { tabLoading.value = false; }
     }
-    if (t === 'purchases' && !purchases.value.length) {
-        tabLoading.value = true;
-        try { purchases.value = (await loadAllCustomerHistory(`/api/v1/admin/customers/${id}/purchases`, 'purchases')).purchases; }
-        catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load purchase history.' }; }
-        finally { tabLoading.value = false; }
-    }
+    if (t === 'purchases' && !purchasesLoaded.value && !purchasesLoading.value) await loadPurchases();
     if (t === 'funding' && !funding.value.length) {
         tabLoading.value = true;
         try { funding.value = (await loadAllCustomerHistory(`/api/v1/admin/customers/${id}/funding`, 'funding')).funding; }
         catch (e: any) { banner.value = { tone: 'error', text: e?.message ?? 'Could not load funding history.' }; }
         finally { tabLoading.value = false; }
     }
+}
+
+async function loadPurchases() {
+    const request = ++purchaseRequest;
+    purchasesLoading.value = true;
+    purchasesError.value = '';
+    try {
+        const scope = purchaseScope.value === 'linked' ? '?scope=linked' : '';
+        const result = await loadAllCustomerHistory(`/api/v1/admin/customers/${id}/purchases${scope}`, 'purchases');
+        if (request !== purchaseRequest) return;
+        purchases.value = result.purchases;
+        purchasesLoaded.value = true;
+    } catch (e: any) {
+        if (request === purchaseRequest) purchasesError.value = e?.message ?? 'Could not load purchase history.';
+    } finally {
+        if (request === purchaseRequest) purchasesLoading.value = false;
+    }
+}
+
+function changePurchaseScope() {
+    selectedMeter.value = 'all';
+    purchases.value = [];
+    purchasesLoaded.value = false;
+    void loadPurchases();
 }
 
 async function loadAllCustomerHistory(path: string, key: string) {
@@ -85,7 +133,8 @@ async function loadAllCustomerHistory(path: string, key: string) {
     do {
         const params = new URLSearchParams({ limit: '200' });
         if (cursor) params.set('cursor', cursor);
-        const page: any = await api.get(`${path}?${params}`);
+        const page: any = await api.get(`${path}${path.includes('?') ? '&' : '?'}${params}`);
+        if (!Array.isArray(page[key])) throw new Error('History data is unavailable.');
         first ??= page;
         rows.push(...(page[key] ?? []));
         cursor = page.nextCursor ?? null;
@@ -148,7 +197,18 @@ const filteredWalletEntries = computed(() => (wallet.value?.entries ?? []).filte
   return (!query || [entry.entry_type, entry.reference_id, entry.description].filter(Boolean).join(' ').toLowerCase().includes(query))
     && (walletDirection.value === 'all' || entry.direction === walletDirection.value);
 }));
-const filteredPurchases = computed(() => purchases.value.filter((purchase: any) => {
+const approvedMeters = computed(() => meters.value.filter((meter) => meter.status === 'approved'));
+const missingMeterStations = computed(() => approvedMeters.value.some((meter) => !meter.station_id));
+const meterPurchases = computed(() => purchases.value.filter((purchase: any) => selectedMeter.value === 'all' || purchase.meter_id === selectedMeter.value));
+const purchaseAnalytics = computed(() => {
+  const completed = meterPurchases.value.filter((purchase: any) => ['delivered', 'completed'].includes(purchase.status));
+  return {
+    count: meterPurchases.value.length,
+    completedCount: completed.length,
+    completedValue: completed.reduce((sum: number, purchase: any) => sum + Number(purchase.amount_minor || 0), 0),
+  };
+});
+const filteredPurchases = computed(() => meterPurchases.value.filter((purchase: any) => {
   const query = purchaseQuery.value.trim().toLowerCase();
   return (!query || [purchase.meter_id, purchase.station_id, stationDisplayLabel(purchase.station_id), purchase.id].filter(Boolean).join(' ').toLowerCase().includes(query))
     && (purchaseStatus.value === 'all' || purchase.status === purchaseStatus.value);
@@ -200,9 +260,11 @@ const detailExportColumns = computed<WalletExportColumn<any>[]>(() => {
     { key: 'created_at', header: 'When', value: (row) => shortDate(row.created_at) },
     { key: 'meter_id', header: 'Meter', value: (row) => row.meter_id },
     { key: 'station_id', header: 'Station', value: (row) => stationDisplayLabel(row.station_id) },
+    { key: 'actor_type', header: 'Purchased by', value: (row) => row.actor_type || '—' },
+    ...(purchaseScope.value === 'linked' ? [{ key: 'match_basis', header: 'Match basis', value: (row: any) => row.match_basis === 'meter_station_installation' ? 'Meter, station and installation' : 'Meter and station' }] : []),
     { key: 'amount_minor', header: 'Paid', value: (row) => naira(row.amount_minor) },
-    { key: 'energy_amount_minor', header: 'Energy', value: (row) => naira(row.energy_amount_minor ?? row.amount_minor) },
-    { key: 'vat_amount_minor', header: 'VAT', value: (row) => naira(row.vat_amount_minor ?? 0) },
+    { key: 'energy_amount_minor', header: 'Energy value', value: (row) => row.energy_amount_minor == null ? '—' : naira(row.energy_amount_minor) },
+    { key: 'vat_amount_minor', header: 'VAT', value: (row) => row.vat_amount_minor == null ? '—' : naira(row.vat_amount_minor) },
     { key: 'status', header: 'Status', value: (row) => row.status },
   ];
   return [
@@ -214,7 +276,12 @@ const detailExportColumns = computed<WalletExportColumn<any>[]>(() => {
   ];
 });
 
-onMounted(loadDetail);
+function viewMeterPurchases(meter: MeterLink) {
+    selectedMeter.value = meter.meter_id;
+    void switchTab('purchases');
+}
+
+onMounted(() => { void loadDetail(); void loadMeters(); });
 </script>
 
 <template>
@@ -277,28 +344,29 @@ onMounted(loadDetail);
         <div class="stat-tile">
           <p class="stat-label">Total spent</p>
           <p class="stat-value">{{ naira(detail.stats.purchaseValueMinor) }}</p>
-          <p class="stat-sub">{{ detail.stats.purchaseCount }} purchases</p>
+          <p class="stat-sub">{{ detail.stats.purchaseCount }} customer purchases</p>
         </div>
-        <div class="stat-tile">
+        <button type="button" class="stat-tile meter-tile" @click="switchTab('meters')">
           <p class="stat-label">Linked meters</p>
           <p class="stat-value">{{ detail.stats.meterCount }}</p>
-          <p class="stat-sub">on this account</p>
-        </div>
+          <p class="stat-sub">View meter links →</p>
+        </button>
       </div>
 
       <!-- Tabs -->
       <div class="tabs">
-        <button v-for="t in (['overview','wallet','purchases','funding'] as const)" :key="t"
+        <button v-for="t in (['overview','meters','wallet','purchases','funding'] as const)" :key="t"
                 :class="['tab', { active: tab === t }]" @click="switchTab(t)">
           {{ t }}
         </button>
         <WalletExportMenu
+          v-if="tab !== 'meters'"
           :rows="detailExportRows"
           :columns="detailExportColumns"
           :filename="`beverly-admin-customer-${tab}`"
           :title="`Customer ${tab}`"
           :subtitle="detail?.full_name || detail?.email || 'Customer record'"
-          :loading="loading || tabLoading"
+          :loading="loading || tabLoading || purchasesLoading"
           :date-value="tab === 'overview' ? undefined : (row: any) => row.created_at"
           :status-options="detailStatusOptions"
           :status-label="tab === 'wallet' ? 'Entry type' : 'Status'"
@@ -333,6 +401,22 @@ onMounted(loadDetail);
         </dl>
       </div>
 
+      <section v-else-if="tab === 'meters'" class="bw-card meter-list" aria-labelledby="meter-links-title">
+        <div class="meter-list-heading">
+          <div><h2 id="meter-links-title">Meter links</h2><p>Approved meters provide purchase histories.</p></div>
+          <button type="button" class="bw-btn sm" :disabled="metersLoading" @click="loadMeters">Refresh</button>
+        </div>
+        <p v-if="metersLoading" role="status">Loading meter links…</p>
+        <div v-else-if="metersError" class="bw-alert danger" role="alert">{{ metersError }}</div>
+        <p v-else-if="!meters.length" class="bw-muted">No meter links found.</p>
+        <ul v-else class="meter-links">
+          <li v-for="meter in meters" :key="meter.id" class="meter-link">
+            <div><strong class="bw-mono">{{ meter.meter_id }}</strong><p>{{ meter.nickname || meter.alias || meter.meter_name || 'Meter' }} · {{ meter.station_id || 'Station unavailable' }}</p></div>
+            <div class="meter-link-actions"><span :class="['bw-badge', meter.status === 'approved' ? 'success' : 'neutral']">{{ meter.status }}</span><button type="button" class="bw-btn sm" :disabled="meter.status !== 'approved'" @click="viewMeterPurchases(meter)">View purchases</button></div>
+          </li>
+        </ul>
+      </section>
+
       <!-- Wallet -->
       <div v-else-if="tab === 'wallet'" class="bw-card flush">
         <div v-if="tabLoading" class="empty bw-muted">Loading…</div>
@@ -366,8 +450,32 @@ onMounted(loadDetail);
 
       <!-- Purchases -->
       <div v-else-if="tab === 'purchases'" class="bw-card flush">
-        <div v-if="tabLoading" class="empty bw-muted">Loading…</div>
+        <div v-if="purchasesLoading" class="empty bw-muted">Loading…</div>
+        <div v-else-if="purchasesError" class="purchase-error" role="alert">{{ purchasesError }} <button type="button" class="bw-btn sm" @click="switchTab('purchases')">Retry</button></div>
+        <div v-else-if="metersLoading" class="empty bw-muted" role="status">Loading meter links…</div>
+        <div v-else-if="metersError" class="purchase-error" role="alert">{{ metersError }} <button type="button" class="bw-btn sm" @click="loadMeters">Retry</button></div>
         <div v-else>
+          <div class="meter-purchase-summary">
+            <label for="purchase-scope">Purchase scope</label>
+            <select id="purchase-scope" v-model="purchaseScope" class="bw-select" aria-label="Purchase scope" @change="changePurchaseScope">
+              <option value="linked">Linked meter purchases</option>
+              <option value="account">Customer account purchases</option>
+            </select>
+            <label for="purchase-meter">Select meter</label>
+            <select id="purchase-meter" v-model="selectedMeter" class="bw-select" aria-label="Select meter">
+              <option value="all">{{ purchaseScope === 'linked' ? 'All approved meters' : 'All account purchases' }}</option>
+              <option v-for="meter in approvedMeters" :key="meter.id" :value="meter.meter_id">{{ meter.meter_id }}{{ meter.nickname ? ` · ${meter.nickname}` : '' }}</option>
+            </select>
+            <p v-if="purchaseScope === 'linked'">Matched by meter and station. Purchases may predate this link.</p>
+            <p v-else>Purchases made by this customer account.</p>
+            <p>Completed totals use delivered or completed orders.</p>
+            <p v-if="purchaseScope === 'linked' && missingMeterStations" role="status">Meters without stations cannot be matched.</p>
+            <div class="purchase-analytics" aria-label="Purchase analytics">
+              <div><span>Recorded purchases</span><strong>{{ purchaseAnalytics.count }}</strong></div>
+              <div><span>Completed purchases</span><strong>{{ purchaseAnalytics.completedCount }}</strong></div>
+              <div><span>Completed value</span><strong>{{ naira(purchaseAnalytics.completedValue) }}</strong></div>
+            </div>
+          </div>
           <div class="detail-filter-row">
             <input v-model="purchaseQuery" class="bw-input" placeholder="Meter, station, or order" aria-label="Search purchases" />
             <select v-model="purchaseStatus" class="bw-select" aria-label="Filter purchase status">
@@ -376,18 +484,20 @@ onMounted(loadDetail);
           </div>
         <div class="bw-t-wrap">
           <table class="bw-table">
-            <thead><tr><th>When</th><th>Meter</th><th>Station</th><th style="text-align:right">Paid</th><th style="text-align:right">Energy</th><th style="text-align:right">VAT</th><th>Status</th></tr></thead>
+            <thead><tr><th>When</th><th>Meter</th><th>Station</th><th>Purchased by</th><th v-if="purchaseScope === 'linked'">Match basis</th><th style="text-align:right">Paid</th><th style="text-align:right">Energy value</th><th style="text-align:right">VAT</th><th>Status</th></tr></thead>
             <tbody>
               <tr v-for="p in filteredPurchases" :key="p.id">
                 <td class="bw-mono bw-muted" style="font-size: var(--t-xs)">{{ shortDate(p.created_at) }}</td>
                 <td class="bw-mono">{{ p.meter_id }}</td>
                 <td class="bw-mono bw-muted">{{ stationDisplayLabel(p.station_id) || '—' }}</td>
+                <td>{{ p.actor_type || '—' }}</td>
+                <td v-if="purchaseScope === 'linked'">{{ p.match_basis === 'meter_station_installation' ? 'Meter, station and installation' : 'Meter and station' }}</td>
                 <td class="bw-money" style="text-align: right">{{ naira(p.amount_minor) }}</td>
-                <td class="bw-money" style="text-align: right">{{ naira(p.energy_amount_minor ?? p.amount_minor) }}</td>
-                <td class="bw-money" style="text-align: right">{{ naira(p.vat_amount_minor ?? 0) }}</td>
+                <td class="bw-money" style="text-align: right">{{ p.energy_amount_minor == null ? '—' : naira(p.energy_amount_minor) }}</td>
+                <td class="bw-money" style="text-align: right">{{ p.vat_amount_minor == null ? '—' : naira(p.vat_amount_minor) }}</td>
                 <td><span :class="['bw-badge', purchaseBadge(p.status)]">{{ p.status }}</span></td>
               </tr>
-              <tr v-if="!filteredPurchases.length"><td colspan="7" class="bw-muted empty">No purchases match these filters.</td></tr>
+              <tr v-if="!filteredPurchases.length"><td :colspan="purchaseScope === 'linked' ? 9 : 8" class="bw-muted empty">No purchases match these filters.</td></tr>
             </tbody>
           </table>
         </div>
@@ -470,8 +580,25 @@ onMounted(loadDetail);
 .stat-value { font-family: var(--font-mono); font-weight: 700; font-size: var(--t-lg); margin: 0; }
 .stat-tile.brand .stat-value { color: var(--brand); }
 .stat-sub { font-size: var(--t-xs); color: var(--text-muted); margin: 4px 0 0; }
+.meter-tile { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.meter-tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.meter-list-heading { display: flex; justify-content: space-between; align-items: start; gap: var(--s-3); }
+.meter-list-heading h2 { margin: 0; font-size: var(--t-lg); }
+.meter-list-heading p, .meter-link p, .meter-purchase-summary p { margin: var(--s-1) 0 0; color: var(--text-muted); font-size: var(--t-sm); }
+.meter-links { list-style: none; margin: var(--s-4) 0 0; padding: 0; display: grid; gap: var(--s-2); }
+.meter-link { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); }
+.meter-link-actions { display: flex; align-items: center; gap: var(--s-2); }
+.meter-purchase-summary { padding: var(--s-4); border-bottom: 1px solid var(--border); }
+.meter-purchase-summary label { display: block; margin-bottom: var(--s-1); font-weight: 700; }
+.meter-purchase-summary label:not(:first-child) { margin-top: var(--s-3); }
+.meter-purchase-summary select { max-width: 28rem; }
+.purchase-analytics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); margin-top: var(--s-4); }
+.purchase-analytics div { display: grid; gap: var(--s-1); min-width: 0; }
+.purchase-analytics span { color: var(--text-muted); font-size: var(--t-xs); }
+.purchase-analytics strong { overflow-wrap: anywhere; }
+.purchase-error { padding: var(--s-4); color: var(--danger); }
 
-.tabs { display: flex; gap: var(--s-2); margin-bottom: var(--s-3); border-bottom: 1px solid var(--border); }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-3); border-bottom: 1px solid var(--border); }
 .tab { background: transparent; border: none; padding: 10px 16px; color: var(--text-muted); font-weight: 600; font-size: var(--t-sm); cursor: pointer; border-bottom: 2px solid transparent; text-transform: capitalize; }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--brand); border-bottom-color: var(--brand); }
@@ -519,6 +646,9 @@ onMounted(loadDetail);
   .ledger-row { grid-template-columns: 1fr auto; }
   .detail-filter-row { flex-direction: column; }
   .detail-filter-row .bw-select { width: 100%; }
+  .meter-link { align-items: flex-start; flex-direction: column; }
+  .meter-link-actions { width: 100%; justify-content: space-between; }
+  .purchase-analytics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ledger-when, .ledger-bal { grid-column: 1 / -1; opacity: 0.7; }
 }
 </style>
