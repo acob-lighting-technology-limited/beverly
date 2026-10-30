@@ -5,14 +5,14 @@
   <BeverlyLoader v-else-if="!isRoleReady" label="Verifying session" />
     <div
       v-else
-      :class="['app-page', deviceClass, sidebarOpen ? 'openSidebar' : '', { hideSidebar: collapsed, 'no-sidebar': showOemHub }]"
+      :class="['app-page', deviceClass, sidebarOpen ? 'openSidebar' : '', { hideSidebar: collapsed, 'no-sidebar': showOemHub }, isBatterySwapWorkspace ? 'battery-swap-app-host' : '']"
       :style="{ '--layout-sidebar-width': `${sidebarWidth}px` }"
     >
 
       <div class="drawer-bg" @click="closeSidebar"></div>
       <aside
         v-if="!showOemHub"
-        class="sidebar-container"
+        :class="['sidebar-container', isBatterySwapWorkspace ? 'sidebar--battery-swap' : '']"
         aria-label="Primary navigation"
         :inert="width <= 1024 && !sidebarOpen ? '' : null"
       >
@@ -256,7 +256,7 @@
           </div>
         </div>
       </header>
-        <main :class="['content-page', route.hash === '#/dashboard' ? 'dashboard-editor-container' : '']">
+        <main :class="['content-page', route.hash === '#/dashboard' ? 'dashboard-editor-container' : '', isBatterySwapWorkspace ? 'battery-swap-content-page' : '']">
           <ProfilePage
             v-if="profileOpen"
             :user-name="currentUserName"
@@ -273,6 +273,11 @@
             @theme-change="setTheme"
             @close="settingsOpen = false"
           />
+          <BsvMapPage v-else-if="hash.startsWith('#/battery-swap/operations') || hash === '#/battery-swap/map' || route.customComponent === 'BsvMapPage'" :route="route" />
+          <BsvFleetPage v-else-if="hash === '#/battery-swap/fleet' || route.customComponent === 'BsvFleetPage'" :route="route" />
+          <BsvCrmPage v-else-if="hash === '#/battery-swap/crm' || route.customComponent === 'BsvCrmPage'" :route="route" />
+          <BsvStationsPage v-else-if="hash === '#/battery-swap/stations' || route.customComponent === 'BsvStationsPage'" :route="route" />
+          <BsvDiagnosticsPage v-else-if="hash === '#/battery-swap/diagnostics' || route.customComponent === 'BsvDiagnosticsPage'" :route="route" />
           <OemHubPage v-else-if="showOemHub" @oem-selected="handleOemSelected" />
           <DashboardPage v-else-if="route.hash === '#/dashboard'" />
           <ReportsPage v-else-if="route.customComponent === 'ReportsPage'" />
@@ -295,6 +300,7 @@
           <RemoteRelayPage v-else-if="route.customComponent === 'RemoteRelayPage' || route.hash === '#/grid-control/remote-relay'" />
           <EnergyAuditPage v-else-if="route.customComponent === 'EnergyAuditPage' || route.hash === '#/analytics/energy-audit'" />
           <GatewayHealthPage v-else-if="route.customComponent === 'GatewayHealthPage' || route.hash === '#/mesh/gateways'" />
+
           <GuidePage v-else-if="route.customComponent === 'GuidePage' || route.hash === '#/guide'" :route="route" />
           <TablePage v-else :route="route" />
         </main>
@@ -391,6 +397,11 @@ import DemandCurvesPage from "./components/telemetry/DemandCurvesPage.vue";
 import RemoteRelayPage from "./components/grid-control/RemoteRelayPage.vue";
 import EnergyAuditPage from "./components/analytics/EnergyAuditPage.vue";
 import GatewayHealthPage from "./components/mesh/GatewayHealthPage.vue";
+import BsvMapPage from "./components/battery-swap/BsvMapPage.vue";
+import BsvFleetPage from "./components/battery-swap/BsvFleetPage.vue";
+import BsvCrmPage from "./components/battery-swap/BsvCrmPage.vue";
+import BsvStationsPage from "./components/battery-swap/BsvStationsPage.vue";
+import BsvDiagnosticsPage from "./components/battery-swap/BsvDiagnosticsPage.vue";
 import BeverlyLoader from "@beverly/tokens/BeverlyLoader.vue";
 import PwaUpdateToast from "@beverly/tokens/PwaUpdateToast.vue";
 import LanguageSwitcher from "@beverly/tokens/LanguageSwitcher.vue";
@@ -413,7 +424,7 @@ function normalizeThemeChoice(theme) {
 
 export default {
   name: "App",
-  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, GuidePage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
+  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, BsvCrmPage, BsvDiagnosticsPage, BsvFleetPage, BsvMapPage, BsvStationsPage, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, GuidePage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
   data() {
     return {
       hash: window.location.hash || "#/login?redirect=%2Fdashboard",
@@ -448,6 +459,7 @@ export default {
       return useOemStore();
     },
     showOemHub() {
+      if (this.hash.startsWith("#/battery-swap") || this.hash.startsWith("#/guide")) return false;
       return Boolean(this.isRoleReady && !this.isLogin && !this.oemStore.currentOemId);
     },
     isLogin() {
@@ -483,7 +495,8 @@ export default {
           remote_relay_control: true,
           grid_energy_audit: true,
           mesh_network_health: true,
-          direct_credit_balance: true
+          direct_credit_balance: true,
+          battery_swap_operations: true
         };
       }
 
@@ -495,6 +508,7 @@ export default {
           tariff_management: true,
           load_profile: true,
           firmware_update: true,
+          battery_swap_operations: true,
           ...raw,
           remote_meter_task: false,
           dlms_protocol: false,
@@ -513,6 +527,7 @@ export default {
           dlms_protocol: true,
           dlt645_protocol: true,
           wallet_vending: true,
+          battery_swap_operations: true,
           ...raw
         };
       }
@@ -540,8 +555,26 @@ export default {
               : this.oemStore.currentOemId)
       );
     },
+    isBatterySwapWorkspace() {
+      // True whenever the active URL is inside the battery-swap section.
+      // This is hash-driven so it works with or without a selected OEM workspace.
+      return String(this.hash || "").startsWith("#/battery-swap");
+    },
     groups() {
-      return routeGroups(this.currentRoleId, this.currentOemCapabilities);
+      const allGroups = routeGroups(this.currentRoleId, this.currentOemCapabilities);
+      if (this.isBatterySwapWorkspace) {
+        // Standalone individual pages for Battery Swap Operations (detached from dropdowns)
+        const bsvGroup = allGroups.find((g) => g.name === "Battery Swap");
+        if (bsvGroup && bsvGroup.routes) {
+          // Present each page as a standalone direct navigation link (no dropdown accordion)
+          const distinctRoutes = bsvGroup.routes.filter(r => r.hash !== "#/battery-swap/operations");
+          return distinctRoutes.map(r => ({
+            name: r.title,
+            routes: [r]
+          }));
+        }
+      }
+      return allGroups;
     },
     sidebarGroups() {
       const query = this.sidebarQuery.trim().toLowerCase();
@@ -766,6 +799,7 @@ export default {
     },
     routeExists(hash) {
       const normalizedHash = normalizeHash(hash);
+      if (normalizedHash.startsWith("#/battery-swap") || normalizedHash === "#/guide") return true;
       return visibleRoutes(this.currentRoleId, this.currentOemCapabilities).some((route) => route.hash === normalizedHash);
     },
     async loadUser() {
@@ -898,6 +932,10 @@ export default {
 
       if (this.route && this.route.group && this.route.group !== "Dashboard") {
         this.expandedGroups[this.route.group] = true;
+      }
+      // Always keep Battery Swap section open when in that workspace
+      if (this.isBatterySwapWorkspace) {
+        this.expandedGroups["Battery Swap"] = true;
       }
     },
     syncWidth() {
@@ -1185,6 +1223,16 @@ export default {
 .main-container--account-menu-open :deep(.fixed-header) { z-index: 1002; }
 .main-container--account-menu-open :deep(.bw-account-menu) { position: relative; z-index: 1003; }
 .main-container--account-menu-open :deep(.bw-user-dropdown) { z-index: 1004; }
+
+.content-page.battery-swap-content-page {
+  padding: 0 !important;
+  height: calc(100vh - var(--layout-header-height, 60px)) !important;
+  max-height: calc(100vh - var(--layout-header-height, 60px)) !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
 
 @media (min-width: 1025px) {
   .main-container::before, .bw-account-scrim { display: none; }
