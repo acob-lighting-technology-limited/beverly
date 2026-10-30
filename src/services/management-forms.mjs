@@ -11,6 +11,7 @@ function field(name, label, options = {}) {
     pickerColumnLabels: options.pickerColumnLabels || [],
     pickerValueKey: options.pickerValueKey || "",
     pickerTitle: options.pickerTitle || label,
+    help: options.help || "",
     options: options.options || []       // for type:"permissions" grouped choices
   };
 }
@@ -195,8 +196,8 @@ export const managementForms = {
         pickerValueKey: "tariffId",
         pickerTitle: "Tariff"
       }),
-      field("ctRatio", "CT Ratio"),
-      field("stationId", "StationId", { required: true, type: "select" }),
+      field("ctRatio", "CT Ratio", { required: true, help: "Use 1 for a direct meter." }),
+      field("stationId", "Station", { required: true, type: "select", help: "Set from the selected customer and meter." }),
       field("remark", "Remark")
     ],
     Edit: [
@@ -227,8 +228,8 @@ export const managementForms = {
         pickerValueKey: "tariffId",
         pickerTitle: "Tariff"
       }),
-      field("ctRatio", "CT Ratio"),
-      field("stationId", "StationId", { required: true, type: "select" }),
+      field("ctRatio", "CT Ratio", { required: true, help: "Use 1 for a direct meter." }),
+      field("stationId", "Station", { required: true, type: "select", help: "Set from the selected customer and meter." }),
       field("remark", "Remark")
     ],
     Delete: [
@@ -521,6 +522,9 @@ export function managementFormSeed(route, action, row = {}) {
     }
     if (route.hash === "#/admin/meter" && ["type", "isThreePhase", "communicationWay"].includes(currentField.name)) {
       value = meterSelectValue(currentField.name, value);
+    }
+    if (route.hash === "#/management/account" && currentField.name === "ctRatio" && (value === undefined || value === null || value === "")) {
+      value = "1";
     }
     seed[currentField.name] = value ?? "";
   }

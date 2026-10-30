@@ -93,6 +93,18 @@ const aliasReport = await preflightAccountImport([{
 assert.strictEqual(aliasReport.blocking.length, 0);
 assert.strictEqual(aliasReport.ready.length, 1);
 
+assert.strictEqual(
+  (await preflightAccountImport([{ customerId: "C-MILE", meterId: "M-MILE", stationId: "MILE 9" }], {
+    async postApi(path) {
+      if (path === "/api/customer/read") return { code: 0, result: { data: [{ customerId: "C-MILE", stationId: "MILE 9 & 10" }] } };
+      if (path === "/api/meter/read") return { code: 0, result: { data: [{ meterId: "M-MILE", stationId: "MILE 9" }] } };
+      throw new Error(`Unexpected path: ${path}`);
+    }
+  })).blocking.length,
+  0,
+  "Mile 9 aliases must not block account onboarding"
+);
+
 const writes = [];
 const provisioned = await provisionMissingCustomers(report, {
   async postApi(path, payload, options) {

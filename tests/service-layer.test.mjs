@@ -1312,7 +1312,7 @@ assert.deepStrictEqual(
     customerId: "C-1",
     meterId: "M-1",
     tariffId: "",
-    ctRatio: "",
+    ctRatio: "1",
     remark: "",
     stationId: "",
     oldMeterId: "M-1"

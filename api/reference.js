@@ -1174,6 +1174,23 @@ function sanitizeDailyMeterReadPayload(payload) {
   return sanitized;
 }
 
+function normalizeAccountCtRatio(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "1";
+  const parts = text.split("/").map((part) => Number(part.trim()));
+  const ratio = parts.length === 1
+    ? parts[0]
+    : parts.length === 2 && parts[1] !== 0
+      ? parts[0] / parts[1]
+      : NaN;
+  return Number.isFinite(ratio) && ratio > 0 ? String(ratio) : text;
+}
+
+function sanitizeAccountBindingPayload(payload) {
+  const rows = Array.isArray(payload) ? payload : payload ? [payload] : [];
+  return rows.map((row) => ({ ...row, ctRatio: normalizeAccountCtRatio(row?.ctRatio) }));
+}
+
 function sanitizeLiveRequestData(pathname, requestData) {
   const normalizedPath = String(pathname || "");
   const customerKeyMap = {
@@ -1205,6 +1222,8 @@ function sanitizeLiveRequestData(pathname, requestData) {
       ? sanitizeReadPayload(requestData?.parsedBody, customerKeyMap)
       : /\/api\/account\/read$/i.test(normalizedPath)
         ? sanitizeReadPayload(requestData?.parsedBody, accountKeyMap, { maxPageSize: 500 })
+      : /\/api\/account\/(?:create|update|import)$/i.test(normalizedPath)
+        ? sanitizeAccountBindingPayload(requestData?.parsedBody)
         : /\/api\/RemoteMeterTask\/Get(?:Reading|Control|Token)Task$/i.test(normalizedPath)
           ? sanitizeReadPayload(requestData?.parsedBody, {}, { requireLang: true })
           : /\/api\/station\/(?:create|update|delete|import)$/i.test(normalizedPath) && requestData?.parsedBody && !Array.isArray(requestData.parsedBody)
@@ -6855,7 +6874,8 @@ async function proxyLive(request, pathname, requestData) {
   const env = getEnv();
   if (!env.liveProxyEnabled) return null;
   if (isAuthRefreshPath(normalizeRequestPath(pathname))) return null;
-  const liveRequestData = sanitizeLiveRequestData(pathname, requestData);
+  requestData = sanitizeLiveRequestData(pathname, requestData);
+  const liveRequestData = requestData;
   if (isGuardedWriteRequest(pathname, request.method, requestData) && !env.allowLiveWrites) {
     return {
       status: 403,
