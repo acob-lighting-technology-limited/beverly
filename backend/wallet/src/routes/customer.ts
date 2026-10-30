@@ -1243,7 +1243,8 @@ const customer: FastifyPluginAsync = async (fastify) => {
         const { data: purchaseRows, error: purchaseError } = await adminClient
             .from('purchase_orders')
             .select('id, meter_id, meter_type, amount_minor, energy_amount_minor, vat_amount_minor, vat_rate_basis_points, units_kwh, tariff_id, station_id, status')
-            .eq('customer_id', req.actor!.customerId!);
+            .eq('actor_type', 'customer')
+            .eq('actor_id', req.actor!.customerId!);
         if (purchaseError) throw purchaseError;
         if (!purchaseRows?.length) return { receipts: [] };
         const purchaseById = new Map((purchaseRows ?? []).map((p: any) => [p.id, p]));
@@ -1419,6 +1420,13 @@ const customer: FastifyPluginAsync = async (fastify) => {
         catch (e: any) { return reply.code(400).send({ error: 'validation_error', message: e.message }); }
 
         const customerId = req.actor!.customerId!;
+        if (body.purchase_order_id) {
+            const { data: purchase, error } = await adminClient.from('purchase_orders')
+                .select('id').eq('id', body.purchase_order_id)
+                .eq('actor_type', 'customer').eq('actor_id', customerId).maybeSingle();
+            if (error) throw error;
+            if (!purchase) return reply.code(404).send({ error: 'purchase_not_found' });
+        }
         const result = await raiseDispute({
             raisedByActorType: 'customer',
             raisedByActorId:   customerId,
@@ -1620,7 +1628,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
             .select('*')
             .eq('id', receipt.purchase_order_id)
             .single();
-        if ((po as any)?.customer_id !== req.actor!.customerId!) {
+        if ((po as any)?.actor_type !== 'customer' || (po as any)?.actor_id !== req.actor!.customerId!) {
             return reply.code(403).send({ error: 'forbidden' });
         }
         return shapeReceipt(receipt, po);
@@ -1632,10 +1640,10 @@ const customer: FastifyPluginAsync = async (fastify) => {
         if (!receipt) return reply.code(404).send({ error: 'not_found' });
         const { data: po } = await adminClient
             .from('purchase_orders')
-            .select('id, customer_id, meter_id, amount_minor, units_kwh, token')
+            .select('id, actor_type, actor_id, meter_id, amount_minor, units_kwh, token')
             .eq('id', receipt.purchase_order_id)
             .single();
-        if ((po as any)?.customer_id !== req.actor!.customerId!) {
+        if ((po as any)?.actor_type !== 'customer' || (po as any)?.actor_id !== req.actor!.customerId!) {
             return reply.code(403).send({ error: 'forbidden' });
         }
         try {

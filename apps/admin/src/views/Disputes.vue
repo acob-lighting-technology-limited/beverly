@@ -19,6 +19,7 @@ interface DisputeRow {
   vendor_organization_id?: string | null;
   raised_by_actor_id?: string | null;
   raised_by_actor_type?: string | null;
+  purchase_order_id?: string | null;
   created_at: string;
   updated_at?: string | null;
   customers?: { full_name?: string | null; phone?: string | null } | null;
@@ -45,6 +46,7 @@ interface DisputeMessage {
 interface DisputeDetail extends DisputeRow {
   resolution_note?: string | null;
   dispute_messages?: DisputeMessage[];
+  evidence?: Array<{ path: string; url: string | null }>;
 }
 
 const statuses: Array<{ value: '' | DisputeStatus; label: string }> = [
@@ -115,7 +117,7 @@ const disputeExportColumns: WalletExportColumn<DisputeRow>[] = [
 ];
 
 const canSave = computed(() =>
-  !saving.value && Boolean(newStatus.value || replyText.value.trim()) && (!resolutionNote.value.trim() || Boolean(newStatus.value)),
+  !saving.value && Boolean(newStatus.value) !== Boolean(replyText.value.trim()) && (!resolutionNote.value.trim() || Boolean(newStatus.value)),
 );
 
 async function load() {
@@ -444,10 +446,19 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
                 <div><span>Energy value</span><strong>{{ (detail || selected).purchase_order?.energy_amount_minor != null ? naira((detail || selected).purchase_order?.energy_amount_minor ?? 0) : '—' }}</strong></div>
                 <div><span>VAT</span><strong>{{ (detail || selected).purchase_order?.vat_amount_minor != null ? naira((detail || selected).purchase_order?.vat_amount_minor ?? 0) : '—' }}</strong></div>
               </div>
+              <p v-if="!(detail || selected).purchase_order" class="bw-text-sm bw-text-muted">{{ (detail || selected).purchase_order_id ? 'The linked purchase is unavailable. Meter and payment details cannot be verified.' : 'No purchase is linked to this dispute. Meter and payment details are unavailable.' }}</p>
 
               <section class="case-panel">
                 <h3>Description</h3>
                 <p>{{ detail?.description || selected.description || 'No description provided.' }}</p>
+              </section>
+
+              <section v-if="detail?.evidence?.length" class="case-panel">
+                <h3>Attachments</h3>
+                <div v-for="(item, index) in detail.evidence" :key="item.path">
+                  <a v-if="item.url" :href="item.url" target="_blank" rel="noopener noreferrer">Open attachment {{ index + 1 }}</a>
+                  <span v-else>Attachment {{ index + 1 }} unavailable. Refresh to retry.</span>
+                </div>
               </section>
 
               <section class="case-panel">
@@ -463,8 +474,10 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
               </section>
 
               <section class="case-panel update-panel">
+                <p v-if="banner?.tone === 'error'" role="alert">{{ banner.text }}</p>
                 <label class="bw-label">Reply</label>
                 <textarea v-model="replyText" class="bw-textarea" placeholder="Add a staff reply..." rows="3"></textarea>
+                <p v-if="newStatus && replyText.trim()">Save the reply and status separately.</p>
 
                 <div class="update-grid">
                   <div>
@@ -473,6 +486,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
                       <option value="">No change</option>
                       <option v-for="s in statuses.filter((item) => item.value)" :key="s.value" :value="s.value">{{ s.label }}</option>
                     </select>
+                    <p v-if="newStatus === 'refund_issued'">Changing this status does not issue a refund. Verify the refund separately.</p>
                   </div>
                   <div>
                     <label class="bw-label">Resolution note</label>

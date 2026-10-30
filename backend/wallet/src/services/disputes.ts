@@ -85,6 +85,18 @@ export async function addMessage(input: {
             dedupeKey: `dispute.message.${(message as any).id}`,
             metadata: { disputeId: input.disputeId, messageId: (message as any).id },
         }).catch(() => undefined);
+    } else {
+        const { data: dispute, error: lookupError } = await adminClient.from('disputes')
+            .select('customer_id, status').eq('id', input.disputeId).maybeSingle();
+        if (lookupError) console.error('[disputes] customer notification lookup failed', lookupError);
+        if ((dispute as any)?.customer_id) {
+            await notifyDisputeUpdate((dispute as any).customer_id, {
+                disputeId: input.disputeId,
+                status: (dispute as any).status,
+                message: 'Support replied to your dispute.',
+                messageId: (message as any).id,
+            }).catch((error) => console.error('[disputes] customer notification failed', error));
+        }
     }
 }
 
@@ -96,9 +108,12 @@ export async function updateDisputeStatus(input: {
 }): Promise<void> {
     const patch: Record<string, unknown> = { status: input.status };
     if (input.resolutionNote)   patch.resolution_note    = input.resolutionNote;
-    if (input.resolvedByUserId) patch.resolved_by_user_id = input.resolvedByUserId;
     if (input.status === 'resolved' || input.status === 'rejected' || input.status === 'refund_issued') {
         patch.resolved_at = new Date().toISOString();
+        if (input.resolvedByUserId) patch.resolved_by_user_id = input.resolvedByUserId;
+    } else {
+        patch.resolved_at = null;
+        patch.resolved_by_user_id = null;
     }
     const { error } = await adminClient.from('disputes').update(patch).eq('id', input.disputeId);
     if (error) throw error;

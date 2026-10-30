@@ -1665,44 +1665,43 @@ const route: FastifyPluginAsync = async (fastify) => {
         catch (e: any) { return reply.code(400).send({ error: 'validation_error', message: e.message }); }
 
         const actor = req.actor!;
-        const { data: vu } = await adminClient
-            .from('vendor_users')
-            .select('vendor_organization_id')
-            .eq('id', actor.actorId)
-            .single();
-        if (!vu) return reply.code(403).send({ error: 'vendor_not_found' });
+        const orgId = actor.vendorOrganizationId;
+        if (!orgId) return reply.code(403).send({ error: 'vendor_not_found' });
+        if (body.purchase_order_id) {
+            const { data: purchase, error } = await adminClient.from('purchase_orders')
+                .select('id').eq('id', body.purchase_order_id)
+                .eq('actor_type', 'vendor').eq('actor_id', orgId).maybeSingle();
+            if (error) throw error;
+            if (!purchase) return reply.code(404).send({ error: 'purchase_not_found' });
+        }
 
         try {
-            const id = await raiseDispute({
+            const result = await raiseDispute({
                 raisedByActorType:   'vendor',
                 raisedByActorId:     actor.actorId,
-                vendorOrganizationId: (vu as any).vendor_organization_id,
+                vendorOrganizationId: orgId,
                 purchaseOrderId:     body.purchase_order_id,
                 subject:             body.subject,
                 description:         body.description,
             });
-            return { id };
+            return result;
         } catch (e: any) {
             return reply.code(400).send({ error: e.code ?? 'dispute_error', message: e.message });
         }
     });
 
-    fastify.get('/disputes', { preHandler: fastify.requireVendor() }, async (req) => {
+    fastify.get('/disputes', { preHandler: fastify.requireVendor() }, async (req, reply) => {
         const actor = req.actor!;
         const { status } = req.query as { status?: string };
-        const { data: vu2 } = await adminClient
-            .from('vendor_users')
-            .select('vendor_organization_id')
-            .eq('id', actor.actorId)
-            .single();
-        const orgId = (vu2 as any)?.vendor_organization_id;
+        const orgId = actor.vendorOrganizationId;
+        if (!orgId) return reply.code(403).send({ error: 'vendor_not_found' });
         return { disputes: await listDisputes({ vendorOrganizationId: orgId, status, limit: 100 }) };
     });
 
     fastify.get('/disputes/:id', { preHandler: fastify.requireVendor() }, async (req, reply) => {
         const id = (req.params as { id: string }).id;
         const d = await getDispute(id);
-        if (!d) return reply.code(404).send({ error: 'not_found' });
+        if (!req.actor!.vendorOrganizationId || !d || (d as any).vendor_organization_id !== req.actor!.vendorOrganizationId) return reply.code(404).send({ error: 'not_found' });
         return d;
     });
 
@@ -1714,6 +1713,8 @@ const route: FastifyPluginAsync = async (fastify) => {
         catch (e: any) { return reply.code(400).send({ error: 'validation_error', message: e.message }); }
 
         const actor = req.actor!;
+        const dispute = await getDispute(id);
+        if (!actor.vendorOrganizationId || !dispute || (dispute as any).vendor_organization_id !== actor.vendorOrganizationId) return reply.code(404).send({ error: 'not_found' });
         try {
             await addMessage({ disputeId: id, senderActorType: 'vendor', senderActorId: actor.actorId, body: parsed.body });
             return { ok: true };
