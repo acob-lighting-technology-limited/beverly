@@ -20,6 +20,7 @@ import { resolveAssessment } from '../services/fraud-engine.js';
 import { listStationDirectory, invalidateStationsCache, TokenEngineError, generateCreditToken, lookupMeter } from '../services/token-engine.js';
 import { resendRemoteSendOrder } from '../services/vending.js';
 import { listAllDisputes, updateDisputeStatus, addMessage, getDispute } from '../services/disputes.js';
+import { signDisputeEvidencePaths } from '../services/dispute-evidence.js';
 import {
     listFaqCategories, listFaqs, upsertFaqCategory, deleteFaqCategory, upsertFaq, deleteFaq,
     listTickets, getTicket, addTicketMessage, updateTicket, ticketStats,
@@ -3864,19 +3865,30 @@ const route: FastifyPluginAsync = async (fastify) => {
         const id = (req.params as { id: string }).id;
         const d = await getDispute(id);
         if (!d) return reply.code(404).send({ error: 'not_found' });
-        return d;
+        const paths = Array.isArray((d as any).evidence_paths) ? (d as any).evidence_paths : [];
+        return { ...d, evidence: await signDisputeEvidencePaths(paths) };
     });
 
     fastify.patch('/disputes/:id', async (req, reply) => {
         const id = (req.params as { id: string }).id;
         const schema = z.object({
             status:          z.enum(['open','under_review','resolved','rejected','refund_issued']).optional(),
-            resolution_note: z.string().optional(),
-            message:         z.string().optional(),
-        }).refine((body) => body.status || body.message, {
-            message: 'Provide status or message.',
+            resolution_note: z.string().trim().max(2000).optional(),
+            message:         z.string().trim().min(1).max(2000).optional(),
+        }).refine((body) => Boolean(body.status) !== Boolean(body.message), {
+            message: 'Save a status change and reply separately.',
         });
-        const body = schema.parse(req.body);
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'validation_error', message: parsed.error.issues[0]?.message ?? 'Invalid update.' });
+        const body = parsed.data;
+        if (!await getDispute(id)) return reply.code(404).send({ error: 'not_found' });
+        if (body.status === 'refund_issued') {
+            const { data: refunds, error } = await adminClient.from('refund_requests')
+                .select('id').eq('dispute_id', id).eq('status', 'approved')
+                .not('ledger_entry_id', 'is', null).limit(1);
+            if (error) throw error;
+            if (!refunds?.length) return reply.code(409).send({ error: 'refund_not_credited', message: 'Approve a linked refund before marking it issued.' });
+        }
         if (body.status) {
             await updateDisputeStatus({
                 disputeId:        id,

@@ -343,14 +343,15 @@ export async function notifyKycUpdate(customerId: string, opts: {
 }
 
 export function notifyDisputeUpdate(customerId: string, opts: {
-    disputeId: string; status: string; message?: string;
+    disputeId: string; status: string; message?: string; messageId?: string;
 }): Promise<void> {
     const statusLabel = opts.status === 'resolved' ? 'resolved' : opts.status === 'rejected' ? 'closed' : 'updated';
     return sendNotification(customerId, {
         type:  'dispute_update',
         title: 'Dispute update',
         body:  opts.message ?? `Your dispute has been ${statusLabel}.`,
-        metadata: { disputeId: opts.disputeId, status: opts.status },
+        metadata: { disputeId: opts.disputeId, status: opts.status, path: `/disputes?dispute=${encodeURIComponent(opts.disputeId)}` },
+        ...(opts.messageId ? { dedupeKey: `dispute.message.${opts.messageId}` } : {}),
     });
 }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import { adminClient } from '../db/supabase.js';
 import { runMalwareScan } from './file-scan.js';
 
@@ -40,19 +41,20 @@ export function assertDisputeEvidenceSop(input: unknown) {
 
 export function toDisputeEvidencePath(customerId: string, disputeId: string, fileName: string) {
     const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '-').toLowerCase();
-    return `customer/${customerId}/${disputeId}/${Date.now()}-${safe}`;
+    return `customer/${customerId}/${disputeId}/${randomUUID()}-${safe}`;
 }
 
 export async function activateDisputeEvidence(customerId: string, disputeId: string, path: string): Promise<string[]> {
     const expectedPrefix = `customer/${customerId}/${disputeId}/`;
     if (!path.startsWith(expectedPrefix)) throw new DisputeEvidenceError('Invalid evidence path.', 'invalid_path');
 
-    const { data: dispute } = await adminClient
+    const { data: dispute, error: readError } = await adminClient
         .from('disputes')
         .select('evidence_paths')
         .eq('id', disputeId)
         .eq('customer_id', customerId)
         .maybeSingle();
+    if (readError) throw new DisputeEvidenceError('Could not load dispute.', 'evidence_read_failed');
     if (!dispute) throw new DisputeEvidenceError('Dispute not found.', 'not_found');
 
     const existing: string[] = Array.isArray((dispute as any).evidence_paths) ? (dispute as any).evidence_paths : [];
@@ -69,9 +71,24 @@ export async function activateDisputeEvidence(customerId: string, disputeId: str
     const scan = await runMalwareScan(Buffer.from(await file.arrayBuffer()), path);
     if (!scan.ok) throw new DisputeEvidenceError('File failed malware scan.', 'malware_scan_failed');
 
-    const updated = [...existing, path];
-    await adminClient.from('disputes').update({ evidence_paths: updated, updated_at: new Date().toISOString() }).eq('id', disputeId);
-    return updated;
+    let current = existing;
+    for (let attempt = 0; attempt < 8; attempt++) {
+        if (current.includes(path)) return current;
+        if (current.length >= MAX_EVIDENCE_PER_DISPUTE) throw new DisputeEvidenceError(`A dispute can have at most ${MAX_EVIDENCE_PER_DISPUTE} attachments.`, 'evidence_limit_reached');
+        const updated = [...current, path];
+        const { data: saved, error: updateError } = await adminClient.from('disputes')
+            .update({ evidence_paths: updated, updated_at: new Date().toISOString() })
+            .eq('id', disputeId).eq('customer_id', customerId).eq('evidence_paths', JSON.stringify(current))
+            .select('evidence_paths').maybeSingle();
+        if (updateError) throw new DisputeEvidenceError('Could not attach evidence.', 'evidence_update_failed');
+        if (saved) return (saved as any).evidence_paths;
+        const { data: latest, error } = await adminClient.from('disputes').select('evidence_paths')
+            .eq('id', disputeId).eq('customer_id', customerId).maybeSingle();
+        if (error) throw new DisputeEvidenceError('Could not load dispute.', 'evidence_read_failed');
+        if (!latest) throw new DisputeEvidenceError('Dispute not found.', 'not_found');
+        current = Array.isArray((latest as any).evidence_paths) ? (latest as any).evidence_paths : [];
+    }
+    throw new DisputeEvidenceError('The dispute changed repeatedly. Please retry the attachment.', 'evidence_conflict');
 }
 
 export async function signDisputeEvidencePaths(paths: string[]): Promise<Array<{ path: string; url: string | null }>> {

@@ -9,7 +9,7 @@ async function main() {
   const server = await preview({ root: path.join(root, "apps/admin"), base: "/wallet-admin/", configFile: path.join(root, "apps/admin/vite.config.ts"), preview: { host: "127.0.0.1", port: 0 } });
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   const disputeId = "11111111-1111-4111-8111-111111111111";
-  const dispute = { id: disputeId, reference: "DISP-2026-00006", subject: "Meter issue", description: "Case details", status: "open", created_at: "2026-10-29T00:00:00Z", dispute_messages: [] };
+  const dispute = { id: disputeId, reference: "DISP-2026-00006", subject: "Meter issue", description: "Case details", status: "open", created_at: "2026-10-29T00:00:00Z", dispute_messages: [], evidence: [{ path: 'proof', url: 'https://storage.example.test/proof' }] };
   try {
     const context = await browser.newContext({ serviceWorkers: "block" });
     await context.addInitScript(() => {
@@ -33,6 +33,7 @@ async function main() {
     await page.getByRole("dialog").getByText("DISP-2026-00006").waitFor({ timeout: 5000 });
     assert.match(page.url(), new RegExp(`dispute=${disputeId}`));
     assert.equal(await page.getByRole("dialog").getByText("Case details").count(), 1);
+    assert.equal(await page.getByRole('dialog').getByRole('link', { name: 'Open attachment 1' }).getAttribute('href'), 'https://storage.example.test/proof');
     console.log("PASS legacy notification opens its dispute");
   } finally { await browser.close(); await new Promise((resolve) => server.httpServer.close(resolve)); }
 }

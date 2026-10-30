@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
@@ -20,8 +20,10 @@ const ISSUE_TYPES: Array<{ key: IssueType; label: string; subject: string; hint:
 const STATUS_FILTERS = ['all', 'open', 'under_review', 'resolved', 'refund_issued', 'rejected'];
 
 const route = useRoute();
+const router = useRouter();
 const disputes = ref<any[]>([]);
 const receipts = ref<any[]>([]);
+const receiptError = ref('');
 const loading = ref(false);
 const saving = ref(false);
 const error = ref('');
@@ -30,6 +32,8 @@ const showNew = ref(false);
 const newError = ref('');
 const selected = ref<any>(null);
 const detail = ref<any>(null);
+const detailError = ref('');
+let detailRequest = 0;
 const replyText = ref('');
 const statusFilter = ref('all');
 const form = ref({
@@ -70,10 +74,14 @@ const selectedReceipt = computed(() =>
 async function load() {
   loading.value = true;
   error.value = '';
+  receiptError.value = '';
   try {
     const [disputeRes, receiptRes] = await Promise.all([
       api.get<{ disputes?: any[] }>('/api/v1/customer/disputes'),
-      api.get<{ receipts?: any[] }>('/api/v1/customer/receipts').catch(() => ({ receipts: [] })),
+      api.get<{ receipts?: any[] }>('/api/v1/customer/receipts').catch(() => {
+        receiptError.value = 'Receipts could not be loaded. Refresh to try again.';
+        return { receipts: [] };
+      }),
     ]);
     disputes.value = disputeRes.disputes ?? [];
     receipts.value = receiptRes.receipts ?? [];
@@ -195,25 +203,68 @@ function buildDescription() {
 }
 
 async function openDetail(d: any) {
+  const request = ++detailRequest;
   selected.value = d;
   detail.value = null;
+  detailError.value = '';
+  evidenceFile.value = null;
+  evidenceError.value = '';
   replyText.value = '';
   try {
-    detail.value = await api.get(`/api/v1/customer/disputes/${d.id}`);
-  } catch {
-    detail.value = d;
+    const record = await api.get(`/api/v1/customer/disputes/${d.id}`);
+    if (request !== detailRequest) return;
+    detail.value = record;
+    selected.value = detail.value;
+  } catch (e: any) {
+    if (request !== detailRequest) return;
+    detailError.value = e.message ?? 'Could not load dispute details.';
+  }
+}
+
+function closeDetail() {
+  detailRequest++;
+  selected.value = null;
+  detail.value = null;
+  if (route.query.dispute) {
+    const query = { ...route.query };
+    delete query.dispute;
+    void router.replace({ query });
+  }
+}
+
+async function attachEvidence() {
+  if (!selected.value || !evidenceFile.value || uploadingEvidence.value) return;
+  detailError.value = '';
+  uploadingEvidence.value = true;
+  try {
+    await uploadEvidence(selected.value.id, evidenceFile.value);
+    evidenceFile.value = null;
+    try {
+      detail.value = await api.get(`/api/v1/customer/disputes/${selected.value.id}`);
+    } catch {
+      detailError.value = 'Attachment saved. Close and reopen this dispute to refresh.';
+    }
+  } catch (e: any) {
+    detailError.value = e.message ?? 'Could not attach file.';
+  } finally {
+    uploadingEvidence.value = false;
   }
 }
 
 async function sendMessage() {
   if (!selected.value || !replyText.value.trim()) return;
+  detailError.value = '';
   saving.value = true;
   try {
     await api.post(`/api/v1/customer/disputes/${selected.value.id}/messages`, { body: replyText.value.trim() });
     replyText.value = '';
-    detail.value = await api.get(`/api/v1/customer/disputes/${selected.value.id}`);
+    try {
+      detail.value = await api.get(`/api/v1/customer/disputes/${selected.value.id}`);
+    } catch {
+      detailError.value = 'Reply sent. Close and reopen this dispute to refresh.';
+    }
   } catch (e: any) {
-    error.value = e.message ?? 'Failed to send message.';
+    detailError.value = e.message ?? 'Failed to send message.';
   } finally {
     saving.value = false;
   }
@@ -245,13 +296,17 @@ function meterTypeLabel(type?: string | null) {
 
 function onEsc(e: KeyboardEvent) {
   if (e.key !== 'Escape') return;
-  if (selected.value) selected.value = null;
+  if (selected.value) closeDetail();
   else if (showNew.value) showNew.value = false;
 }
 
 watch(() => route.query, (query) => {
   const orderId = typeof query.order === 'string' ? query.order : '';
   if (query.new === '1' || orderId) openNew(orderId);
+}, { immediate: true });
+
+watch(() => route.query.dispute, (id) => {
+  if (typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) void openDetail({ id });
 }, { immediate: true });
 
 onMounted(() => {
@@ -370,6 +425,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
               </option>
             </select>
           </label>
+          <div v-if="receiptError" class="dispute-error" role="alert">{{ receiptError }}</div>
 
           <div v-if="selectedReceipt" class="receipt-preview">
             <span>Meter <strong>{{ selectedReceipt.meter_id }}</strong></span>
@@ -407,14 +463,15 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
       </div>
     </div>
 
-    <div v-if="selected" class="bw-modal-backdrop" @click.self="selected = null">
+    <div v-if="selected" class="bw-modal-backdrop" @click.self="closeDetail">
       <div class="bw-modal bw-modal-lg dispute-modal">
         <div class="bw-modal-header">
           <h2>{{ selected.reference }}</h2>
-          <span :class="statusClass(selected.status)" class="bw-badge">{{ statusLabel(selected.status) }}</span>
-          <button class="bw-btn bw-btn-ghost bw-btn-sm" style="margin-left:auto" @click="selected = null">Close</button>
+          <span v-if="selected.status" :class="statusClass(selected.status)" class="bw-badge">{{ statusLabel(selected.status) }}</span>
+          <button class="bw-btn bw-btn-ghost bw-btn-sm" style="margin-left:auto" @click="closeDetail">Close</button>
         </div>
         <div class="bw-modal-body dispute-modal-body">
+          <div v-if="detailError" class="dispute-error" role="alert">{{ detailError }}</div>
           <div class="detail-title">
             <strong>{{ selected.subject }}</strong>
             <span>{{ selected.description }}</span>
@@ -443,10 +500,17 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
             </a>
           </div>
 
+          <label class="field">
+            <span>Add attachment</span>
+            <input type="file" class="bw-input" accept="image/jpeg,image/png,image/webp,application/pdf" @change="onEvidenceSelected" />
+          </label>
+          <div v-if="evidenceError" class="dispute-error" role="alert">{{ evidenceError }}</div>
+          <button class="bw-btn bw-btn-ghost" :disabled="!evidenceFile || uploadingEvidence" @click="attachEvidence">{{ uploadingEvidence ? 'Uploading...' : 'Add attachment' }}</button>
+
           <div class="section-label">Conversation</div>
           <div class="messages">
             <div
-              v-for="m in detail?.messages ?? []"
+              v-for="m in detail?.dispute_messages ?? []"
               :key="m.id"
               :class="['message', m.sender_actor_type === 'customer' ? 'mine' : 'staff']"
             >
@@ -454,13 +518,13 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
               <p>{{ m.body }}</p>
               <small>{{ shortDate(m.created_at) }}</small>
             </div>
-            <p v-if="!detail?.messages?.length" class="empty-small">No messages yet.</p>
+            <p v-if="!detail?.dispute_messages?.length" class="empty-small">No messages yet.</p>
           </div>
 
           <textarea v-model="replyText" class="bw-textarea" placeholder="Write a reply..." rows="3"></textarea>
         </div>
         <div class="bw-modal-footer">
-          <button class="bw-btn bw-btn-ghost" @click="selected = null">Close</button>
+          <button class="bw-btn bw-btn-ghost" @click="closeDetail">Close</button>
           <button class="bw-btn bw-btn-brand" :disabled="!replyText.trim() || saving" @click="sendMessage">
             {{ saving ? 'Sending...' : 'Send reply' }}
           </button>
