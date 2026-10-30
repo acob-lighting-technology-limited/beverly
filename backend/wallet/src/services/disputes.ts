@@ -8,6 +8,7 @@
 import { adminClient } from '../db/supabase.js';
 import { notifyDisputeUpdate } from './notifications.js';
 import { notifyOperationalStaff } from './operational-notifications.js';
+import { applyPurchasePageCursor, purchasePageCursor } from '../routes/purchase-pagination.js';
 
 export class DisputeError extends Error {
     constructor(message: string, public code: string) {
@@ -50,7 +51,7 @@ export async function raiseDispute(input: {
         type: 'dispute_created',
         title: 'New dispute opened',
         body: `${(data as any).reference}: ${input.subject}`,
-        path: '/disputes',
+        path: `/disputes?dispute=${encodeURIComponent((data as any).id)}`,
         dedupeKey: `dispute.created.${(data as any).id}`,
         stationId,
         metadata: { disputeId: (data as any).id, reference: (data as any).reference },
@@ -80,7 +81,7 @@ export async function addMessage(input: {
             type: 'dispute_message',
             title: 'New dispute message',
             body: 'A customer or vendor replied.',
-            path: '/disputes',
+            path: `/disputes?dispute=${encodeURIComponent(input.disputeId)}`,
             dedupeKey: `dispute.message.${(message as any).id}`,
             metadata: { disputeId: input.disputeId, messageId: (message as any).id },
         }).catch(() => undefined);
@@ -99,7 +100,8 @@ export async function updateDisputeStatus(input: {
     if (input.status === 'resolved' || input.status === 'rejected' || input.status === 'refund_issued') {
         patch.resolved_at = new Date().toISOString();
     }
-    await adminClient.from('disputes').update(patch).eq('id', input.disputeId);
+    const { error } = await adminClient.from('disputes').update(patch).eq('id', input.disputeId);
+    if (error) throw error;
 
     // Notify the customer who raised the dispute (if any)
     const { data: dispute } = await adminClient
@@ -117,11 +119,15 @@ export async function updateDisputeStatus(input: {
 }
 
 export async function getDispute(disputeId: string) {
-    const { data } = await adminClient
+    const { data, error } = await adminClient
         .from('disputes')
-        .select('*, dispute_messages(* order by created_at asc)')
+        .select('*, customers(full_name, phone), vendor_organizations(trading_name, legal_name), dispute_messages(*)')
         .eq('id', disputeId)
         .maybeSingle();
+    if (error) throw error;
+    if (data && Array.isArray((data as any).dispute_messages)) {
+        (data as any).dispute_messages.sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)));
+    }
     return data ? (await withPurchaseContext(data)) : null;
 }
 
@@ -141,19 +147,28 @@ export async function listDisputes(opts: {
     if (opts.vendorOrganizationId) query = query.eq('vendor_organization_id', opts.vendorOrganizationId);
     if (opts.status)               query = query.eq('status', opts.status);
 
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) throw error;
     return withPurchaseContexts(data ?? []);
 }
 
-export async function listAllDisputes(opts: { status?: string; limit?: number }) {
+export async function listAllDisputes(opts: { status?: string; limit?: number; cursor?: string }) {
+    const pageSize = Math.min(Math.max(opts.limit ?? 200, 1), 200);
     let query = adminClient
         .from('disputes')
-        .select('*, customers(users(full_name, phone)), vendor_organizations(trading_name, legal_name)')
+        .select('*, customers(full_name, phone), vendor_organizations(trading_name, legal_name)')
         .order('created_at', { ascending: false })
-        .limit(opts.limit ?? 200);
+        .order('id', { ascending: false })
+        .limit(pageSize);
     if (opts.status) query = query.eq('status', opts.status);
-    const { data } = await query;
-    return withPurchaseContexts(data ?? []);
+    query = applyPurchasePageCursor(query, opts.cursor);
+    const { data, error } = await query;
+    if (error) throw error;
+    const rows = data ?? [];
+    return {
+        disputes: await withPurchaseContexts(rows),
+        nextCursor: rows.length === pageSize ? purchasePageCursor(rows[rows.length - 1] as any) : null,
+    };
 }
 
 async function withPurchaseContext(dispute: any) {
@@ -165,10 +180,11 @@ async function withPurchaseContexts(disputes: any[]) {
     const ids = [...new Set(disputes.map((d) => d.purchase_order_id).filter(Boolean))];
     if (!ids.length) return disputes;
 
-    const { data: purchases } = await adminClient
+    const { data: purchases, error } = await adminClient
         .from('purchase_orders')
-        .select('id, meter_id, meter_type, customer_name, station_id, amount_minor, units_kwh, status, created_at')
+        .select('id, meter_id, meter_type, customer_name, station_id, amount_minor, energy_amount_minor, vat_amount_minor, vat_rate_basis_points, units_kwh, status, created_at')
         .in('id', ids);
+    if (error) throw error;
     const byId = new Map((purchases ?? []).map((p: any) => [p.id, p]));
     return disputes.map((d) => ({
         ...d,

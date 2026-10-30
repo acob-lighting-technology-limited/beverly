@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api, naira, shortDate } from '../lib/api';
 import AppShell from '../components/AppShell.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
@@ -20,7 +21,7 @@ interface DisputeRow {
   raised_by_actor_type?: string | null;
   created_at: string;
   updated_at?: string | null;
-  customers?: { users?: { full_name?: string | null; phone?: string | null } | null } | null;
+  customers?: { full_name?: string | null; phone?: string | null } | null;
   vendor_organizations?: { trading_name?: string | null; legal_name?: string | null } | null;
   purchase_order?: {
     meter_id?: string | null;
@@ -55,8 +56,11 @@ const statuses: Array<{ value: '' | DisputeStatus; label: string }> = [
   { value: 'refund_issued', label: 'Refund issued' },
 ];
 
+const route = useRoute();
+const router = useRouter();
+
 const disputes = ref<DisputeRow[]>([]);
-const loading = ref(false);
+const loading = ref(true);
 const error = ref('');
 const banner = ref<{ tone: 'success' | 'error'; text: string } | null>(null);
 const statusFilter = ref<'' | DisputeStatus>('');
@@ -71,6 +75,8 @@ const replyText = ref('');
 const newStatus = ref<'' | DisputeStatus>('');
 const resolutionNote = ref('');
 const saving = ref(false);
+let detailRequest = 0;
+let listRequest = 0;
 
 const filteredDisputes = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -109,25 +115,41 @@ const disputeExportColumns: WalletExportColumn<DisputeRow>[] = [
 ];
 
 const canSave = computed(() =>
-  !saving.value && Boolean(newStatus.value || replyText.value.trim() || resolutionNote.value.trim()),
+  !saving.value && Boolean(newStatus.value || replyText.value.trim()) && (!resolutionNote.value.trim() || Boolean(newStatus.value)),
 );
 
 async function load() {
+  const request = ++listRequest;
   loading.value = true;
   error.value = '';
   try {
-    const params = statusFilter.value ? `?status=${statusFilter.value}` : '';
-    const res = await api.get<{ disputes?: DisputeRow[] }>(`/api/v1/admin/disputes${params}`);
-    disputes.value = res.disputes ?? [];
+    const status = statusFilter.value;
+    const rows: DisputeRow[] = [];
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    do {
+      const params = new URLSearchParams({ limit: '200' });
+      if (status) params.set('status', status);
+      if (cursor) params.set('cursor', cursor);
+      const res: { disputes: DisputeRow[]; nextCursor?: string | null } = await api.get(`/api/v1/admin/disputes?${params}`);
+      if (!Array.isArray(res.disputes)) throw new Error('Dispute records are unavailable.');
+      rows.push(...res.disputes);
+      cursor = res.nextCursor ?? null;
+      if (cursor && seen.has(cursor)) throw new Error('Dispute pagination repeated a page.');
+      if (cursor) seen.add(cursor);
+    } while (cursor);
+    if (request !== listRequest) return;
+    disputes.value = rows;
     currentPage.value = 1;
   } catch (e: any) {
-    error.value = e.message ?? 'Failed to load disputes.';
+    if (request === listRequest) error.value = e.message ?? 'Failed to load disputes.';
   } finally {
-    loading.value = false;
+    if (request === listRequest) loading.value = false;
   }
 }
 
 async function openDetail(d: DisputeRow) {
+  const request = ++detailRequest;
   selected.value = d;
   detail.value = null;
   detailLoading.value = true;
@@ -135,18 +157,58 @@ async function openDetail(d: DisputeRow) {
   newStatus.value = '';
   resolutionNote.value = '';
   try {
-    detail.value = await api.get<DisputeDetail>(`/api/v1/admin/disputes/${d.id}`);
+    const record = await api.get<DisputeDetail>(`/api/v1/admin/disputes/${d.id}`);
+    if (request === detailRequest) detail.value = record;
   } catch (e: any) {
+    if (request !== detailRequest) return;
+    selected.value = null;
     banner.value = { tone: 'error', text: e.message ?? 'Could not load dispute.' };
   } finally {
-    detailLoading.value = false;
+    if (request === detailRequest) detailLoading.value = false;
   }
 }
 
 function closeDetail() {
+  detailRequest++;
   selected.value = null;
   detail.value = null;
+  if (route.query.dispute) {
+    const query = { ...route.query };
+    delete query.dispute;
+    void router.replace({ query });
+  }
 }
+
+async function openLinkedDispute(id: string) {
+  const request = ++detailRequest;
+  banner.value = null;
+  detailLoading.value = true;
+  selected.value = null;
+  detail.value = null;
+  try {
+    const record = await api.get<DisputeDetail>(`/api/v1/admin/disputes/${encodeURIComponent(id)}`);
+    if (request !== detailRequest) return;
+    selected.value = record;
+    detail.value = record;
+    replyText.value = '';
+    newStatus.value = '';
+    resolutionNote.value = '';
+  } catch (e: any) {
+    if (request !== detailRequest) return;
+    banner.value = { tone: 'error', text: e.message ?? 'Could not load dispute.' };
+  } finally {
+    if (request === detailRequest) detailLoading.value = false;
+  }
+}
+
+watch(() => route.query.dispute, (id) => {
+  if (typeof id !== 'string') return;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    banner.value = { tone: 'error', text: 'Invalid dispute link.' };
+    return;
+  }
+  void openLinkedDispute(id);
+}, { immediate: true });
 
 async function submitUpdate() {
   if (!selected.value || !canSave.value) return;
@@ -193,7 +255,7 @@ function orgName(d: DisputeRow) {
 }
 
 function actorName(d: DisputeRow) {
-  return d.customers?.users?.full_name || d.purchase_order?.customer_name || d.raised_by_actor_type || 'Unknown';
+  return d.customers?.full_name || d.purchase_order?.customer_name || d.raised_by_actor_type || 'Unknown';
 }
 
 function refLabel(d: DisputeRow) {
@@ -223,17 +285,17 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
     <section class="bw-kpi-grid bw-mobile-kpi-grid dispute-stat-grid" aria-label="Dispute summary">
       <article class="bw-kpi featured">
         <span class="bw-kpi-label">Active</span>
-        <strong class="bw-kpi-value">{{ summary.open }}</strong>
+        <strong class="bw-kpi-value">{{ loading || error ? '—' : summary.open }}</strong>
         <span class="bw-kpi-note">open or review</span>
       </article>
       <article class="bw-kpi info-tone">
         <span class="bw-kpi-label">Resolved</span>
-        <strong class="bw-kpi-value">{{ summary.resolved }}</strong>
+        <strong class="bw-kpi-value">{{ loading || error ? '—' : summary.resolved }}</strong>
         <span class="bw-kpi-note">closed cleanly</span>
       </article>
       <article class="bw-kpi danger-tone">
         <span class="bw-kpi-label">Rejected</span>
-        <strong class="bw-kpi-value">{{ summary.rejected }}</strong>
+        <strong class="bw-kpi-value">{{ loading || error ? '—' : summary.rejected }}</strong>
         <span class="bw-kpi-note">not approved</span>
       </article>
     </section>
@@ -254,7 +316,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
           <div class="bw-table-title-row">
             <div class="bw-card-title">Disputes</div>
             <span v-if="loading" class="bw-skeleton bw-table-count" aria-hidden="true"></span>
-            <span v-else class="bw-table-count">{{ filteredDisputes.length }}</span>
+            <span v-else class="bw-table-count">{{ error ? '—' : filteredDisputes.length }}</span>
           </div>
           <div class="bw-card-sub">Customer and vendor transaction dispute cases</div>
         </div>
@@ -265,14 +327,14 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
             filename="beverly-admin-disputes"
             title="Wallet Disputes"
             subtitle="Filtered customer and vendor cases"
-            :loading="loading"
+            :loading="loading || Boolean(error)"
           />
         </div>
       </div>
 
       <div v-if="loading" class="dispute-empty">Loading disputes...</div>
 
-      <template v-else>
+      <template v-else-if="!error">
         <div class="bw-t-wrap dispute-table-wrap">
           <table class="bw-table dispute-table">
             <thead>
@@ -301,7 +363,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
                 <td><span class="row-main">{{ orgName(d) }}</span></td>
                 <td>
                   <span class="bw-mono row-main">{{ d.purchase_order?.meter_id || '—' }}</span>
-                  <span v-if="d.purchase_order?.amount_minor != null" class="row-sub">Paid {{ naira(d.purchase_order.amount_minor) }} · VAT {{ naira(d.purchase_order.vat_amount_minor ?? 0) }}</span>
+                  <span v-if="d.purchase_order?.amount_minor != null" class="row-sub">Paid {{ naira(d.purchase_order.amount_minor) }} · VAT {{ d.purchase_order.vat_amount_minor == null ? '—' : naira(d.purchase_order.vat_amount_minor) }}</span>
                 </td>
                 <td><span :class="['bw-badge', statusClass(d.status)]">{{ statusLabel(d.status) }}</span></td>
                 <td class="bw-text-sm">{{ shortDate(d.created_at) }}</td>
@@ -379,8 +441,8 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
                 <div><span>Vendor</span><strong>{{ orgName(detail || selected) }}</strong></div>
                 <div><span>Meter</span><strong class="bw-mono">{{ (detail || selected).purchase_order?.meter_id || '—' }}</strong></div>
                 <div><span>Amount paid</span><strong>{{ (detail || selected).purchase_order?.amount_minor != null ? naira((detail || selected).purchase_order?.amount_minor || 0) : '—' }}</strong></div>
-                <div><span>Energy value</span><strong>{{ (detail || selected).purchase_order?.amount_minor != null ? naira(((detail || selected).purchase_order?.energy_amount_minor ?? (detail || selected).purchase_order?.amount_minor) ?? 0) : '—' }}</strong></div>
-                <div><span>VAT</span><strong>{{ (detail || selected).purchase_order?.amount_minor != null ? naira((detail || selected).purchase_order?.vat_amount_minor ?? 0) : '—' }}</strong></div>
+                <div><span>Energy value</span><strong>{{ (detail || selected).purchase_order?.energy_amount_minor != null ? naira((detail || selected).purchase_order?.energy_amount_minor ?? 0) : '—' }}</strong></div>
+                <div><span>VAT</span><strong>{{ (detail || selected).purchase_order?.vat_amount_minor != null ? naira((detail || selected).purchase_order?.vat_amount_minor ?? 0) : '—' }}</strong></div>
               </div>
 
               <section class="case-panel">
@@ -414,7 +476,7 @@ onUnmounted(() => window.removeEventListener('keydown', onEsc));
                   </div>
                   <div>
                     <label class="bw-label">Resolution note</label>
-                    <input v-model="resolutionNote" class="bw-input" placeholder="Required when closing" />
+                    <input v-model="resolutionNote" class="bw-input" :disabled="!newStatus" placeholder="Choose a status first" />
                   </div>
                 </div>
               </section>
