@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
+import SupportRequesterContext from '../components/SupportRequesterContext.vue';
 import { api } from '../lib/api';
 import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
@@ -21,6 +22,7 @@ const ticketSearch = ref('');
 const ticketView = ref<'table' | 'grid'>('table');
 const selTicket = ref<Ticket | null>(null);
 const ticketDetail = ref<any>(null);
+const ticketDetailError = ref(false);
 const staffReply = ref('');
 const internalNote = ref(false);
 const busy = ref(false);
@@ -45,8 +47,8 @@ async function loadTickets() {
     } catch { /* ignore */ }
 }
 async function openTicket(t: Ticket) {
-    selTicket.value = t; ticketDetail.value = null; staffReply.value = ''; internalNote.value = false;
-    try { ticketDetail.value = await api.get(`/api/v1/admin/support/tickets/${t.id}`); } catch { /* ignore */ }
+    selTicket.value = t; ticketDetail.value = null; ticketDetailError.value = false; staffReply.value = ''; internalNote.value = false;
+    try { ticketDetail.value = await api.get(`/api/v1/admin/support/tickets/${t.id}`); } catch { ticketDetailError.value = true; }
 }
 async function patchTicket(patch: Record<string, unknown>) {
     if (!selTicket.value) return;
@@ -403,6 +405,7 @@ onBeforeUnmount(() => { if (chatPoll) clearInterval(chatPoll); if (sessionsPoll)
               </div>
               <button class="bw-btn bw-btn-ghost bw-btn-sm" @click="endChat">End chat</button>
             </header>
+            <div class="sup-conversation">
             <div ref="chatScroller" class="sup-chat-body">
               <div v-for="m in chatMessages" :key="m.id"
                    :class="['sup-msg', m.sender_actor_type === 'staff' ? 'sup-msg--staff' : m.kind === 'system' || m.kind === 'bot' ? 'sup-msg--sys' : 'sup-msg--user']">
@@ -412,6 +415,8 @@ onBeforeUnmount(() => { if (chatPoll) clearInterval(chatPoll); if (sessionsPoll)
                   <p class="sup-msg-body">{{ m.body }}</p>
                 </template>
               </div>
+            </div>
+            <SupportRequesterContext :context="selSession" />
             </div>
             <footer class="sup-chat-foot">
               <input v-model="chatDraft" class="bw-input" placeholder="Type a reply…" :disabled="chatSending" @keyup.enter="sendChat" />
@@ -500,12 +505,13 @@ onBeforeUnmount(() => { if (chatPoll) clearInterval(chatPoll); if (sessionsPoll)
 
     <!-- Ticket detail modal -->
     <div v-if="selTicket" class="bw-modal-backdrop" @click.self="selTicket = null">
-      <div class="bw-modal bw-modal-lg">
+      <div class="bw-modal bw-modal-lg" role="dialog" aria-modal="true" aria-labelledby="support-ticket-title">
         <div class="bw-modal-header">
-          <div><h2>{{ selTicket.reference }}</h2><span class="bw-muted" style="font-size: var(--t-xs)">{{ selTicket.subject }}</span></div>
-          <button class="bw-btn bw-btn-ghost bw-btn-sm" style="margin-left:auto" @click="selTicket = null">✕</button>
+          <div><h2 id="support-ticket-title">{{ selTicket.reference }}</h2><span class="bw-muted" style="font-size: var(--t-xs)">{{ selTicket.subject }}</span></div>
+          <button class="bw-btn bw-btn-ghost bw-btn-sm" aria-label="Close ticket" style="margin-left:auto" @click="selTicket = null">✕</button>
         </div>
-        <div class="bw-modal-body">
+        <div class="bw-modal-body sup-ticket-detail">
+          <SupportRequesterContext v-if="ticketDetail" :context="ticketDetail" />
           <div class="sup-ticket-controls">
             <select :value="ticketDetail?.status" class="bw-select bw-select-sm" @change="patchTicket({ status: ($event.target as HTMLSelectElement).value })">
               <option value="open">Open</option><option value="pending">Pending</option>
@@ -524,7 +530,9 @@ onBeforeUnmount(() => { if (chatPoll) clearInterval(chatPoll); if (sessionsPoll)
               <p class="sup-msg-body">{{ m.body }}</p>
               <span class="bw-dim" style="font-size: var(--t-2xs)">{{ fmt(m.created_at) }}</span>
             </div>
-            <p v-if="!ticketDetail?.support_ticket_messages?.length" class="bw-muted">Loading…</p>
+            <p v-if="ticketDetailError" role="alert">Ticket could not load. <button type="button" @click="openTicket(selTicket!)">Try again</button></p>
+            <p v-else-if="!ticketDetail" class="bw-muted">Loading…</p>
+            <p v-else-if="!ticketDetail.support_ticket_messages?.length" class="bw-muted">No messages yet.</p>
           </div>
           <label class="sup-internal-check"><input v-model="internalNote" type="checkbox" /> Internal note (not shown to customer)</label>
           <textarea v-model="staffReply" class="bw-textarea" rows="3" placeholder="Write a reply…"></textarea>
@@ -771,6 +779,15 @@ onBeforeUnmount(() => { if (chatPoll) clearInterval(chatPoll); if (sessionsPoll)
 .sup-session-meta { display: flex; align-items: center; gap: var(--s-2); margin-top: 4px; font-size: var(--t-xs); }
 
 .sup-chat-main { border: 1px solid var(--glass-border); border-radius: var(--r-lg); background: var(--glass-bg); display: flex; flex-direction: column; overflow: hidden; backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%); }
+.sup-conversation { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 240px); gap: .75rem; padding: .75rem; }
+.sup-conversation > aside { align-self: start; }
+.sup-ticket-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 240px); gap: .75rem; }
+.sup-ticket-detail > aside { grid-column: 2; grid-row: 1 / span 4; align-self: start; }
+.sup-ticket-detail > :not(aside) { grid-column: 1; }
+@media (max-width: 760px) {
+  .sup-conversation, .sup-ticket-detail { display: flex; flex-direction: column; }
+  .sup-conversation > aside { order: -1; width: 100%; }
+}
 .sup-chat-head { display: flex; align-items: center; justify-content: space-between; padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); }
 .sup-chat-body { flex: 1; overflow-y: auto; padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-2); }
 .sup-chat-foot { display: flex; gap: var(--s-2); padding: var(--s-3); border-top: 1px solid var(--border); }

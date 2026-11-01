@@ -48,6 +48,9 @@ jobs:
       - name: Contract test suite
         run: npm test
 
+      - name: Spreadsheet export compatibility
+        run: npm run test:interval-export
+
       - name: Wallet system tests
         run: npm run test:wallet
 

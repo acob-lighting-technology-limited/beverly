@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue';
 import AppShell from '../components/AppShell.vue';
 import { api } from '../lib/api';
+import SupportMeterPicker from '../../../../packages/tokens/SupportMeterPicker.vue';
+import ChatWidget from '../components/ChatWidget.vue';
 
 interface FaqCategory { id: string; slug: string; title: string; description?: string; icon?: string }
 interface Faq { id: string; category_id: string | null; question: string; answer: string; tags: string[]; helpful_count: number; not_helpful_count: number }
@@ -62,6 +64,8 @@ const showNew = ref(false);
 const saving = ref(false);
 const newError = ref('');
 const form = ref({ subject: '', description: '', category: 'general', priority: 'normal' });
+const meterContext = ref<Array<{ meter_id: string; station_id: string | null }> | null>(null);
+const loadSupportMeters = () => api.get<{ meters: Array<{ meter_id: string; station_id: string | null }> }>('/api/v1/customer/support/meters');
 
 const selected = ref<Ticket | null>(null);
 const detail = ref<any>(null);
@@ -80,15 +84,17 @@ async function loadTickets() {
 
 async function submitNew() {
     newError.value = '';
+    if (meterContext.value === null) { newError.value = 'Select meters or choose none.'; return; }
     if (form.value.subject.trim().length < 5 || form.value.description.trim().length < 10) {
         newError.value = 'Add a subject (5+ chars) and a description (10+ chars).';
         return;
     }
     saving.value = true;
     try {
-        await api.post('/api/v1/customer/support/tickets', { ...form.value });
+        await api.post('/api/v1/customer/support/tickets', { ...form.value, meter_context: meterContext.value });
         showNew.value = false;
         form.value = { subject: '', description: '', category: 'general', priority: 'normal' };
+        meterContext.value = null;
         await loadTickets();
         tab.value = 'tickets';
     } catch (e: any) {
@@ -217,12 +223,13 @@ onMounted(() => { loadFaqs(); loadTickets(); });
 
     <!-- New ticket modal -->
     <div v-if="showNew" class="bw-modal-backdrop" @click.self="showNew = false">
-      <div class="bw-modal">
+      <div class="bw-modal" role="dialog" aria-modal="true" aria-labelledby="customer-new-ticket-title">
         <div class="bw-modal-header">
-          <h2>New support ticket</h2>
-          <button class="bw-btn bw-btn-ghost bw-btn-sm" @click="showNew = false">✕</button>
+          <h2 id="customer-new-ticket-title">New support ticket</h2>
+          <button class="bw-btn bw-btn-ghost bw-btn-sm" aria-label="Close ticket form" @click="showNew = false">✕</button>
         </div>
         <div class="bw-modal-body">
+          <SupportMeterPicker v-model="meterContext" :load-meters="loadSupportMeters" />
           <div class="bw-form-group">
             <label class="bw-label">Subject</label>
             <input v-model="form.subject" class="bw-input" placeholder="e.g. Token not received" />
@@ -297,10 +304,13 @@ onMounted(() => { loadFaqs(); loadTickets(); });
         </div>
       </div>
     </div>
+    <ChatWidget v-if="!showNew && !selected" />
   </AppShell>
 </template>
 
 <style scoped>
+.bw-modal { max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
+.bw-modal-body { min-height: 0; overflow-y: auto; }
 .help-tabs { margin-bottom: var(--s-2); }
 .help-count { background: var(--brand); color: #04140b; border-radius: 999px; padding: 0 6px; font-size: 10px; margin-left: 4px; }
 

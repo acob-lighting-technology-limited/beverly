@@ -149,6 +149,7 @@ export async function createTicket(input: {
     subject: string;
     description: string;
     priority?: 'low' | 'normal' | 'high' | 'urgent';
+    meterContext?: Array<{ meter_id: string; station_id: string | null }> | null;
 }): Promise<{ id: string; reference: string }> {
     const { data, error } = await adminClient
         .from('support_tickets')
@@ -158,6 +159,7 @@ export async function createTicket(input: {
             requester_name: input.requesterName ?? null,
             customer_id: input.customerId ?? null,
             vendor_organization_id: input.vendorOrganizationId ?? null,
+            meter_context: input.meterContext ?? null,
             category: input.category ?? 'general',
             subject: input.subject,
             priority: input.priority ?? 'normal',
@@ -267,7 +269,7 @@ export async function listTickets(opts: {
 }) {
     let query = adminClient
         .from('support_tickets')
-        .select('id, reference, subject, category, priority, status, requester_actor_type, requester_name, customer_id, vendor_organization_id, assigned_to_user_id, last_message_at, last_message_actor_type, created_at, updated_at')
+        .select('id, reference, subject, category, priority, status, requester_actor_type, requester_name, customer_id, vendor_organization_id, assigned_to_user_id, last_message_at, last_message_actor_type, created_at, updated_at, meter_context')
         .order('last_message_at', { ascending: false })
         .limit(opts.limit ?? 200);
 
@@ -343,6 +345,7 @@ export async function getOrCreateChatSession(input: {
     customerId?: string;
     vendorOrganizationId?: string;
     subject?: string;
+    meterContext?: Array<{ meter_id: string; station_id: string | null }> | null;
 }): Promise<{ id: string; created: boolean }> {
     // Resume an existing non-ended session for this requester.
     if (input.requesterActorId) {
@@ -350,6 +353,8 @@ export async function getOrCreateChatSession(input: {
             .from('support_chat_sessions')
             .select('id')
             .eq('requester_actor_id', input.requesterActorId)
+            .eq('requester_actor_type', input.requesterActorType)
+            .filter('meter_context', 'eq', JSON.stringify(input.meterContext ?? []))
             .neq('status', 'ended')
             .order('last_message_at', { ascending: false })
             .limit(1)
@@ -365,6 +370,7 @@ export async function getOrCreateChatSession(input: {
             display_name: input.displayName ?? null,
             customer_id: input.customerId ?? null,
             vendor_organization_id: input.vendorOrganizationId ?? null,
+            meter_context: input.meterContext ?? null,
             subject: input.subject ?? null,
             status: 'active',
         })
@@ -502,6 +508,7 @@ export async function escalateChatToTicket(input: {
     subject: string;
 }): Promise<{ id: string; reference: string }> {
     const messages = await getChatMessages(input.sessionId);
+    const session = await getChatSession(input.sessionId);
     const transcript = (messages as any[])
         .filter((m) => m.kind === 'text')
         .map((m) => `${m.sender_name || m.sender_actor_type}: ${m.body}`)
@@ -513,6 +520,7 @@ export async function escalateChatToTicket(input: {
         requesterName: input.requesterName,
         customerId: input.customerId,
         vendorOrganizationId: input.vendorOrganizationId,
+        meterContext: (session as any)?.meter_context ?? null,
         category: 'chat-escalation',
         subject: input.subject,
         description: `Escalated from live chat.\n\n--- Transcript ---\n${transcript || '(no messages)'}`,

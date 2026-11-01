@@ -166,12 +166,13 @@ export async function getOrCreateOwnerKycWallet(ownerType: OwnerType, ownerId: s
 }
 
 export async function findWalletByOwner(ownerType: OwnerType, ownerId: string): Promise<Wallet | null> {
-    const { data } = await adminClient
+    const { data, error } = await adminClient
         .from('wallets')
         .select('*')
         .eq('owner_type', ownerType)
         .eq('owner_id', ownerId)
         .maybeSingle();
+    if (error) throw error;
     return (data as Wallet) ?? null;
 }
 

@@ -39,6 +39,7 @@ vi.mock('../../queue/index.js', () => ({
 }));
 
 import customerRoutes from '../customer.js';
+import { findWalletByOwner } from '../../services/wallets.js';
 
 async function createApp() {
     const app = Fastify();
@@ -63,6 +64,13 @@ describe('customer financial report HTTP seam', () => {
         const response = await app.inject({ method: 'GET', url: '/wallet/ledger' });
         expect(response.statusCode).toBe(500);
         expect(response.json()).not.toEqual({ entries: [] });
+        await app.close();
+    });
+
+    it('does not report a missing wallet when lookup fails', async () => {
+        vi.mocked(findWalletByOwner).mockRejectedValueOnce(queryError);
+        const response = await app.inject({ method: 'GET', url: '/wallet/ledger' });
+        expect(response.statusCode).toBe(500);
         await app.close();
     });
 

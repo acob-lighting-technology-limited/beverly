@@ -77,6 +77,7 @@ import { getKycTierPolicy, KycTierPolicyError } from '../services/kyc-tier-polic
 import { getKycPolicy, isKycRequiredForSubject } from '../services/kyc-policy.js';
 import { pushConfig, removePushSubscription, savePushSubscription } from '../services/push-notifications.js';
 import { assertOemVendAvailable, OemQuotaCircuitError } from '../services/oem-quota-circuit.js';
+import { vendorSupportMeters, authorizeSupportMeters, supportMeterSelection } from '../services/support-meters.js';
 
 function bearerToken(req: FastifyRequest): string {
     const auth = req.headers.authorization ?? '';
@@ -1738,12 +1739,20 @@ const route: FastifyPluginAsync = async (fastify) => {
         };
     }
 
+    fastify.get('/support/meters', { preHandler: fastify.requireVendor() }, async (req, reply) => {
+        const actor = req.actor!;
+        const ctx = await vendorContext(actor.actorId, actor.vendorOrganizationId);
+        if (!ctx.orgId) return reply.code(403).send({ error: 'vendor_organization_required' });
+        return { meters: await vendorSupportMeters(ctx.orgId, actor.stationId) };
+    });
+
     fastify.post('/support/tickets', { preHandler: fastify.requireVendor() }, async (req, reply) => {
         const schema = z.object({
             subject:     z.string().min(5).max(200),
             description: z.string().min(10).max(4000),
             category:    z.string().max(60).optional(),
             priority:    z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+            meter_context: supportMeterSelection,
         });
         let body: z.infer<typeof schema>;
         try { body = schema.parse(req.body); }
@@ -1752,6 +1761,8 @@ const route: FastifyPluginAsync = async (fastify) => {
         const actor = req.actor!;
         const ctx = await vendorContext(actor.actorId, actor.vendorOrganizationId);
         if (!ctx.orgId) return reply.code(403).send({ error: 'vendor_organization_required' });
+        const meterContext = authorizeSupportMeters(body.meter_context, await vendorSupportMeters(ctx.orgId, actor.stationId));
+        if (!meterContext) return reply.code(403).send({ error: 'forbidden_meter' });
         return createTicket({
             requesterActorType:   'vendor',
             requesterActorId:     actor.actorId,
@@ -1761,6 +1772,7 @@ const route: FastifyPluginAsync = async (fastify) => {
             subject:              body.subject,
             description:          body.description,
             priority:             body.priority,
+            meterContext,
         });
     });
 
@@ -1799,16 +1811,21 @@ const route: FastifyPluginAsync = async (fastify) => {
     });
 
     // ── Quick chat ────────────────────────────────────────────────────────
-    fastify.post('/support/chat/session', { preHandler: fastify.requireVendor() }, async (req) => {
+    fastify.post('/support/chat/session', { preHandler: fastify.requireVendor() }, async (req, reply) => {
         const actor = req.actor!;
         const ctx = await vendorContext(actor.actorId, actor.vendorOrganizationId);
-        const { subject } = (req.body ?? {}) as { subject?: string };
+        if (!ctx.orgId) return reply.code(403).send({ error: 'vendor_organization_required' });
+        const parsed = z.object({ subject: z.string().max(200).optional(), meter_context: supportMeterSelection }).safeParse(req.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'validation_error', message: 'Select meters or choose none.' });
+        const meterContext = authorizeSupportMeters(parsed.data.meter_context, await vendorSupportMeters(ctx.orgId, actor.stationId));
+        if (!meterContext) return reply.code(403).send({ error: 'forbidden_meter' });
         return getOrCreateChatSession({
             requesterActorType:   'vendor',
             requesterActorId:     actor.actorId,
             displayName:          ctx.name,
             vendorOrganizationId: ctx.orgId,
-            subject,
+            subject: parsed.data.subject,
+            meterContext,
         });
     });
 

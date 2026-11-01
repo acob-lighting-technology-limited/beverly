@@ -103,6 +103,7 @@ import {
 import { vendorPasswordError } from '@beverly/tokens/password-policy';
 import { replaceCustomerPassword, CustomerPasswordChangeError } from '../services/customer-password-change.js';
 import { CustomerMeterBalanceError, getCustomerMeterBalances } from '../services/customer-meter-balance.js';
+import { customerSupportMeters, authorizeSupportMeters, supportMeterSelection } from '../services/support-meters.js';
 
 function customerAuthStatus(code: string): number {
     return code === 'rate_limit' || code === 'rate_limit_exceeded' ? 429
@@ -829,30 +830,34 @@ const customer: FastifyPluginAsync = async (fastify) => {
             .eq('wallet_id', wallet.id)
             .maybeSingle();
         if (summaryError) throw summaryError;
+        if (!summary) return reply.code(503).send({ error: 'wallet_balance_unavailable' });
 
         return {
             id: wallet.id,
             currency: wallet.currency,
             status: wallet.status,
-            balance_minor: (summary as any)?.ledger_balance_minor ?? 0,
-            holds_minor: (summary as any)?.active_holds_minor ?? 0,
-            available_minor: (summary as any)?.available_balance_minor ?? 0,
+            balance_minor: (summary as any).ledger_balance_minor,
+            holds_minor: (summary as any).active_holds_minor,
+            available_minor: (summary as any).available_balance_minor,
             daily_debit_cap_minor: wallet.daily_debit_cap_minor,
             monthly_debit_cap_minor: wallet.monthly_debit_cap_minor,
         };
     });
 
-    fastify.get('/wallet/ledger', { preHandler: fastify.requireCustomer() }, async (req) => {
+    fastify.get('/wallet/ledger', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
         const wallet = await findWalletByOwner('customer', req.actor!.customerId!);
-        if (!wallet) return { entries: [] };
+        if (!wallet) return reply.code(404).send({ error: 'wallet_not_found' });
 
-        const { limit = 100, offset = 0 } = req.query as { limit?: number; offset?: number };
+        const pagination = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100), offset: z.coerce.number().int().min(0).max(1000000).default(0) }).safeParse(req.query ?? {});
+        if (!pagination.success) return reply.code(400).send({ error: 'invalid_pagination' });
+        const { limit, offset } = pagination.data;
         const { data, error } = await adminClient
             .from('wallet_ledger_entries')
             .select('*')
             .eq('wallet_id', wallet.id)
             .order('created_at', { ascending: false })
-            .range(Number(offset), Number(offset) + Number(limit) - 1);
+            .order('id', { ascending: false })
+            .range(offset, offset + limit - 1);
         if (error) throw error;
         return { entries: data ?? [] };
     });
@@ -1512,18 +1517,23 @@ const customer: FastifyPluginAsync = async (fastify) => {
         return (data as any)?.full_name ?? undefined;
     }
 
+    fastify.get('/support/meters', { preHandler: fastify.requireCustomer() }, async (req) => ({ meters: await customerSupportMeters(req.actor!.customerId!) }));
+
     fastify.post('/support/tickets', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
         const schema = z.object({
             subject:     z.string().min(5).max(200),
             description: z.string().min(10).max(4000),
             category:    z.string().max(60).optional(),
             priority:    z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+            meter_context: supportMeterSelection,
         });
         let body: z.infer<typeof schema>;
         try { body = schema.parse(req.body); }
         catch (e: any) { return reply.code(400).send({ error: 'validation_error', message: e.message }); }
 
         const customerId = req.actor!.customerId!;
+        const meterContext = authorizeSupportMeters(body.meter_context, await customerSupportMeters(customerId));
+        if (!meterContext) return reply.code(403).send({ error: 'forbidden_meter' });
         return createTicket({
             requesterActorType: 'customer',
             requesterActorId:   customerId,
@@ -1533,6 +1543,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
             subject:            body.subject,
             description:        body.description,
             priority:           body.priority,
+            meterContext,
         });
     });
 
@@ -1565,15 +1576,19 @@ const customer: FastifyPluginAsync = async (fastify) => {
     });
 
     // ── Quick chat ────────────────────────────────────────────────────────
-    fastify.post('/support/chat/session', { preHandler: fastify.requireCustomer() }, async (req) => {
+    fastify.post('/support/chat/session', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
         const customerId = req.actor!.customerId!;
-        const { subject } = (req.body ?? {}) as { subject?: string };
+        const parsed = z.object({ subject: z.string().max(200).optional(), meter_context: supportMeterSelection }).safeParse(req.body);
+        if (!parsed.success) return reply.code(400).send({ error: 'validation_error', message: 'Select meters or choose none.' });
+        const meterContext = authorizeSupportMeters(parsed.data.meter_context, await customerSupportMeters(customerId));
+        if (!meterContext) return reply.code(403).send({ error: 'forbidden_meter' });
         return getOrCreateChatSession({
             requesterActorType: 'customer',
             requesterActorId:   customerId,
             displayName:        await customerName(customerId),
             customerId,
-            subject,
+            subject: parsed.data.subject,
+            meterContext,
         });
     });
 
@@ -1908,6 +1923,13 @@ const customer: FastifyPluginAsync = async (fastify) => {
             .filter(Boolean))];
     }
 
+    async function approvedUsageMeters(customerId: string): Promise<Array<{ meter_id: string; station_id: string | null; oem_installation_id: string | null }>> {
+        const { data, error } = await adminClient.from('customer_meters')
+            .select('meter_id, station_id, oem_installation_id').eq('customer_id', customerId).eq('status', 'approved');
+        if (error) throw error;
+        return (data ?? []).map((row: any) => ({ meter_id: String(row.meter_id ?? '').trim().toUpperCase(), station_id: row.station_id || null, oem_installation_id: row.oem_installation_id || null })).filter((row: any) => row.meter_id);
+    }
+
     fastify.get('/consumption', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
         const qs = req.query as Record<string, string>;
         const period = (qs.period ?? 'month') as 'day' | 'week' | 'month' | 'year';
@@ -1944,13 +1966,13 @@ const customer: FastifyPluginAsync = async (fastify) => {
     });
     // ── USAGE PIPELINE ────────────────────────────────────────────────────────
 
-    async function resolveMeterOemInfo(meterId: string) {
+    async function resolveMeterOemInfo(meterId: string, stationId?: string | null) {
         if (!meterId) {
             return {
                 id: null,
-                slug: 'calinmeter',
-                displayName: 'Calinmeter',
-                supportsLive: true,
+                slug: '',
+                displayName: '',
+                supportsLive: false,
                 supportedDataItems: ['credit_balance', 'total_consumption', 'power', 'relay_status'],
             };
         }
@@ -1958,30 +1980,31 @@ const customer: FastifyPluginAsync = async (fastify) => {
             const { data: meter } = await adminClient
                 .from('meters')
                 .select('oem_id, oem_manufacturers(id, slug, display_name, capabilities)')
-                .eq('meter_id', meterId)
+                .eq('meter_sn', meterId)
+                .ilike('site_code', String(stationId ?? '').replace(/[\\%_]/g, '\\$&'))
                 .maybeSingle();
 
             const manufacturer = (meter as any)?.oem_manufacturers;
             const capabilities = manufacturer?.capabilities ?? {};
 
-            const supportsLive = capabilities.remote_meter_task !== false;
+            const supportsLive = capabilities.remote_meter_task === true;
             const supportedDataItems: string[] = Array.isArray(capabilities.supported_data_items)
                 ? capabilities.supported_data_items
                 : ['credit_balance', 'total_consumption', 'power', 'relay_status'];
 
             return {
                 id: manufacturer?.id ?? null,
-                slug: manufacturer?.slug ?? 'calinmeter',
-                displayName: manufacturer?.display_name ?? 'Calinmeter',
+                slug: manufacturer?.slug ?? '',
+                displayName: manufacturer?.display_name ?? '',
                 supportsLive,
                 supportedDataItems,
             };
         } catch {
             return {
                 id: null,
-                slug: 'calinmeter',
-                displayName: 'Calinmeter',
-                supportsLive: true,
+                slug: '',
+                displayName: '',
+                supportsLive: false,
                 supportedDataItems: ['credit_balance', 'total_consumption', 'power', 'relay_status'],
             };
         }
@@ -2023,7 +2046,8 @@ const customer: FastifyPluginAsync = async (fastify) => {
     fastify.get('/usage/telemetry', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
         const qs = req.query as Record<string, string>;
         const customerId = req.actor!.customerId!;
-        const meterIds = await customerMeterIds(customerId);
+        const links = await approvedUsageMeters(customerId);
+        const meterIds = links.map(link => link.meter_id);
         let selectedMeter = String(qs.meter_id ?? '').trim().toUpperCase();
         if (!selectedMeter && meterIds.length > 0) {
             selectedMeter = meterIds[0];
@@ -2032,46 +2056,52 @@ const customer: FastifyPluginAsync = async (fastify) => {
         if (selectedMeter && !meterIds.includes(selectedMeter)) {
             return reply.code(403).send({ error: 'forbidden_meter', message: 'Meter does not belong to customer' });
         }
+        const link = links.find(item => item.meter_id === selectedMeter);
+        if (selectedMeter && !link?.station_id) return reply.code(409).send({ error: 'meter_station_missing', message: 'This meter needs a station assignment.' });
 
-        const oemInfo = await resolveMeterOemInfo(selectedMeter);
+        const oemInfo = await resolveMeterOemInfo(selectedMeter, link?.station_id);
         const timeframe = (qs.timeframe || 'hourly').toLowerCase();
         const dataItem = (qs.data_item || 'power').toLowerCase();
 
         // 1. Fetch wallet balance
-        let walletBalanceMinor = 0;
-        try {
-            const wallet = await findWalletByOwner('customer', customerId);
-            if (wallet) {
-                const { data: summary } = await adminClient
+        let walletBalanceMinor: number | null = null;
+        const wallet = await findWalletByOwner('customer', customerId);
+        if (wallet) {
+                const { data: summary, error: summaryError } = await adminClient
                     .from('v_wallet_balances')
                     .select('available_balance_minor')
                     .eq('wallet_id', wallet.id)
                     .maybeSingle();
-                walletBalanceMinor = (summary as any)?.available_balance_minor ?? 0;
-            }
-        } catch {}
+                if (summaryError) throw summaryError;
+                walletBalanceMinor = (summary as any)?.available_balance_minor ?? null;
+        }
 
         // 2. Fetch real meter readings and OEM telemetry
         let latestReading: any = null;
-        let todayKwh = 0;
+        let todayKwh: number | null = null;
         let dailyRows: any[] = [];
         let oemRows: any[] = [];
 
         if (selectedMeter) {
-            const [readingsRes, oemRes] = await Promise.all([
-                adminClient
+            let dailyQuery = adminClient
                     .from('daily_meter_readings')
-                    .select('reading_date, total1, remain1, usage1, power, interval_demand, voltage_a, current_a, relay_open, captured_at, row_json')
+                    .select('reading_date, total1, remain1, usage1, power, interval_demand, voltage_a, current_a, relay_open, captured_at')
                     .eq('meter_id', selectedMeter)
-                    .order('reading_date', { ascending: false })
-                    .limit(30),
-                adminClient
+                    .eq('station_id', link!.station_id!);
+            let telemetryQuery = adminClient
                     .from('oem_telemetry_readings')
                     .select('reading_at, energy_kwh, voltage_avg, current_avg, power_factor_avg, provider_credit_balance, meter_state, provider_payload')
                     .eq('external_meter_id', selectedMeter)
-                    .order('reading_at', { ascending: false })
-                    .limit(50),
+                    .eq('external_site_id', link!.station_id!);
+            dailyQuery = link!.oem_installation_id ? dailyQuery.eq('oem_installation_id', link!.oem_installation_id) : dailyQuery.is('oem_installation_id', null);
+            telemetryQuery = link!.oem_installation_id ? telemetryQuery.eq('oem_installation_id', link!.oem_installation_id) : telemetryQuery.is('oem_installation_id', null);
+            const [readingsRes, oemRes] = await Promise.all([
+                dailyQuery.order('reading_date', { ascending: false }).limit(90),
+                telemetryQuery.order('reading_at', { ascending: false }).limit(50),
             ]);
+
+            if (readingsRes.error) throw readingsRes.error;
+            if (oemRes.error) throw oemRes.error;
 
             dailyRows = readingsRes.data ?? [];
             oemRows = oemRes.data ?? [];
@@ -2081,10 +2111,8 @@ const customer: FastifyPluginAsync = async (fastify) => {
                 const todayStr = new Date().toISOString().split('T')[0];
                 const todayRow = dailyRows.find((r: any) => r.reading_date === todayStr);
                 if (todayRow) {
-                    todayKwh = Number(todayRow.usage1 ?? todayRow.row_json?.usage1 ?? 0);
-                } else if (dailyRows.length > 1) {
-                    const diff = Number(dailyRows[0].total1 ?? 0) - Number(dailyRows[1].total1 ?? 0);
-                    todayKwh = diff > 0 ? Math.round(diff * 100) / 100 : 0;
+                    const usage = todayRow.usage1;
+                    todayKwh = usage == null ? null : Number(usage);
                 }
             }
         }
@@ -2092,34 +2120,30 @@ const customer: FastifyPluginAsync = async (fastify) => {
         const latestOem = oemRows.length > 0 ? oemRows[0] : null;
 
         // Extract real latest metrics — strictly authentic readings only
-        let latestPower = 0;
+        let latestPower: number | null = null;
         if (latestReading?.power != null) {
             latestPower = Number(latestReading.power);
-        } else if (latestReading?.row_json?.power != null) {
-            latestPower = Number(latestReading.row_json.power);
         } else if (latestOem?.provider_payload?.power != null) {
             latestPower = Number(latestOem.provider_payload.power);
-        } else if (latestOem?.voltage_avg != null && latestOem?.current_avg != null) {
-            const pf = Number(latestOem.power_factor_avg) || 1.0;
+        } else if (latestOem?.voltage_avg != null && latestOem?.current_avg != null && latestOem?.power_factor_avg != null) {
+            const pf = Number(latestOem.power_factor_avg);
             latestPower = Math.round((Number(latestOem.voltage_avg) * Number(latestOem.current_avg) * pf / 1000) * 100) / 100;
         }
 
-        let latestCredit = 0;
+        let latestCredit: number | null = null;
         if (latestReading?.remain1 != null) {
             latestCredit = Number(latestReading.remain1);
         } else if (latestOem?.provider_credit_balance != null) {
             latestCredit = Number(latestOem.provider_credit_balance);
         }
 
-        let latestTotal = 0;
+        let latestTotal: number | null = null;
         if (latestReading?.total1 != null) {
             latestTotal = Number(latestReading.total1);
-        } else if (latestOem?.energy_kwh != null) {
-            latestTotal = Number(latestOem.energy_kwh);
         }
 
-        let latestRelay = 'Closed';
-        if (latestReading?.relay_open === true || latestReading?.row_json?.relay_open === true || latestOem?.meter_state === 'off') {
+        let latestRelay = 'Unavailable';
+        if (latestReading?.relay_open === true || latestOem?.meter_state === 'off') {
             latestRelay = 'Open';
         } else if (latestReading?.relay_open === false || latestOem?.meter_state === 'on') {
             latestRelay = 'Closed';
@@ -2137,17 +2161,18 @@ const customer: FastifyPluginAsync = async (fastify) => {
                 const ts = String(r.reading_date);
                 const d = new Date(`${ts}T00:00:00`);
                 const label = Number.isNaN(d.getTime()) ? ts : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                let val = 0;
+                let val: number | null = null;
                 if (dataItem === 'credit_balance') {
-                    val = Number(r.remain1 ?? 0);
+                    val = r.remain1 == null ? null : Number(r.remain1);
                 } else if (dataItem === 'total_consumption') {
-                    val = Number(r.total1 ?? 0);
+                    val = r.total1 == null ? null : Number(r.total1);
                 } else if (dataItem === 'relay_status') {
-                    val = r.relay_open ? 0 : 1;
+                    val = r.relay_open == null ? null : (r.relay_open ? 0 : 1);
                 } else {
-                    val = Number(r.power ?? r.row_json?.power ?? (r.usage1 ? Number(r.usage1) / 24 : 0));
+                    const power = r.power;
+                    val = power == null ? null : Number(power);
                 }
-                series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
+                if (val != null && Number.isFinite(val)) series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
             }
         } else {
             // Hourly or Live sourced directly from oem_telemetry_readings
@@ -2159,37 +2184,23 @@ const customer: FastifyPluginAsync = async (fastify) => {
                     const label = Number.isNaN(d.getTime()) ? ts : (timeframe === 'live'
                         ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                         : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-                    let val = 0;
+                    let val: number | null = null;
                     if (dataItem === 'credit_balance') {
-                        val = Number(r.provider_credit_balance ?? 0);
+                        val = r.provider_credit_balance == null ? null : Number(r.provider_credit_balance);
                     } else if (dataItem === 'total_consumption') {
-                        val = Number(r.energy_kwh ?? 0);
+                        // The OEM energy field has unknown cumulative semantics.
+                        val = null;
                     } else if (dataItem === 'relay_status') {
-                        val = r.meter_state === 'on' ? 1 : 0;
+                        val = r.meter_state === 'on' ? 1 : r.meter_state === 'off' ? 0 : null;
                     } else {
                         if (r.provider_payload?.power != null) {
                             val = Number(r.provider_payload.power);
-                        } else if (r.voltage_avg != null && r.current_avg != null) {
-                            const pf = Number(r.power_factor_avg) || 1.0;
+                        } else if (r.voltage_avg != null && r.current_avg != null && r.power_factor_avg != null) {
+                            const pf = Number(r.power_factor_avg);
                             val = (Number(r.voltage_avg) * Number(r.current_avg) * pf) / 1000;
                         }
                     }
-                    series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
-                }
-            } else if (dailyRows.length > 0 && timeframe === 'hourly') {
-                // If high-resolution IoT readings aren't present yet for this meter,
-                // project known daily rows rather than generating fake sine waves
-                const chronological = [...dailyRows].slice(0, 7).reverse();
-                for (const r of chronological) {
-                    const ts = String(r.reading_date);
-                    const d = new Date(`${ts}T00:00:00`);
-                    const label = Number.isNaN(d.getTime()) ? ts : d.toLocaleDateString('en-US', { weekday: 'short' });
-                    let val = 0;
-                    if (dataItem === 'credit_balance') val = Number(r.remain1 ?? 0);
-                    else if (dataItem === 'total_consumption') val = Number(r.total1 ?? 0);
-                    else if (dataItem === 'relay_status') val = r.relay_open ? 0 : 1;
-                    else val = Number(r.power ?? r.row_json?.power ?? 0);
-                    series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
+                    if (val != null && Number.isFinite(val)) series.push({ timestamp: ts, label, value: Math.round(val * 100) / 100 });
                 }
             }
         }
@@ -2203,7 +2214,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
                 credit_balance: latestCredit,
                 total_consumption: latestTotal,
                 relay_status: latestRelay,
-                captured_at: latestReading?.captured_at ?? latestOem?.reading_at ?? new Date().toISOString(),
+                captured_at: latestReading?.captured_at ?? latestOem?.reading_at ?? null,
             },
             today_kwh: todayKwh,
             wallet_balance_minor: walletBalanceMinor,
@@ -2221,12 +2232,15 @@ const customer: FastifyPluginAsync = async (fastify) => {
         }
 
         const customerId = req.actor!.customerId!;
-        const meterIds = await customerMeterIds(customerId);
+        const links = await approvedUsageMeters(customerId);
+        const meterIds = links.map(link => link.meter_id);
         if (!meterIds.includes(meterId)) {
             return reply.code(403).send({ error: 'forbidden_meter', message: 'Meter does not belong to customer' });
         }
+        const link = links.find(item => item.meter_id === meterId);
+        if (!link?.station_id) return reply.code(409).send({ error: 'meter_station_missing', message: 'This meter needs a station assignment.' });
 
-        const oemInfo = await resolveMeterOemInfo(meterId);
+        const oemInfo = await resolveMeterOemInfo(meterId, link.station_id);
         if (!oemInfo.supportsLive) {
             return reply.code(422).send({
                 error: 'oem_feature_unsupported',
@@ -2243,52 +2257,53 @@ const customer: FastifyPluginAsync = async (fastify) => {
         }
 
         // Fetch actual recorded reading for this meter
-        const [readingsRes, oemRes] = await Promise.all([
-            adminClient
+        let dailyQuery = adminClient
                 .from('daily_meter_readings')
-                .select('reading_date, total1, remain1, power, relay_open, captured_at, row_json')
+                .select('reading_date, total1, remain1, power, relay_open, captured_at')
                 .eq('meter_id', meterId)
-                .order('reading_date', { ascending: false })
-                .limit(1),
-            adminClient
+                .eq('station_id', link.station_id);
+        let telemetryQuery = adminClient
                 .from('oem_telemetry_readings')
                 .select('reading_at, energy_kwh, voltage_avg, current_avg, power_factor_avg, provider_credit_balance, meter_state, provider_payload')
                 .eq('external_meter_id', meterId)
-                .order('reading_at', { ascending: false })
-                .limit(1),
+                .eq('external_site_id', link.station_id);
+        dailyQuery = link.oem_installation_id ? dailyQuery.eq('oem_installation_id', link.oem_installation_id) : dailyQuery.is('oem_installation_id', null);
+        telemetryQuery = link.oem_installation_id ? telemetryQuery.eq('oem_installation_id', link.oem_installation_id) : telemetryQuery.is('oem_installation_id', null);
+        const [readingsRes, oemRes] = await Promise.all([
+            dailyQuery.order('reading_date', { ascending: false }).limit(1),
+            telemetryQuery.order('reading_at', { ascending: false }).limit(1),
         ]);
+
+        if (readingsRes.error) throw readingsRes.error;
+        if (oemRes.error) throw oemRes.error;
 
         const latestDaily = readingsRes.data?.[0];
         const latestOem = oemRes.data?.[0];
 
-        let realPower = 0;
+        let realPower: number | null = null;
         if (latestDaily?.power != null) {
             realPower = Number(latestDaily.power);
-        } else if (latestDaily?.row_json?.power != null) {
-            realPower = Number(latestDaily.row_json.power);
         } else if (latestOem?.provider_payload?.power != null) {
             realPower = Number(latestOem.provider_payload.power);
-        } else if (latestOem?.voltage_avg != null && latestOem?.current_avg != null) {
-            const pf = Number(latestOem.power_factor_avg) || 1.0;
+        } else if (latestOem?.voltage_avg != null && latestOem?.current_avg != null && latestOem?.power_factor_avg != null) {
+            const pf = Number(latestOem.power_factor_avg);
             realPower = Math.round((Number(latestOem.voltage_avg) * Number(latestOem.current_avg) * pf / 1000) * 100) / 100;
         }
 
-        let realCredit = 0;
+        let realCredit: number | null = null;
         if (latestDaily?.remain1 != null) {
             realCredit = Number(latestDaily.remain1);
         } else if (latestOem?.provider_credit_balance != null) {
             realCredit = Number(latestOem.provider_credit_balance);
         }
 
-        let realTotal = 0;
+        let realTotal: number | null = null;
         if (latestDaily?.total1 != null) {
             realTotal = Number(latestDaily.total1);
-        } else if (latestOem?.energy_kwh != null) {
-            realTotal = Number(latestOem.energy_kwh);
         }
 
-        let realRelay = 'Closed';
-        if (latestDaily?.relay_open === true || latestDaily?.row_json?.relay_open === true || latestOem?.meter_state === 'off') {
+        let realRelay = 'Unavailable';
+        if (latestDaily?.relay_open === true || latestOem?.meter_state === 'off') {
             realRelay = 'Open';
         } else if (latestDaily?.relay_open === false || latestOem?.meter_state === 'on') {
             realRelay = 'Closed';
@@ -2301,7 +2316,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
             meter_id: meterId,
             data_item: body.data_item,
             status: 'completed',
-            timestamp: new Date().toISOString(),
+            timestamp: latestDaily?.captured_at ?? latestOem?.reading_at ?? null,
             readings: {
                 power: realPower,
                 credit_balance: realCredit,

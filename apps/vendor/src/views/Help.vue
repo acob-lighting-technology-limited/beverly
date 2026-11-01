@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import AppShell from '../components/AppShell.vue';
 import { api } from '../lib/api';
+import SupportMeterPicker from '../../../../packages/tokens/SupportMeterPicker.vue';
 
 interface FaqCategory { id: string; slug: string; title: string; description?: string }
 interface Faq { id: string; category_id: string | null; question: string; answer: string; tags: string[] }
@@ -53,6 +54,8 @@ const showNew = ref(false);
 const saving = ref(false);
 const newError = ref('');
 const form = ref({ subject: '', description: '', category: 'general', priority: 'normal' });
+const meterContext = ref<Array<{ meter_id: string; station_id: string | null }> | null>(null);
+const loadSupportMeters = () => api.get<{ meters: Array<{ meter_id: string; station_id: string | null }> }>('/api/v1/vendor/support/meters');
 const selected = ref<Ticket | null>(null);
 const detail = ref<any>(null);
 const detailLoading = ref(false);
@@ -70,15 +73,17 @@ async function loadTickets() {
 }
 async function submitNew() {
     newError.value = '';
+    if (meterContext.value === null) { newError.value = 'Select meters or choose none.'; return; }
     if (form.value.subject.trim().length < 5 || form.value.description.trim().length < 10) {
         newError.value = 'Add a subject (5+ chars) and a description (10+ chars).';
         return;
     }
     saving.value = true;
     try {
-        await api.post('/api/v1/vendor/support/tickets', { ...form.value });
+        await api.post('/api/v1/vendor/support/tickets', { ...form.value, meter_context: meterContext.value });
         showNew.value = false;
         form.value = { subject: '', description: '', category: 'general', priority: 'normal' };
+        meterContext.value = null;
         await loadTickets();
         tab.value = 'tickets';
     } catch (e: any) { newError.value = e?.message ?? 'Could not create ticket.'; }
@@ -214,6 +219,7 @@ onMounted(() => { loadFaqs(); loadTickets(); });
           <button type="button" class="bw-btn ghost sm" aria-label="Close ticket form" @click="showNew = false">Close</button>
         </div>
         <div class="bw-modal-body support-form-body">
+          <SupportMeterPicker v-model="meterContext" :load-meters="loadSupportMeters" />
           <div class="bw-form-group">
             <div class="support-label-row"><label class="bw-label" for="support-subject">Subject</label><span>{{ form.subject.length }}/120</span></div>
             <input id="support-subject" v-model="form.subject" class="bw-input" maxlength="120" placeholder="Example: Wallet funding missing" autofocus />
@@ -340,10 +346,11 @@ onMounted(() => { loadFaqs(); loadTickets(); });
 
 .help-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
 .support-modal-backdrop { z-index: 100000; padding: var(--s-3); }
-.support-modal { width: min(580px, 100%); max-height: calc(100dvh - 24px); overflow: hidden; }
+.support-modal { width: min(580px, 100%); max-height: calc(100dvh - 24px); overflow: hidden; display: flex; flex-direction: column; }
+.support-modal .bw-modal-header, .support-modal .bw-modal-footer { flex-shrink: 0; }
 .support-kicker { color: var(--brand); margin: 0 0 4px; }
 .support-intro { margin: 4px 0 0; font-size: var(--t-sm); }
-.support-form-body { display:grid; gap:var(--s-3); overflow-y:auto; }
+.support-form-body { display:grid; gap:var(--s-3); overflow-y:auto; min-height: 0; flex: 1; }
 .support-label-row { display:flex; align-items:center; justify-content:space-between; gap:var(--s-2); }
 .support-label-row span { color:var(--text-muted); font-family:var(--font-mono); font-size:var(--t-2xs); }
 .support-description { min-height: 124px; resize: vertical; }
@@ -362,9 +369,9 @@ onMounted(() => { loadFaqs(); loadTickets(); });
 
 .bw-modal-lg { max-width: 560px; }
 @media (max-width: 520px) {
-  .help-form-row { grid-template-columns:1fr; }
+  .help-form-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .support-modal-backdrop { padding:6px; align-items:flex-end; }
   .support-modal { max-height:calc(100dvh - 12px); border-radius:var(--r-xl) var(--r-xl) 0 0; }
-  .support-modal .bw-modal-footer { display:grid; grid-template-columns:1fr; }
+  .support-modal .bw-modal-footer { display:grid; grid-template-columns:1fr 1fr; }
 }
 </style>
