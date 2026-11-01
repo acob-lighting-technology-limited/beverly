@@ -28,11 +28,11 @@ describe('vendor vend failure presentation', () => {
         });
     });
 
-    it('blocks vending until Tier 1 is approved', () => {
+    it('blocks vending until Tier 2 is approved', () => {
         expect(presentVendorVendFailure('vendor_kyc_tier_required')).toEqual({
             showPopup: false,
             blockConfirmation: true,
-            action: 'Complete Tier 1 verification. Beverly approval unlocks vending.',
+            action: 'Complete Tier 2 verification. Beverly approval unlocks vending.',
         });
     });
 });

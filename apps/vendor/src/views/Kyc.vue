@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import { api } from '../lib/api';
 import { useVendorAuthStore } from '../stores/auth';
 
 const auth = useVendorAuthStore();
-const route = useRoute();
 const state = ref<any>(null);
 const documentPolicy = ref<any>(null);
 const identityFile = ref<File | null>(null);
@@ -22,7 +20,9 @@ const error = ref('');
 const notice = ref('');
 const fileError = ref('');
 const upgradeStarted = ref(false);
-const forcedKyc = computed(() => String(route.query.reason ?? '').toLowerCase() === 'required');
+const kycRequired = ref(false);
+const kycEnabled = computed(() => documentPolicy.value?.vendor_enabled === true);
+const forcedKyc = computed(() => kycEnabled.value && kycRequired.value && (Number(state.value?.kyc_tier ?? auth.user?.kyc_tier ?? 0) < 2 || (state.value?.kyc_status ?? auth.user?.kyc_status) !== 'verified'));
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const DOCUMENT_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
@@ -36,6 +36,7 @@ const requirement = computed(() => documentPolicy.value?.vendor?.tier2 ?? { iden
 const needsIdentity = computed(() => requirement.value.identity.length > 0);
 const needsSelfie = computed(() => requirement.value.selfie === true);
 const needsAddress = computed(() => requirement.value.address.length > 0);
+const evidenceDescription = computed(() => [needsIdentity.value && 'identity', needsSelfie.value && 'a selfie', needsAddress.value && 'business address evidence'].filter(Boolean).join(', '));
 const status = computed(() => state.value?.kyc_status ?? auth.user?.kyc_status ?? 'unverified');
 const pending = computed(() => status.value === 'pending' || state.value?.review?.status === 'pending');
 const reviewNote = computed(() => String(state.value?.review?.reviewer_note ?? '').trim());
@@ -92,10 +93,11 @@ async function load() {
   try {
     const [current, rules] = await Promise.all([
       api.get('/api/v1/vendor/kyc/status'),
-      api.get<{ policy: any }>('/api/v1/vendor/kyc/policy'),
+      api.get<{ policy: any; required: boolean }>('/api/v1/vendor/kyc/policy'),
     ]);
     state.value = current;
     documentPolicy.value = rules.policy;
+    kycRequired.value = rules.required;
     if (!requirement.value.identity.includes(identityDocumentType.value)) identityDocumentType.value = requirement.value.identity[0] ?? 'national_id';
     if (!requirement.value.address.includes(addressDocumentType.value)) addressDocumentType.value = requirement.value.address[0] ?? 'utility_bill';
     stateLoaded.value = true;
@@ -163,7 +165,7 @@ async function saveForLater() {
 
 async function submit() {
   if (!canSubmit.value) {
-    error.value = needsAddress.value ? 'Identity, selfie, and address evidence are required.' : 'Identity document and selfie are required.';
+    error.value = `Provide ${evidenceDescription.value}.`;
     return;
   }
   submitting.value = true;
@@ -195,7 +197,9 @@ onMounted(load);
       <div>
         <p class="eyebrow">Business identity</p>
         <h1>Set up your business</h1>
-        <p>Your approved business can vend at Tier 0. Verify only when you need a higher limit.</p>
+        <p v-if="stateLoaded && !kycEnabled">Verification is currently off.</p>
+        <p v-else-if="forcedKyc">Complete verification before vending.</p>
+        <p v-else>Manage your business verification.</p>
       </div>
       <button class="bw-btn" :disabled="loading || submitting" @click="load">Refresh</button>
     </header>
@@ -203,16 +207,16 @@ onMounted(load);
     <div v-if="error && stateLoaded" class="bw-alert danger" role="alert">{{ error }}</div>
     <div v-if="notice" class="bw-alert success" role="status">{{ notice }}</div>
 
-    <section v-if="stateLoaded" class="business-summary" aria-label="Business setup">
+    <section v-if="stateLoaded && kycEnabled" class="business-summary" aria-label="Business setup">
       <div class="business-summary-icon" aria-hidden="true">✓</div>
       <div>
         <p class="business-summary-kicker">Business details saved</p>
         <h2>{{ businessName }}</h2>
-        <p>Your Tier 0 wallet is ready. Higher limits remain optional.</p>
+        <p>{{ forcedKyc ? 'Complete verification to continue vending.' : 'Verification depends on your account policy.' }}</p>
       </div>
     </section>
 
-    <section v-if="stateLoaded" class="tier-grid" aria-label="KYC tiers">
+    <section v-if="stateLoaded && kycEnabled" class="tier-grid" aria-label="KYC tiers">
       <article v-for="level in [0,1,2]" :key="level" :class="['tier-card', { active: tier >= level }]">
         <span>Tier {{ level }}</span>
         <strong>{{ level === 0 ? 'Business registered' : level === 1 ? 'Business verified' : 'Enhanced review' }}</strong>
@@ -220,7 +224,7 @@ onMounted(load);
       </article>
     </section>
 
-    <section v-if="stateLoaded && changesRequested" class="bw-alert danger review-feedback" role="alert">
+    <section v-if="stateLoaded && kycEnabled && changesRequested" class="bw-alert danger review-feedback" role="alert">
       <strong>Changes requested</strong>
       <span>{{ reviewNote || 'Review your evidence, then submit clearer documents.' }}</span>
     </section>
@@ -230,13 +234,22 @@ onMounted(load);
       <div><h2>Status unavailable</h2><p>{{ error || 'Your verification status could not be confirmed.' }}</p></div>
       <button class="bw-btn" @click="load">Retry</button>
     </section>
+    <section v-else-if="!kycEnabled" class="bw-card complete-card" role="status">
+      <span class="complete-mark">✓</span>
+      <div><h2>Verification is off</h2><p>No identity documents are required now.</p></div>
+      <router-link to="/vend" class="bw-btn primary">Continue to vending</router-link>
+    </section>
     <section v-else-if="pending" class="bw-card status-card" role="status">
       <span class="status-dot"></span>
       <div><h2>Review in progress</h2><p>Beverly is reviewing your Tier {{ state?.review?.requested_tier ?? tier + 1 }} evidence.</p></div>
       <button class="bw-btn" @click="load">Refresh status</button>
     </section>
+    <section v-else-if="tier >= 2 && forcedKyc" class="bw-card status-card" role="alert">
+      <div><h2>Verification needs attention</h2><p>Contact Beverly support to review your verification status.</p></div>
+    </section>
     <section v-else-if="tier >= 2" class="bw-card complete-card">
       <span class="complete-mark">✓</span><div><h2>Enhanced KYC complete</h2><p>Your vendor account reached Tier 2.</p></div>
+      <router-link to="/vend" class="bw-btn primary">Continue to vending</router-link>
     </section>
     <section v-else-if="tier === 0 && !forcedKyc && !upgradeStarted && !changesRequested" class="bw-card complete-card">
       <span class="complete-mark">✓</span>
@@ -248,7 +261,7 @@ onMounted(load);
     </section>
     <section v-else class="bw-card submission-card">
       <div class="section-head"><div><span>{{ forcedKyc ? 'Required verification' : 'Next verification' }}</span><h2>Request Tier {{ requestedTier }}</h2></div><span class="bw-badge warn">Beverly review</span></div>
-      <p class="instructions">{{ needsAddress ? 'Provide identity, a current selfie, and recent business address evidence.' : 'Provide identity and a current selfie to raise your configured daily limit.' }}</p>
+      <p class="instructions">Provide {{ evidenceDescription }}.</p>
       <form @submit.prevent="submit">
         <div class="upload-grid">
           <label v-if="needsIdentity" class="upload-field">

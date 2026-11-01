@@ -214,11 +214,11 @@ onMounted(load);
         <div class="step-heading"><span>Step 1 of 4</span><h2 id="rollout-step-heading">Choose who must complete KYC</h2><p>Customer and vendor requirements can be managed independently.</p></div>
         <div class="availability-grid">
           <label class="availability-control">
-            <span><strong>Customer KYC</strong><small>Require customers to complete KYC checks.</small></span>
+            <span><strong>Customer KYC</strong><small>Requires Tier 1 for purchases within the selected rollout.</small></span>
             <span class="toggle"><input v-model="availabilityPolicy.customer_enabled" type="checkbox" /> {{ availabilityPolicy.customer_enabled ? 'On' : 'Off' }}</span>
           </label>
           <label class="availability-control">
-            <span><strong>Vendor KYC</strong><small>Require vendors to complete KYC checks.</small></span>
+            <span><strong>Vendor KYC</strong><small>Requires Tier 2 for vending within the selected rollout.</small></span>
             <span class="toggle"><input v-model="availabilityPolicy.vendor_enabled" type="checkbox" /> {{ availabilityPolicy.vendor_enabled ? 'On' : 'Off' }}</span>
           </label>
         </div>
@@ -280,7 +280,7 @@ onMounted(load);
 
       <div class="wizard-nav">
         <button v-if="requirementStep > 0" class="bw-btn" type="button" :disabled="savingAvailability" @click="requirementStep--">← Back</button>
-        <span v-else />
+        <button v-else class="bw-btn" type="button" :disabled="savingAvailability" @click="saveAvailability">{{ savingAvailability ? 'Saving…' : 'Save rollout' }}</button>
         <button v-if="requirementStep < REQUIREMENT_STEPS.length - 1" class="bw-btn primary" type="button" @click="nextRequirementStep">Continue</button>
         <button v-else class="bw-btn primary" type="button" :disabled="savingAvailability" @click="saveAvailability">{{ savingAvailability ? 'Saving…' : 'Save KYC requirements' }}</button>
       </div>
