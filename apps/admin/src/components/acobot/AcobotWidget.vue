@@ -313,6 +313,7 @@ const widgetPosition = ref<{ x: number; y: number } | null>(null);
 const isDragging = ref(false);
 const dragStart = { pointerX: 0, pointerY: 0, widgetX: 0, widgetY: 0 };
 let suppressTriggerClick = false;
+let previousViewportWidth = 0;
 const widgetPositionStyle = computed(() => widgetPosition.value
   ? { left: `${widgetPosition.value.x}px`, top: `${widgetPosition.value.y}px`, right: 'auto', bottom: 'auto' }
   : undefined);
@@ -353,6 +354,7 @@ onMounted(() => {
     if (activeDOM) currentTheme.value = activeDOM;
   }
   restoreWidgetPosition();
+  previousViewportWidth = window.innerWidth;
   window.addEventListener('resize', clampWidgetPosition);
 });
 
@@ -363,8 +365,9 @@ function clampPosition(x: number, y: number) {
   const width = rect?.width ?? 0;
   const height = rect?.height ?? 0;
   const edge = 8;
+  const rightEdge = Math.max(edge, window.innerWidth - width - edge);
   return {
-    x: Math.min(Math.max(edge, x), Math.max(edge, window.innerWidth - width - edge)),
+    x: x + width / 2 < window.innerWidth / 2 ? edge : rightEdge,
     y: Math.min(Math.max(edge, y), Math.max(edge, window.innerHeight - height - edge)),
   };
 }
@@ -381,8 +384,10 @@ function restoreWidgetPosition() {
 }
 
 function clampWidgetPosition() {
+  const wasLeft = widgetPosition.value ? widgetPosition.value.x + (widgetWrapper.value?.offsetWidth ?? 0) / 2 < previousViewportWidth / 2 : false;
+  previousViewportWidth = window.innerWidth;
   if (!widgetPosition.value) return;
-  widgetPosition.value = clampPosition(widgetPosition.value.x, widgetPosition.value.y);
+  widgetPosition.value = clampPosition(wasLeft ? 0 : window.innerWidth, widgetPosition.value.y);
   localStorage.setItem('beverly-admin-ai-position', JSON.stringify(widgetPosition.value));
 }
 

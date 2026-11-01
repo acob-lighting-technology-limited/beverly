@@ -39,10 +39,10 @@ const extraModules = computed(() => {
 
   if (auth.hasPermission('dev.console')) {
     extras.push({
-      name: 'Developer Console',
+      name: 'API keys',
       href: '/dev/api-keys',
       icon: 'dev-api-keys',
-      summary: 'Manage OEM adapters, API keys, webhooks, sandbox simulation, and system diagnostics.',
+      summary: 'Manage API keys for integrations.',
     });
   }
   if (auth.hasPermission('wallet.kyc.view')) {
@@ -58,7 +58,7 @@ const extraModules = computed(() => {
       name: 'Funding Approvals',
       href: '/funding',
       icon: 'funding',
-      summary: 'Approve or reject merchant wallet funding requests and Paystack payment references.',
+      summary: 'Review wallet funding requests and payments.',
     });
   }
   if (auth.hasPermission('wallet.audit.view')) {
@@ -66,7 +66,7 @@ const extraModules = computed(() => {
       name: 'System Audit Log',
       href: '/audit',
       icon: 'audit',
-      summary: 'Full immutable trace of administrator operations, balance overrides, and role changes.',
+      summary: 'Review recorded administrator actions.',
     });
   }
 
@@ -93,7 +93,7 @@ function selectFaqTab(id: string) {
 </script>
 
 <template>
-  <AppShell>
+  <AppShell title="Guide">
     <div class="guide-scope min-h-screen">
       <div class="guide-container">
         <!-- 1. Hero Section -->
@@ -107,7 +107,7 @@ function selectFaqTab(id: string) {
             </Eyebrow>
 
             <MaskText
-              text="Prepayment vending, live telemetry, and energy wallets."
+              text="Find your way around Beverly."
               as="h1"
               class="guide-h1 font-bold tracking-tight text-foreground"
               :delay="0.1"
@@ -115,7 +115,7 @@ function selectFaqTab(id: string) {
 
             <Reveal :delay="0.3">
               <p class="guide-lead text-muted-foreground mt-4 sm:mt-6 text-base sm:text-lg">
-                Manage STS prepayment tokens, track hourly power quality from field meters, and balance station accounts without spreadsheets.
+                Find the tools you need to manage accounts, purchases, meters and support.
               </p>
             </Reveal>
 
@@ -137,8 +137,8 @@ function selectFaqTab(id: string) {
         </section>
 
         <!-- 2. Headline Stat Band -->
-        <section class="mb-20">
-          <div class="grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
+        <section class="guide-section mb-20">
+          <div class="guide-stat-grid grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
             <SpotlightCard
               v-for="stat in guideStats"
               :key="stat.label"
@@ -155,24 +155,24 @@ function selectFaqTab(id: string) {
         </section>
 
         <!-- 3. Transformation Story ("Why Beverly") -->
-        <section class="mb-24">
+        <section class="guide-section mb-24">
           <Reveal>
             <div class="max-w-2xl mb-8">
-              <Eyebrow>The shift</Eyebrow>
+              <Eyebrow>How to use this guide</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                From paper logbooks to live meter controls.
+                Start with the right information.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Managing remote mini-grids used to mean manual scratch cards, unrecorded vends, and undetected bypass. Beverly provides direct meter control and verified accounting.
+                Find a record, review the details, and choose the next step.
               </p>
             </div>
           </Reveal>
 
-          <div class="grid gap-6 md:grid-cols-3">
+          <div class="guide-collection grid gap-6 md:grid-cols-3">
             <SpotlightCard
               v-for="item in guideStory"
               :key="item.kicker"
-              class="p-6 flex flex-col justify-between"
+              class="guide-feature-card p-6 flex flex-col justify-between"
             >
               <div>
                 <span class="guide-story-pill inline-block px-2.5 py-1 text-xs font-mono font-semibold uppercase tracking-wider rounded-md mb-4" :class="item.kicker === 'Now' ? 'bg-primary/20 text-primary border border-primary/30' : 'bg-muted text-muted-foreground'">
@@ -190,7 +190,7 @@ function selectFaqTab(id: string) {
         </section>
 
         <!-- 4. Module Directory ("Your Modules") -->
-        <section id="modules" class="scroll-mt-12 mb-24">
+        <section id="modules" class="guide-section scroll-mt-12 mb-24">
           <Reveal>
             <div class="max-w-2xl mb-10">
               <Eyebrow>Module directory</Eyebrow>
@@ -198,7 +198,7 @@ function selectFaqTab(id: string) {
                 Operational modules.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Every tool handles an operational duty: generating STS tokens, inspecting feeder demand, approving equipment, and balancing cash ledgers.
+                Choose a page to review records and manage your work. Access depends on your permissions.
               </p>
             </div>
           </Reveal>
@@ -249,7 +249,7 @@ function selectFaqTab(id: string) {
               </div>
 
               <Stagger>
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div class="guide-collection grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <SpotlightCard
                     v-for="mod in group.modules"
                     :key="mod.name"
@@ -290,24 +290,24 @@ function selectFaqTab(id: string) {
         </section>
 
         <!-- 5. Deep Dive Highlights ("How Beverly Works") -->
-        <section class="mb-24">
+        <section class="guide-section mb-24">
           <Reveal>
             <div class="max-w-2xl mb-10">
-              <Eyebrow>Architecture</Eyebrow>
+              <Eyebrow>Common tasks</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                Engineered for remote sites and weak networks.
+                Find what you need.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                Mini-grids face frequent network dropouts. Beverly generates offline-capable STS tokens at the meter while syncing load telemetry whenever connectivity restores.
+                Use these pages to find purchases, meter records and support cases.
               </p>
             </div>
           </Reveal>
 
-          <div class="grid gap-8 md:grid-cols-3">
+          <div class="guide-collection grid gap-8 md:grid-cols-3">
             <SpotlightCard
               v-for="highlight in guideHighlights"
               :key="highlight.tag"
-              class="relative overflow-hidden p-8 flex flex-col justify-between"
+              class="guide-feature-card relative overflow-hidden p-8 flex flex-col justify-between"
             >
               <!-- Watermark Icon -->
               <div class="guide-watermark-icon" aria-hidden="true">
@@ -345,24 +345,24 @@ function selectFaqTab(id: string) {
         </section>
 
         <!-- 6. First-Week Walkthrough ("Start Here") -->
-        <section id="first-week" class="scroll-mt-12 mb-24">
+        <section id="first-week" class="guide-section scroll-mt-12 mb-24">
           <Reveal>
             <div class="max-w-2xl mb-10">
               <Eyebrow>Start here</Eyebrow>
               <h2 class="guide-h2 text-foreground font-semibold">
-                Getting started on station operations.
+                Getting started.
               </h2>
               <p class="guide-lead text-muted-foreground">
-                A straightforward checklist to verify your assigned stations, issue a test token, inspect telemetry, and reconcile daily collections.
+                Start with these common tasks.
               </p>
             </div>
           </Reveal>
 
-          <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div class="guide-collection grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             <SpotlightCard
               v-for="(step, idx) in firstWeekSteps"
               :key="step.title"
-              class="p-6 flex flex-col justify-between"
+              class="guide-feature-card p-6 flex flex-col justify-between"
             >
               <div>
                 <span class="guide-step-number font-mono text-xs font-bold text-primary mb-4 block">
@@ -393,7 +393,7 @@ function selectFaqTab(id: string) {
         </section>
 
         <!-- 7. Interactive FAQ & Support CTA -->
-        <section class="mb-24">
+        <section class="guide-section mb-24">
           <Reveal>
             <div class="max-w-2xl mb-10">
               <Eyebrow>Questions</Eyebrow>
@@ -490,7 +490,7 @@ function selectFaqTab(id: string) {
           <div class="guide-security-ambient" aria-hidden="true" />
 
           <div class="relative z-10 max-w-2xl mx-auto">
-            <Eyebrow class="justify-center mb-3">Secured by design</Eyebrow>
+            <Eyebrow class="justify-center mb-3">Need help?</Eyebrow>
             <h2 class="guide-h2 text-foreground font-semibold mb-3">
               Operational Support & Help Desk
             </h2>
@@ -517,7 +517,7 @@ function selectFaqTab(id: string) {
                 </svg>
                 Raise a support ticket
               </router-link>
-              <router-link to="/dashboard" class="guide-btn-outline">
+              <router-link to="/" class="guide-btn-outline">
                 Back to Dashboard
               </router-link>
             </div>
@@ -532,6 +532,29 @@ function selectFaqTab(id: string) {
 .guide-hero-section {
   position: relative;
   background: var(--card);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: clamp(20px, 4vw, 40px);
+  margin-bottom: 24px;
+}
+.guide-hero-section > div:last-child { position: relative; z-index: 3; }
+.guide-stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.guide-stat-grid > * { padding: 14px; min-width: 0; }
+.guide-stat-grid .guide-stat-value { font-size: clamp(1rem, 2vw, 1.4rem); margin: 0; overflow-wrap: anywhere; }
+.guide-stat-grid .guide-stat-label { margin: 5px 0 0; font-size: .8rem; }
+.guide-section { margin-bottom: 36px; }
+.guide-section h2 { margin-bottom: 8px; }
+.guide-collection { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; margin-top: 16px; }
+.guide-feature-card { padding: 16px; }
+.guide-feature-card h3, .guide-feature-card h4 { margin: 8px 0; }
+.guide-feature-card p { margin: 0; line-height: 1.5; color: var(--muted-foreground); }
+.guide-module-group { margin-top: 24px; }
+.guide-module-group h3 { margin-bottom: 4px; }
+.guide-security-section { padding: 24px; border: 1px solid var(--border); border-radius: 16px; }
+@media (max-width: 640px) {
+  .guide-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .guide-hero-section { padding: 20px; }
 }
 
 .guide-hero-ambient {
@@ -572,6 +595,7 @@ function selectFaqTab(id: string) {
 .guide-security-section {
   position: relative;
   background: var(--card);
+  overflow: hidden;
 }
 
 .guide-security-ambient {

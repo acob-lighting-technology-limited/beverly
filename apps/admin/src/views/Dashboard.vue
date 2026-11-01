@@ -490,7 +490,7 @@ onUnmounted(() => { if (poll) clearInterval(poll); });
     <div class="bw-page-head">
       <div class="bw-page-title">
         <h1>Dashboard</h1>
-        <p>Real-time overview of Beverly vending wallet. Refreshes every 30 s.</p>
+        <p>Wallet activity and pending requests.</p>
       </div>
       <div class="bw-head-actions">
         <router-link v-if="auth.hasPermission('wallet.vendors.manage')" to="/vendors/new" class="bw-btn primary" style="text-decoration:none">
@@ -1071,7 +1071,7 @@ onUnmounted(() => { if (poll) clearInterval(poll); });
           <div class="bw-tc-top">
             <div>
               <div class="bw-tc-vendor">{{ p.vendorName }}</div>
-              <div class="bw-tc-id">{{ p.vendorBusiness }}</div>
+              <div v-if="p.vendorBusiness && p.vendorBusiness.trim().toLowerCase() !== (p.vendorName || '').trim().toLowerCase()" class="bw-tc-id">{{ p.vendorBusiness }}</div>
               <div class="bw-tc-id">{{ p.reference }} · {{ shortDate(p.createdAt) }}</div>
             </div>
             <div class="bw-tc-amt bw-money">{{ naira(p.amountMinor) }}</div>
@@ -1483,6 +1483,7 @@ onUnmounted(() => { if (poll) clearInterval(poll); });
     display: flex;
     align-items: center;
     padding: 12px;
+    flex-wrap: wrap;
   }
   .recent-heading {
     flex: 1 1 auto;
@@ -1494,6 +1495,7 @@ onUnmounted(() => { if (poll) clearInterval(poll); });
   }
   .recent-actions {
     flex: 0 0 auto;
+    flex-wrap: wrap;
   }
   .recent-actions .bw-data-view-switch {
     padding: 2px;
@@ -1524,11 +1526,17 @@ onUnmounted(() => { if (poll) clearInterval(poll); });
   .recent-cards .bw-tc {
     padding: 10px 12px;
     gap: 6px;
+    min-width: 0;
   }
+  .bw-data-region[data-view="grid"] .recent-cards { grid-template-columns: minmax(0, 1fr); }
+  .recent-cards .bw-tc-top > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+  .recent-cards .bw-tc-amt { white-space: nowrap; }
   .recent-cards .bw-tc-mid {
     gap: 8px 12px;
     padding-top: 6px;
   }
+  .bw-mobile-kpi-grid > .bw-kpi { min-height: 112px; padding: 12px !important; gap: 6px !important; }
+  .bw-mobile-kpi-grid .bw-kpi-label { font-size: 11px !important; line-height: 1.25 !important; }
   .recent-filter-grid {
     grid-template-columns: 1fr 1fr;
   }

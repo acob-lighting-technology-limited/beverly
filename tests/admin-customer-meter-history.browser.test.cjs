@@ -30,7 +30,11 @@ async function main() {
           { id: "p-a", meter_id: "METER-A", station_id: "SITE-A", status: "delivered", amount_minor: 100000, created_at: "2026-10-29T10:00:00Z" },
           { id: "p-b", meter_id: "METER-B", station_id: "SITE-B", status: "delivered", amount_minor: 200000, created_at: "2026-10-28T10:00:00Z" },
         ] : [{ id: "p-old", meter_id: "METER-OLD", station_id: "SITE-A", status: "delivered", amount_minor: 150000, created_at: "2026-10-27T10:00:00Z" }], nextCursor: null };
-      } else if (url.pathname.endsWith(`/customers/${customerId}`)) body = { customer: { id: customerId, full_name: "Test Customer", status: "active", kyc_tier: 0, kyc_status: "unverified", station_ids: ["SITE-A", "SITE-B"], created_at: "2026-10-01T00:00:00Z" }, wallet: null, balance_minor: 0, available_minor: 0, stats: { meterCount: 2, purchaseCount: 0, purchaseValueMinor: 0, fundingCount: 0, fundingValueMinor: 0 } };
+      } else if (url.pathname.endsWith(`/customers/${customerId}/funding`)) body = { funding: [
+        { id: 'f1', gateway_reference: 'PAY-ONE', gateway: 'paystack', status: 'success', amount_minor: 100000, created_at: '2026-10-29T10:00:00Z' },
+        { id: 'f2', funding_reference: 'BANK-TWO', channel: 'bank_transfer', status: 'pending', amount_minor: 200000, created_at: '2026-10-29T10:00:00Z' },
+      ], nextCursor: null };
+      else if (url.pathname.endsWith(`/customers/${customerId}`)) body = { customer: { id: customerId, full_name: "Test Customer", status: "active", kyc_tier: 0, kyc_status: "unverified", station_ids: ["SITE-A", "SITE-B"], created_at: "2026-10-01T00:00:00Z" }, wallet: null, balance_minor: 0, available_minor: 0, stats: { meterCount: 2, purchaseCount: 0, purchaseValueMinor: 0, fundingCount: 0, fundingValueMinor: 0 } };
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     });
     const page = await context.newPage();
@@ -49,6 +53,35 @@ async function main() {
     await page.getByLabel('Purchase scope').selectOption('account');
     await page.getByRole('table').getByText('METER-OLD', { exact: true }).waitFor();
     assert.equal(await page.getByRole('table').getByText('METER-B', { exact: true }).count(), 0);
+    await page.getByRole('button', { name: /^funding$/i }).click();
+    await page.getByRole('table').getByText('PAY-ONE').waitFor();
+    await page.getByLabel('Search funding').fill('BANK-TWO');
+    assert.equal(await page.getByRole('table').getByText('PAY-ONE').count(), 0);
+    await page.getByLabel('Filter funding channel').selectOption('bank_transfer');
+    await page.getByRole('table').getByText('BANK-TWO').waitFor();
+    await page.getByLabel('Filter funding channel').selectOption('paystack');
+    await page.getByText('No funding records match these filters.').waitFor();
+    const assistant = page.getByRole('button', { name: 'Toggle Beverly AI Assistant' });
+    let box = await assistant.boundingBox();
+    assert(box && box.x + box.width >= 370, 'assistant starts at the right edge');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(10, 200, { steps: 8 });
+    await page.mouse.up();
+    box = await assistant.boundingBox();
+    assert(box && box.x <= 12, 'assistant snaps to the left edge');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(360, 300, { steps: 8 });
+    await page.mouse.up();
+    box = await assistant.boundingBox();
+    assert(box && box.x + box.width >= 378, 'assistant snaps to the right edge');
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    box = await assistant.boundingBox();
+    assert(box && box.x + box.width >= 378, 'assistant stays on the chosen edge');
+    await page.setViewportSize({ width: 581, height: 844 });
+    box = await assistant.boundingBox();
+    assert(box && box.x + box.width >= 569, 'assistant stays on that edge after resize');
     console.log('PASS linked meters and meter purchase analytics');
   } finally { await browser.close(); await new Promise((resolve) => server.httpServer.close(resolve)); }
 }

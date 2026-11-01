@@ -445,6 +445,7 @@ async function resolveExportRows(selection: WalletExportSelection): Promise<Mete
           v-model="search"
           class="bw-input mo-search-input"
           placeholder="Search address, area, phone…"
+          aria-label="Search meter orders"
           @keyup.enter="load"
         />
       </div>
@@ -452,6 +453,7 @@ async function resolveExportRows(selection: WalletExportSelection): Promise<Mete
         <option v-for="o in STATUS_OPTS" :key="o.value" :value="o.value">{{ o.label }}</option>
       </select>
       <div class="mo-toolbar-actions">
+      <button type="button" class="bw-btn sm" :disabled="loading" @click="load">Search</button>
       <button type="button" class="bw-btn sm" :disabled="loading" @click.prevent="refresh">
         {{ loading ? 'Loading…' : 'Refresh' }}
       </button>
@@ -760,18 +762,19 @@ async function resolveExportRows(selection: WalletExportSelection): Promise<Mete
 .mo-cards { padding: var(--s-3); }
 .mo-card {
   background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--r-md); padding: var(--s-4); margin-bottom: var(--s-2);
+  border-radius: var(--r-md); padding: var(--s-3); margin-bottom: var(--s-2);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2) var(--s-3);
 }
 .mo-card:last-child { margin-bottom: 0; }
-.mo-card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--s-3); gap: var(--s-2); }
+.mo-card-top { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s-2); }
 .mo-card-customer { font-weight: 600; font-size: var(--t-sm); }
 .mo-card-sub { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px; }
-.mo-card-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: var(--t-sm); border-top: 1px dashed var(--border); }
+.mo-card-row { display: grid; align-content: start; gap: 3px; min-width: 0; padding: 0; font-size: var(--t-sm); }
 .mo-card-lbl { color: var(--text-muted); }
-.mo-card-val { text-align: right; max-width: 55%; word-break: break-word; }
-.mo-card-acts { display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
+.mo-card-val { overflow-wrap: anywhere; }
+.mo-card-acts { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: var(--s-2); margin-top: var(--s-2); flex-wrap: wrap; }
 .mo-card-acts .bw-btn { min-height: 36px; }
-.mo-rejected-card { display:grid; gap:4px; margin-top:var(--s-3); padding:var(--s-3); border:1px solid color-mix(in srgb, var(--danger) 30%, var(--border)); border-radius:var(--r-md); background:color-mix(in srgb, var(--danger) 8%, var(--surface)); font-size:var(--t-xs); }
+.mo-rejected-card { grid-column: 1 / -1; display:grid; gap:4px; padding:var(--s-3); border:1px solid color-mix(in srgb, var(--danger) 30%, var(--border)); border-radius:var(--r-md); background:color-mix(in srgb, var(--danger) 8%, var(--surface)); font-size:var(--t-xs); }
 .mo-rejected-card strong { color:var(--danger); }
 .mo-empty { text-align: center; padding: var(--s-8); font-size: var(--t-sm); }
 
@@ -810,15 +813,14 @@ async function resolveExportRows(selection: WalletExportSelection): Promise<Mete
 @media (max-width: 560px) {
   .mo-kpi-row { grid-template-columns: repeat(2, 1fr); }
   .mo-kpi { min-height: 88px; padding: var(--s-3); }
-  .mo-toolbar { flex-direction: column; align-items: stretch; }
-  .mo-search-wrap,
-  .mo-status-select {
-    width: 100%;
-  }
+  .mo-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .7fr); }
+  .mo-search-wrap { width: 100%; min-width: 0; }
+  .mo-status-select { width: 100%; }
   .mo-toolbar-actions {
+    grid-column: 1 / -1;
     width: 100%;
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, auto);
   }
 }
 </style>

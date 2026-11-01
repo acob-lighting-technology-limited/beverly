@@ -241,9 +241,9 @@ onBeforeUnmount(() => { if (chatPoll) clearInterval(chatPoll); if (sessionsPoll)
   <AppShell title="Support">
     <section class="support-hero">
       <div>
-        <p class="support-kicker">Support command desk</p>
-        <h1>Customer care cockpit</h1>
-        <p>Resolve tickets, answer live chats, and keep the Beverly knowledge base sharp.</p>
+        <p class="support-kicker">Customer support</p>
+        <h1>Support desk</h1>
+        <p>Manage tickets, chats and FAQs.</p>
       </div>
       <div class="support-hero-metrics" aria-label="Support overview">
         <span><strong>{{ ticketStats.open ?? 0 }}</strong> open</span>
@@ -618,7 +618,7 @@ onBeforeUnmount(() => { if (chatPoll) clearInterval(chatPoll); if (sessionsPoll)
 .support-hero h1 {
   margin: 0;
   color: var(--text);
-  font-size: clamp(2rem, 5vw, var(--t-4xl));
+  font-size: clamp(1.6rem, 4vw, var(--t-3xl));
   line-height: 0.98;
 }
 .support-hero p:last-child {

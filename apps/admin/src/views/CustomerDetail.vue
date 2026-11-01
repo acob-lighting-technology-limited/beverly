@@ -430,7 +430,7 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
             <router-link :to="`/wallets`" class="bw-btn sm" style="text-decoration: none">All wallets →</router-link>
           </div>
           <div class="detail-filter-row">
-            <input v-model="walletQuery" class="bw-input" placeholder="Search wallet entries" aria-label="Search wallet entries" />
+            <label class="detail-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg><input v-model="walletQuery" class="bw-input" placeholder="Search wallet entries" aria-label="Search wallet entries" /></label>
             <select v-model="walletDirection" class="bw-select" aria-label="Filter wallet direction">
               <option value="all">All movements</option><option value="credit">Credits</option><option value="debit">Debits</option>
             </select>
@@ -456,16 +456,22 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
         <div v-else-if="metersError" class="purchase-error" role="alert">{{ metersError }} <button type="button" class="bw-btn sm" @click="loadMeters">Retry</button></div>
         <div v-else>
           <div class="meter-purchase-summary">
+            <div class="purchase-controls">
+            <div>
             <label for="purchase-scope">Purchase scope</label>
             <select id="purchase-scope" v-model="purchaseScope" class="bw-select" aria-label="Purchase scope" @change="changePurchaseScope">
               <option value="linked">Linked meter purchases</option>
               <option value="account">Customer account purchases</option>
             </select>
+            </div>
+            <div>
             <label for="purchase-meter">Select meter</label>
             <select id="purchase-meter" v-model="selectedMeter" class="bw-select" aria-label="Select meter">
               <option value="all">{{ purchaseScope === 'linked' ? 'All approved meters' : 'All account purchases' }}</option>
               <option v-for="meter in approvedMeters" :key="meter.id" :value="meter.meter_id">{{ meter.meter_id }}{{ meter.nickname ? ` · ${meter.nickname}` : '' }}</option>
             </select>
+            </div>
+            </div>
             <p v-if="purchaseScope === 'linked'">Matched by meter and station. Purchases may predate this link.</p>
             <p v-else>Purchases made by this customer account.</p>
             <p>Completed totals use delivered or completed orders.</p>
@@ -477,7 +483,7 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
             </div>
           </div>
           <div class="detail-filter-row">
-            <input v-model="purchaseQuery" class="bw-input" placeholder="Meter, station, or order" aria-label="Search purchases" />
+            <label class="detail-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg><input v-model="purchaseQuery" class="bw-input" placeholder="Search meter, station, or order" aria-label="Search purchases" /></label>
             <select v-model="purchaseStatus" class="bw-select" aria-label="Filter purchase status">
               <option value="all">All statuses</option><option value="delivered">Delivered</option><option value="completed">Completed</option><option value="token_issued">Token issued</option><option value="failed">Failed</option><option value="refunded">Refunded</option>
             </select>
@@ -509,7 +515,7 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
         <div v-if="tabLoading" class="empty bw-muted">Loading…</div>
         <div v-else>
           <div class="detail-filter-row">
-            <input v-model="fundingQuery" class="bw-input" placeholder="Reference or status" aria-label="Search funding" />
+            <label class="detail-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg><input v-model="fundingQuery" class="bw-input" placeholder="Search reference or status" aria-label="Search funding" /></label>
             <select v-model="fundingChannel" class="bw-select" aria-label="Filter funding channel">
               <option value="all">All channels</option><option value="paystack">Paystack</option><option value="bank_transfer">Bank transfer</option>
             </select>
@@ -564,11 +570,12 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
 .banner-enter-from { opacity: 0; transform: translateY(-4px); }
 .empty { text-align: center; padding: var(--s-6); }
 
-.head-card { display: flex; justify-content: space-between; align-items: start; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-3); }
-.head-main { display: flex; gap: var(--s-4); align-items: center; }
+.head-card { display: flex; justify-content: space-between; align-items: start; gap: var(--s-3); flex-wrap: wrap; margin-bottom: var(--s-3); }
+.head-main { display: flex; gap: var(--s-3); align-items: center; min-width: 0; flex: 1; }
+.head-main > div:last-child { min-width: 0; }
 .avatar { width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--brand-300), var(--brand-600)); display: grid; place-items: center; font-size: 24px; font-weight: 700; color: oklch(8% 0.04 145); flex-shrink: 0; }
 .head-name { margin: 0 0 4px; font-size: var(--t-xl); }
-.head-meta { font-size: var(--t-sm); color: var(--text-muted); margin: 0 0 var(--s-2); }
+.head-meta { font-size: var(--t-sm); color: var(--text-muted); margin: 0 0 var(--s-2); overflow-wrap: anywhere; }
 .head-badges { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .head-actions { display: flex; gap: var(--s-2); align-items: center; }
 .head-action-buttons { display: flex; gap: var(--s-2); align-items: center; }
@@ -590,9 +597,10 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
 .meter-link-actions { display: flex; align-items: center; gap: var(--s-2); }
 .meter-purchase-summary { padding: var(--s-4); border-bottom: 1px solid var(--border); }
 .meter-purchase-summary label { display: block; margin-bottom: var(--s-1); font-weight: 700; }
-.meter-purchase-summary label:not(:first-child) { margin-top: var(--s-3); }
-.meter-purchase-summary select { max-width: 28rem; }
-.purchase-analytics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); margin-top: var(--s-4); }
+.purchase-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
+.purchase-controls > div { min-width: 0; }
+.meter-purchase-summary select { width: 100%; }
+.purchase-analytics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); margin-top: var(--s-3); }
 .purchase-analytics div { display: grid; gap: var(--s-1); min-width: 0; }
 .purchase-analytics span { color: var(--text-muted); font-size: var(--t-xs); }
 .purchase-analytics strong { overflow-wrap: anywhere; }
@@ -620,7 +628,9 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
 
 .wallet-head { display: flex; justify-content: space-between; align-items: start; padding: var(--s-4); border-bottom: 1px solid var(--border); }
 .detail-filter-row { display: flex; gap: var(--s-2); padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--border); }
-.detail-filter-row .bw-input { min-width: 0; flex: 1; }
+.detail-search { position: relative; display: flex; min-width: 0; flex: 1; }
+.detail-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--text-muted); pointer-events: none; }
+.detail-filter-row .detail-search .bw-input { width: 100%; min-width: 0; min-height: 44px; padding-left: 38px; }
 .detail-filter-row .bw-select { width: min(190px, 45%); }
 .wallet-bal { font-family: var(--font-mono); font-weight: 700; font-size: var(--t-2xl); color: var(--brand); margin: 4px 0 6px; }
 
@@ -639,16 +649,21 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
 :deep(.cd-body) .cd-input-hint { font-size: var(--t-xs); color: var(--text-muted); margin: 6px 0 0; }
 
 @media (max-width: 640px) {
-  .head-card { flex-direction: column; }
-  .head-actions { width: 100%; justify-content: flex-end; }
+  .bw-mobile-kpi-grid > .stat-tile { min-height: 110px; padding: 12px !important; }
+  .bw-mobile-kpi-grid .stat-label { font-size: 11px !important; line-height: 1.25 !important; }
+  .head-card { flex-wrap: nowrap; padding: var(--s-3); }
+  .head-main { align-items: flex-start; }
+  .avatar { width: 42px; height: 42px; font-size: 18px; }
+  .head-actions { flex: 0 0 auto; }
   .head-action-buttons { display: none; }
   .ov-dl--table .ov-item { grid-template-columns: 110px minmax(0, 1fr); gap: var(--s-3); }
   .ledger-row { grid-template-columns: 1fr auto; }
-  .detail-filter-row { flex-direction: column; }
-  .detail-filter-row .bw-select { width: 100%; }
+  .detail-filter-row { flex-wrap: wrap; }
+  .detail-filter-row .bw-select { flex: 1 1 130px; width: auto; min-height: 44px; }
+  .detail-search { flex: 2 1 180px; }
   .meter-link { align-items: flex-start; flex-direction: column; }
   .meter-link-actions { width: 100%; justify-content: space-between; }
-  .purchase-analytics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .purchase-analytics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ledger-when, .ledger-bal { grid-column: 1 / -1; opacity: 0.7; }
 }
 </style>
