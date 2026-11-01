@@ -184,9 +184,9 @@ function main() {
   assert(customerMeters.includes('to="/buy-meter"'));
   assert(!customerMeters.includes("style=\"display:flex; align-items:center; gap: var(--s-4); margin-bottom: var(--s-4); padding: var(--s-4)\""));
   assert(customerChat.includes("width: 46px; height: 46px"));
-  assert(customerChat.includes("animation: cw-float"));
+  assert(!customerChat.includes("animation: cw-float"), "Customer chat button must remain stationary for reliable selection");
   assert(vendorChat.includes("width: 46px; height: 46px"));
-  assert(vendorChat.includes("animation: cw-float"));
+  assert(!vendorChat.includes("animation: cw-float"), "Vendor chat button must remain stationary for reliable selection");
   assert(customerShell.includes('aria-label="Help & support"'));
   const helpIcon = customerShell.match(/aria-label="Help & support"[\s\S]*?<\/RouterLink>/)?.[0] ?? "";
   assert(helpIcon.includes('a8 8 0 0 1 16 0v1'));
