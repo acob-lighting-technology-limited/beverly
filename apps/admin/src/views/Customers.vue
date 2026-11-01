@@ -331,14 +331,17 @@ watch([fStatus, fTier], () => loadList());
         <div v-for="c in paginatedCustomers" :key="c.id" class="c-card" @click="router.push(`/customers/${c.id}`)">
           <div class="cc-head">
             <div>
-              <div style="font-weight: 700">{{ c.full_name || '—' }}</div>
+              <router-link :to="`/customers/${c.id}`" class="cc-name" @click.stop>{{ c.full_name || '—' }}</router-link>
               <div class="bw-mono row-sub">{{ c.phone || c.id.slice(0, 8) }}</div>
             </div>
-            <span :class="['bw-badge', statusBadge(c.status)]">{{ c.status }}</span>
+            <div class="cc-header-actions" @click.stop>
+              <span :class="['bw-badge', statusBadge(c.status)]">{{ c.status }}</span>
+              <WalletRowActions :items="buildCustomerRowActions(c)" label="Customer actions" align="right" />
+            </div>
           </div>
           <div class="cc-grid">
             <div>
-              <p class="cc-label">Station IDs</p>
+              <p class="cc-label">Station</p>
               <span class="bw-badge info bw-mono">{{ c.station_ids.map(stationDisplayLabel).join(', ') || 'Unassigned' }}</span>
             </div>
             <div>
@@ -349,13 +352,6 @@ watch([fStatus, fTier], () => loadList());
               <p class="cc-label">KYC</p>
               <span :class="['bw-badge', tierBadge(c.kyc_tier)]">Tier {{ c.kyc_tier }}</span>
             </div>
-          </div>
-          <div class="cc-actions" @click.stop>
-            <WalletRowActions
-              :items="buildCustomerRowActions(c)"
-              label="Customer actions"
-              align="right"
-            />
           </div>
         </div>
         <div v-if="!customers.length && !loading" class="bw-muted empty">No customers.</div>
@@ -429,12 +425,16 @@ watch([fStatus, fTier], () => loadList());
 .bw-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .c-cards { padding: var(--s-3); }
-.c-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-4); margin-bottom: var(--s-2); cursor: pointer; }
+.c-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3); margin-bottom: var(--s-2); cursor: pointer; }
 .c-card:hover { border-color: var(--brand); }
-.cc-head { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--s-3); gap: var(--s-2); }
-.cc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px dashed var(--border); }
+.cc-name { color: var(--text); font-weight: 700; text-decoration: none; }
+.cc-name:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.cc-head { display: flex; justify-content: space-between; align-items: start; margin-bottom: var(--s-2); gap: var(--s-2); }
+.cc-header-actions { display: flex; align-items: center; gap: var(--s-2); }
+.cc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--border); }
+.cc-grid > div { min-width: 0; }
+.cc-grid .bw-money { margin: 0; }
 .cc-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin: 0 0 2px; }
-.cc-actions { display: flex; gap: var(--s-2); padding-top: var(--s-3); margin-top: var(--s-3); border-top: 1px dashed var(--border); }
 
 :deep(.cd-body) .cd-input-label { display: block; font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
 :deep(.cd-body) .cd-input { width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 10px 12px; color: var(--text); font-size: var(--t-sm); font-family: inherit; resize: vertical; min-height: 80px; }

@@ -219,8 +219,8 @@ onMounted(() => {
 .notification-mark-all { min-height: 44px; }
 .notification-filter.active { border-color: color-mix(in srgb, var(--brand) 55%, var(--border)); background: color-mix(in srgb, var(--brand) 14%, var(--surface)); color: var(--brand); }
 .notification-filter:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.notification-list { display: grid; gap: var(--s-3); }
-.an-row { width: 100%; display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; gap: var(--s-3); align-items: center; border: 1px solid var(--border); border-radius: var(--r-xl); background: var(--surface); color: var(--text); padding: var(--s-4); text-align: left; cursor: pointer; box-shadow: var(--glass-shadow-card, 0 12px 34px rgb(0 0 0 / .12)); transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.notification-list { display: grid; gap: var(--s-2); }
+.an-row { width: 100%; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: var(--s-2); align-items: center; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text); padding: var(--s-3); text-align: left; cursor: pointer; box-shadow: var(--glass-shadow-card, 0 12px 34px rgb(0 0 0 / .12)); transition: border-color .16s ease, background .16s ease, transform .16s ease; }
 .an-row.unread { background: color-mix(in oklab, var(--brand), transparent 90%); border-color: color-mix(in oklab, var(--brand), transparent 72%); }
 .an-row:hover { border-color: color-mix(in oklab, var(--brand), transparent 58%); transform: translateY(-1px); }
 .an-row:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
@@ -234,14 +234,16 @@ onMounted(() => {
 .an-empty { min-height: 220px; display: grid; place-items: center; gap: var(--s-2); color: var(--text-muted); text-align: center; }
 .an-more { display: flex; justify-content: center; margin-top: var(--s-4); }
 @media (max-width: 640px) {
-  .an-head { display: grid; }
+  .an-head { align-items: center; }
+  .an-head h1 { font-size: 1.5rem; }
+  .an-head > button { flex: 0 0 auto; }
   .device-notifications { align-items: center; flex-direction: row; }
   .device-actions { flex: 0 0 auto; }
   .notification-switch { width: 46px; height: 26px; padding: 3px; }
   .notification-switch span { width: 18px; height: 18px; }
   .notification-switch[aria-checked="true"] span { transform: translateX(20px); }
-  .an-row { grid-template-columns: 9px minmax(0, 1fr); }
-  .an-row time { grid-column: 2; }
+  .an-row { grid-template-columns: 8px minmax(0, 1fr) auto; align-items: start; }
+  .an-row time { grid-column: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .an-row { transition: none; }
