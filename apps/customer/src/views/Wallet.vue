@@ -12,6 +12,12 @@ import { naira, shortDate } from '../lib/format';
 const wallet  = ref<any>(null);
 const entries = ref<any[]>([]);
 const loading = ref(false);
+const ledgerError = ref(false);
+const walletError = ref(false);
+const loadingMore = ref(false);
+const moreError = ref(false);
+const hasMore = ref(false);
+const nextOffset = ref(0);
 const showFilters = ref(false);
 const searchQuery = ref('');
 const activityFilter = ref<'all' | 'credit' | 'debit'>('all');
@@ -21,17 +27,36 @@ const viewMode = ref<'list' | 'table'>(
     typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches ? 'list' : 'table',
 );
 
-onMounted(async () => {
+async function loadWallet() {
     loading.value = true;
+    ledgerError.value = false;
+    walletError.value = false;
     try {
-        const [w, l] = await Promise.all([
+        const [w, l] = await Promise.allSettled([
             api.get<any>('/api/v1/customer/wallet'),
             api.get<{ entries: any[] }>('/api/v1/customer/wallet/ledger?limit=100'),
         ]);
-        wallet.value = w;
-        entries.value = l.entries;
-    } catch { /* noop */ } finally { loading.value = false; }
-});
+        if (w.status === 'fulfilled') wallet.value = w.value;
+        else { wallet.value = null; walletError.value = true; }
+        if (l.status === 'fulfilled') { entries.value = l.value.entries ?? []; nextOffset.value = entries.value.length; hasMore.value = entries.value.length === 100; }
+        else { entries.value = []; hasMore.value = false; ledgerError.value = true; }
+    } finally { loading.value = false; }
+}
+onMounted(loadWallet);
+
+async function loadMore() {
+    if (loadingMore.value || !hasMore.value) return;
+    loadingMore.value = true;
+    moreError.value = false;
+    try {
+        const result = await api.get<{ entries: any[] }>(`/api/v1/customer/wallet/ledger?limit=100&offset=${nextOffset.value}`);
+        const existing = new Set(entries.value.map(entry => entry.id));
+        entries.value.push(...(result.entries ?? []).filter(entry => !existing.has(entry.id)));
+        nextOffset.value += (result.entries ?? []).length;
+        hasMore.value = (result.entries ?? []).length === 100;
+    } catch { moreError.value = true; }
+    finally { loadingMore.value = false; }
+}
 
 const matchesFilter = (entry: any, filter: typeof activityFilter.value) => {
     if (filter === 'all') return true;
@@ -80,6 +105,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
   <AppShell>
     <!-- Balance card -->
     <div class="bw-balance-hero">
+      <p v-if="walletError" role="alert">Wallet unavailable. <button type="button" @click="loadWallet">Try again</button></p>
       <p class="bw-label" style="color: var(--brand); margin:0 0 var(--s-1)">Wallet</p>
       <div class="bw-kpi-value" style="color: var(--brand); font-size: var(--t-4xl); margin-bottom: var(--s-1)">
         {{ naira(wallet?.balance_minor) }}
@@ -101,6 +127,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
 
     <!-- Ledger -->
     <div class="bw-card flush bw-data-region" :data-view="viewMode">
+      <div v-if="ledgerError" role="alert" style="padding: .75rem 1rem">Ledger unavailable. <button type="button" @click="loadWallet">Try again</button></div>
       <div class="bw-table-head-bar recent-head-bar">
         <div class="recent-heading">
           <div class="recent-title-row">
@@ -187,7 +214,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
               <td class="bw-money" style="text-align:right">{{ naira(e.balance_after_minor) }}</td>
             </tr>
             <tr v-if="!filteredLedger.length && !loading">
-              <td colspan="4" class="bw-muted" style="text-align:center; padding: var(--s-6)">No entries matching filters.</td>
+              <td colspan="4" class="bw-muted" style="text-align:center; padding: var(--s-6)">{{ ledgerError ? 'Ledger unavailable. Try again.' : activeFilterCount ? 'No entries match these filters.' : 'No wallet entries yet.' }}</td>
             </tr>
           </tbody>
         </table>
@@ -215,7 +242,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
           </div>
         </div>
         <div v-if="!filteredLedger.length && !loading" class="bw-muted"
-             style="text-align:center; padding: var(--s-6); font-size: var(--t-sm)">No entries matching filters.</div>
+             style="text-align:center; padding: var(--s-6); font-size: var(--t-sm)">{{ ledgerError ? 'Ledger unavailable. Try again.' : activeFilterCount ? 'No entries match these filters.' : 'No wallet entries yet.' }}</div>
       </div>
 
       <!-- Pagination Bar -->
@@ -225,6 +252,18 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
         :total-items="filteredLedger.length"
         item-label="movements"
       />
+      <div v-if="hasMore" class="ledger-more">
+        <span v-if="moreError" role="alert">Older entries could not load.</span>
+        <button type="button" class="bw-btn" :disabled="loadingMore" @click="loadMore">{{ loadingMore ? 'Loading…' : 'Load older entries' }}</button>
+      </div>
     </div>
   </AppShell>
 </template>
+
+<style scoped>
+.bw-balance-hero { padding: clamp(1rem, 3vw, 1.35rem); border-radius: 18px; }
+.recent-head-bar { gap: .75rem; padding: 1rem; }
+.bw-tc { padding: .85rem 1rem; }
+.ledger-more { display: flex; justify-content: center; align-items: center; gap: .5rem; flex-wrap: wrap; padding: .75rem; }
+@media (max-width: 640px) { .recent-actions { display: flex; flex-wrap: wrap; gap: .4rem; } }
+</style>

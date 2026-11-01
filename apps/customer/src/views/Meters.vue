@@ -4,7 +4,7 @@ import AppShell from '../components/AppShell.vue';
 import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import { api } from '../lib/api';
-import { shortDate } from '../lib/format';
+import { naira, shortDate } from '../lib/format';
 import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 interface Meter {
@@ -64,10 +64,7 @@ const unlinkError = ref('');
 const history = ref<MeterLinkHistoryEvent[]>([]);
 const historyLoading = ref(false);
 const historyError = ref('');
-const prices = ref<{ residential_minor: number; commercial_minor: number }>({
-    residential_minor: 3_000_000,
-    commercial_minor: 15_000_000,
-});
+const prices = ref<{ residential_minor: number; commercial_minor: number } | null>(null);
 
 const meterExportColumns: WalletExportColumn<Meter>[] = [
     { key: 'meter_id', header: 'Meter', value: (meter) => meter.meter_id },
@@ -80,7 +77,7 @@ const meterExportColumns: WalletExportColumn<Meter>[] = [
 async function loadPrices() {
     try {
         const res = await api.get<{ residential_minor: number; commercial_minor: number }>('/api/v1/customer/meter-pricing');
-        if (res.residential_minor) prices.value = res;
+        prices.value = Number.isFinite(res.residential_minor) && Number.isFinite(res.commercial_minor) ? res : null;
     } catch { /* noop */ }
 }
 
@@ -217,8 +214,8 @@ function formatHistoryDate(value: string) {
         <p>Choose a prepaid meter, track installation, and start buying tokens after activation.</p>
       </div>
       <div class="meter-install-prices" aria-label="Meter prices">
-        <span><strong>NGN {{ Math.round(prices.residential_minor / 100000) }}k</strong> Residential</span>
-        <span><strong>NGN {{ Math.round(prices.commercial_minor / 100000) }}k</strong> Commercial</span>
+        <span><strong>{{ prices ? naira(prices.residential_minor) : 'Unavailable' }}</strong> Residential</span>
+        <span><strong>{{ prices ? naira(prices.commercial_minor) : 'Unavailable' }}</strong> Commercial</span>
       </div>
       <div class="meter-install-actions">
         <router-link to="/meter-orders" class="bw-btn meter-install-secondary">
@@ -344,6 +341,13 @@ function formatHistoryDate(value: string) {
 </template>
 
 <style scoped>
+.meter-card, .meter-history { padding: 1rem; }
+.meter-page-actions { gap: .5rem; }
+@media (max-width: 420px) {
+  .meter-install-card { gap: .75rem; padding: 1rem; }
+  .meter-install-prices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meter-history-event-head { gap: .2rem; }
+}
 .meter-page-head {
     display: flex;
     align-items: center;
@@ -584,13 +588,10 @@ function formatHistoryDate(value: string) {
 }
 @media (max-width: 420px) {
     .meter-page-actions { grid-template-columns: 1fr 1fr; }
-    .meter-page-actions > a:last-child { grid-column: 1 / -1; }
-    .meter-install-card,
-    .meter-install-actions {
-        grid-template-columns: 1fr;
-    }
-    .meter-install-icon { width: 48px; height: 48px; }
-    .meter-install-prices { grid-template-columns: 1fr; }
+    .meter-install-card { grid-template-columns: 40px minmax(0, 1fr); }
+    .meter-install-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .meter-install-icon { width: 40px; height: 40px; }
+    .meter-install-prices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .meter-card-row {
         align-items: flex-start;
         flex-wrap: wrap;

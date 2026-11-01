@@ -2,6 +2,7 @@
 import { ref, computed, nextTick, onBeforeUnmount, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { api } from '../lib/api';
+import SupportMeterPicker from '../../../../packages/tokens/SupportMeterPicker.vue';
 
 interface ChatMessage {
     id: string;
@@ -18,6 +19,9 @@ const router = useRouter();
 const open        = ref(false);
 const view        = ref<'chat' | 'escalate'>('chat'); // 'chat' | 'escalate'
 const sessionId   = ref('');
+const meterContext = ref<Array<{ meter_id: string; station_id: string | null }> | null>(null);
+const meterError = ref('');
+const loadSupportMeters = () => api.get<{ meters: Array<{ meter_id: string; station_id: string | null }> }>('/api/v1/customer/support/meters');
 const messages    = ref<ChatMessage[]>([]);
 const draft       = ref('');
 const starting    = ref(false);
@@ -100,13 +104,15 @@ const groupedMessages = computed(() => {
 
 async function ensureSession() {
     if (sessionId.value) return;
+    if (meterContext.value === null) { meterError.value = 'Select meters or choose none.'; return; }
     starting.value = true;
+    meterError.value = '';
     try {
-        const res = await api.post<{ id: string }>('/api/v1/customer/support/chat/session', {});
+        const res = await api.post<{ id: string }>('/api/v1/customer/support/chat/session', { meter_context: meterContext.value });
         sessionId.value = res.id;
         await fetchMessages(true);
         startPolling();
-    } catch { /* ignore */ } finally {
+    } catch { meterError.value = 'Chat could not start. Try again.'; } finally {
         starting.value = false;
     }
 }
@@ -154,11 +160,13 @@ async function toggle() {
 async function send(text?: string) {
     const body = (text ?? draft.value).trim();
     if (!body || sending.value) return;
+    if (meterContext.value === null && !sessionId.value) { meterError.value = 'Select meters or choose none.'; return; }
     sending.value = true;
-    draft.value = '';
     sessionStarted.value = true;
     activeGuideTopic.value = '';
     await ensureSession();
+    if (!sessionId.value) { sending.value = false; return; }
+    draft.value = '';
 
     const tmpId = `tmp-${Date.now()}`;
     messages.value.push({
@@ -170,13 +178,6 @@ async function send(text?: string) {
         _pending: true,
     });
     scrollToBottom();
-
-    // Show typing indicator after send
-    if (typingTimer) clearTimeout(typingTimer);
-    typingTimer = setTimeout(() => {
-        staffTyping.value = true;
-        typingTimer = setTimeout(() => { staffTyping.value = false; }, 12000);
-    }, 1500);
 
     try {
         await api.post(`/api/v1/customer/support/chat/${sessionId.value}/messages`, { body });
@@ -208,6 +209,7 @@ async function submitEscalate() {
     }
     escLoading.value = true;
     await ensureSession();
+    if (!sessionId.value) { escLoading.value = false; escError.value = meterError.value; return; }
     try {
         const payload: any = { subject: escSubject.value.trim() };
         if (escDesc.value.trim()) payload.body = escDesc.value.trim();
@@ -277,7 +279,7 @@ function time(s: string) { return new Date(s).toLocaleTimeString([], { hour: '2-
               <strong>Beverly Support</strong>
               <span class="cw-status">
                 <i class="cw-dot" aria-hidden="true" />
-                Typically replies in minutes
+                Support team
               </span>
             </div>
           </div>
@@ -294,6 +296,8 @@ function time(s: string) { return new Date(s).toLocaleTimeString([], { hour: '2-
         <!-- ── CHAT VIEW ── -->
         <template v-if="view === 'chat'">
           <div ref="scroller" class="cw-body">
+            <SupportMeterPicker v-if="!sessionId" v-model="meterContext" :load-meters="loadSupportMeters" />
+            <p v-if="meterError" role="alert">{{ meterError }}</p>
 
             <!-- Connecting skeleton -->
             <div v-if="starting && !messages.length" class="cw-connecting">
@@ -384,7 +388,7 @@ function time(s: string) { return new Date(s).toLocaleTimeString([], { hour: '2-
               </div>
               <div>
                 <strong class="cw-esc-title">Open a support ticket</strong>
-                <p class="cw-esc-sub">Our team will email you a reply and update the ticket in the app.</p>
+                <p class="cw-esc-sub">Replies appear in your tickets.</p>
               </div>
             </div>
 
@@ -435,12 +439,12 @@ function time(s: string) { return new Date(s).toLocaleTimeString([], { hour: '2-
 /* ── Positioning ── */
 .cw {
   position: fixed;
-  right: 16px;
+  left: 16px;
   bottom: calc(var(--bw-tabbar-height, 0px) + env(safe-area-inset-bottom, 0px) + 72px);
   z-index: var(--z-toast, 9000);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 10px;
 }
 
@@ -463,10 +467,9 @@ function time(s: string) { return new Date(s).toLocaleTimeString([], { hour: '2-
   backdrop-filter: blur(28px) saturate(190%);
   -webkit-backdrop-filter: blur(28px) saturate(190%);
   position: relative;
-  animation: cw-float 3.8s ease-in-out infinite;
   transition: transform var(--dur-fast), box-shadow var(--dur-fast), border-color var(--dur-fast);
 }
-.cw-bubble:hover { animation-play-state: paused; transform: translateY(-3px); border-color: var(--brand-400); box-shadow: var(--glass-shine), 0 12px 28px var(--brand-glow); }
+.cw-bubble:hover { border-color: var(--brand-400); box-shadow: var(--glass-shine), 0 12px 28px var(--brand-glow); }
 .cw-bubble:focus-visible { outline: 0; box-shadow: 0 0 0 3px var(--brand-glow), 0 0 0 5px var(--brand-400); }
 .cw-bubble svg { width: 20px; height: 20px; stroke: var(--brand-400); }
 

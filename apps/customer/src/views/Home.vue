@@ -16,6 +16,8 @@ const ledger  = ref<any[]>([]);
 const meterBalances = ref<any[]>([]);
 const meterBalancesUnavailable = ref(false);
 const loading = ref(false);
+const ledgerError = ref(false);
+const walletError = ref(false);
 const showFilters = ref(false);
 const searchQuery = ref('');
 const activityFilter = ref<'all' | 'credit' | 'debit'>('all');
@@ -73,18 +75,23 @@ function reportTime(value: unknown): string {
         : date.toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-onMounted(async () => {
+async function loadDashboard() {
     loading.value = true;
+    ledgerError.value = false;
+    walletError.value = false;
     try {
-        const [w, l] = await Promise.all([
+        const [w, l] = await Promise.allSettled([
             api.get<any>('/api/v1/customer/wallet'),
             api.get<{ entries: any[] }>('/api/v1/customer/wallet/ledger?limit=10'),
             loadMeterBalances(),
         ]);
-        wallet.value = w;
-        ledger.value = l.entries;
-    } catch { /* noop */ } finally { loading.value = false; }
-});
+        if (w.status === 'fulfilled') wallet.value = w.value;
+        else { wallet.value = null; walletError.value = true; }
+        if (l.status === 'fulfilled') ledger.value = l.value.entries ?? [];
+        else { ledger.value = []; ledgerError.value = true; }
+    } finally { loading.value = false; }
+}
+onMounted(loadDashboard);
 
 const matchesFilter = (entry: any, filter: typeof activityFilter.value) => {
     if (filter === 'all') return true;
@@ -125,6 +132,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
 <template>
   <AppShell>
     <WalletGreeting
+      class="customer-greeting"
       audience="Customer wallet"
       :name="customerName"
       detail="for top-ups, meters, and token purchases."
@@ -141,6 +149,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
       </div>
     </div>
     <div v-else class="bw-balance-hero">
+      <p v-if="walletError" role="alert">Wallet unavailable. <button type="button" @click="loadDashboard">Try again</button></p>
       <p class="bw-label" style="color: var(--brand); margin:0 0 var(--s-1)">Wallet balance</p>
       <div class="bw-kpi-value" style="color: var(--brand); font-size: var(--t-4xl); margin-bottom: var(--s-1)">
         {{ naira(wallet?.balance_minor) }}
@@ -185,6 +194,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
 
     <!-- Recent activity section -->
     <div class="bw-card flush bw-data-region" :data-view="viewMode">
+      <div v-if="ledgerError" role="alert" style="padding: .75rem 1rem">Activity unavailable. <button type="button" @click="loadDashboard">Try again</button></div>
       <div class="bw-table-head-bar recent-head-bar">
         <div class="recent-heading">
           <div class="recent-title-row">
@@ -293,7 +303,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
               </td>
             </tr>
             <tr v-if="!filteredLedger.length && !loading">
-              <td colspan="4" class="bw-muted" style="text-align:center; padding: var(--s-6)">No activity matching filters.</td>
+              <td colspan="4" class="bw-muted" style="text-align:center; padding: var(--s-6)">{{ ledgerError ? 'Activity unavailable. Try again.' : activeRecentFilterCount ? 'No activity matches these filters.' : 'No wallet activity yet.' }}</td>
             </tr>
           </tbody>
         </table>
@@ -326,7 +336,7 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
         </div>
         <div v-if="!filteredLedger.length && !loading" class="bw-muted"
              style="text-align:center; padding: var(--s-6); font-size: var(--t-sm)">
-          No activity matching filters.
+          {{ ledgerError ? 'Activity unavailable. Try again.' : activeRecentFilterCount ? 'No activity matches these filters.' : 'No wallet activity yet.' }}
         </div>
       </div>
 
@@ -354,6 +364,15 @@ const ledgerExportColumns: WalletExportColumn<any>[] = [
 </template>
 
 <style scoped>
+.customer-greeting { padding: .3rem .1rem .6rem; }
+.customer-greeting :deep(.bw-greeting-title) { margin: 0; font-size: clamp(1.05rem, 3vw, 1.3rem); line-height: 1.3; }
+.bw-balance-hero { padding: clamp(1rem, 3vw, 1.35rem); border-radius: 18px; }
+.recent-head-bar { gap: .75rem; padding: 1rem; }
+.bw-tc { padding: .85rem 1rem; }
+@media (max-width: 640px) {
+  .recent-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+  .meter-balance-line { margin-bottom: .75rem; }
+}
 .customer-balance-skeleton {
   min-height: 190px;
   overflow: hidden;

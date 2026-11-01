@@ -90,7 +90,7 @@ assert.ok(
 assert.ok(
     usageViewCode.includes('Hourly') &&
     usageViewCode.includes('Daily') &&
-    usageViewCode.includes('Live'),
+    usageViewCode.includes('Auto-refresh'),
     'Usage view missing timeframe selectors'
 );
 
@@ -128,10 +128,10 @@ assert.ok(usageViewCode.includes('chart-ping-ring') || usageViewCode.includes('p
 // Bottom KPI Cards
 assert.ok(usageViewCode.includes('Wallet') && usageViewCode.includes('Today'), 'Usage view missing Wallet and Today KPI cards');
 
-// Search & Contract Preservation
-assert.ok(usageViewCode.includes('placeholder="Enter meter number"'), 'meter input placeholder missing');
+// Usage is limited to linked meters.
+assert.ok(usageViewCode.includes('aria-label="Select meter"'), 'linked meter selector missing');
 assert.ok(usageViewCode.includes("params.set('meter_id', selectedMeter.value)"), 'meter filter missing');
-assert.ok(usageViewCode.includes('@submit.prevent="searchMeter"'), 'meter search submission missing');
+assert.ok(!usageViewCode.includes('placeholder="Enter meter number"'), 'free-form meter search must not be offered');
 
 // 6. Meters view link
 const metersViewCode = fs.readFileSync(metersViewPath, 'utf8');

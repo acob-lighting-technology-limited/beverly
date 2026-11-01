@@ -28,14 +28,14 @@ interface TelemetryResponse {
     meters: string[];
     oem: OemInfo;
     current: {
-        power: number;
-        credit_balance: number;
-        total_consumption: number;
+        power: number | null;
+        credit_balance: number | null;
+        total_consumption: number | null;
         relay_status: string;
-        captured_at: string;
+        captured_at: string | null;
     };
-    today_kwh: number;
-    wallet_balance_minor: number;
+    today_kwh: number | null;
+    wallet_balance_minor: number | null;
     timeframe: string;
     data_item: string;
     series: TelemetryPoint[];
@@ -45,7 +45,7 @@ type Timeframe = 'hourly' | 'daily' | 'live';
 type DataItem = 'Credit balance' | 'Total Consumption' | 'Power' | 'Relay Status';
 
 const ALL_DATA_ITEMS: { label: DataItem; key: string; unit: string; heroLabel: string }[] = [
-    { label: 'Power', key: 'power', unit: 'kW', heroLabel: 'Live power' },
+    { label: 'Power', key: 'power', unit: 'kW', heroLabel: 'Power' },
     { label: 'Credit balance', key: 'credit_balance', unit: 'kWh', heroLabel: 'Credit balance' },
     { label: 'Total Consumption', key: 'total_consumption', unit: 'kWh', heroLabel: 'Total Consumption' },
     { label: 'Relay Status', key: 'relay_status', unit: '', heroLabel: 'Relay Status' },
@@ -53,13 +53,12 @@ const ALL_DATA_ITEMS: { label: DataItem; key: string; unit: string; heroLabel: s
 
 // ── State (100% Real API Data — Zero Guesswork / Zero Synthetic Fallbacks) ──────
 
-const timeframe = ref<Timeframe>('hourly');
+const timeframe = ref<Timeframe>('daily');
 const selectedDataItem = ref<DataItem>('Power');
 
-const meterNumber = ref('');
 const selectedMeter = ref('');
-const meterError = ref('');
 const meters = ref<string[]>([]);
+const telemetryError = ref('');
 
 const telemetryLoading = ref(false);
 const remoteReading = ref(false);
@@ -67,22 +66,17 @@ const remoteMessage = ref<{ type: 'success' | 'error'; text: string } | null>(nu
 
 const oemInfo = ref<OemInfo>({
     id: null,
-    slug: 'calinmeter',
-    displayName: 'Calinmeter',
-    supportsLive: true,
+    slug: '',
+    displayName: '',
+    supportsLive: false,
     supportedDataItems: ['credit_balance', 'total_consumption', 'power', 'relay_status'],
 });
 
-const currentReadings = ref({
-    power: 0,
-    credit_balance: 0,
-    total_consumption: 0,
-    relay_status: 'Closed',
-    captured_at: '',
-});
+const emptyReadings = () => ({ power: null, credit_balance: null, total_consumption: null, relay_status: 'Unavailable', captured_at: null });
+const currentReadings = ref<TelemetryResponse['current']>(emptyReadings());
 
-const todayKwh = ref(0);
-const walletBalanceMinor = ref(0);
+const todayKwh = ref<number | null>(null);
+const walletBalanceMinor = ref<number | null>(null);
 const chartSeries = ref<TelemetryPoint[]>([]);
 const activePoint = ref<TelemetryPoint | null>(null);
 
@@ -124,13 +118,13 @@ const heroConfig = computed(() => {
     const active = ALL_DATA_ITEMS.find(i => i.label === selectedDataItem.value) || ALL_DATA_ITEMS[0];
     let valStr = '';
     if (active.key === 'power') {
-        valStr = `${(currentReadings.value.power ?? 0).toFixed(2)} kW`;
+        valStr = currentReadings.value.power == null ? 'Unavailable' : `${currentReadings.value.power.toFixed(2)} kW`;
     } else if (active.key === 'credit_balance') {
-        valStr = `${(currentReadings.value.credit_balance ?? 0).toFixed(2)} kWh`;
+        valStr = currentReadings.value.credit_balance == null ? 'Unavailable' : `${currentReadings.value.credit_balance.toFixed(2)} kWh`;
     } else if (active.key === 'total_consumption') {
-        valStr = `${(currentReadings.value.total_consumption ?? 0).toFixed(2)} kWh`;
+        valStr = currentReadings.value.total_consumption == null ? 'Unavailable' : `${currentReadings.value.total_consumption.toFixed(2)} kWh`;
     } else if (active.key === 'relay_status') {
-        valStr = currentReadings.value.relay_status || 'Closed';
+        valStr = currentReadings.value.relay_status || 'Unavailable';
     }
     return {
         label: active.heroLabel,
@@ -144,7 +138,7 @@ const capturedTimeFormatted = computed(() => {
     if (!currentReadings.value.captured_at) return 'No reading recorded yet';
     const date = new Date(currentReadings.value.captured_at);
     if (Number.isNaN(date.getTime())) return 'No reading recorded yet';
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleString('en-NG', { dateStyle: 'medium', timeStyle: 'short' });
 });
 
 // ── Chart SVG Calculations (Real Data Points) ─────────────────────────────────
@@ -210,11 +204,14 @@ const lastPoint = computed(() => {
 });
 
 const chartKey = ref(0);
+let telemetryRequest = 0;
 
 // ── API Operations ─────────────────────────────────────────────────────────────
 
 async function loadTelemetry() {
+    const request = ++telemetryRequest;
     telemetryLoading.value = true;
+    telemetryError.value = '';
     try {
         const activeKey = ALL_DATA_ITEMS.find(i => i.label === selectedDataItem.value)?.key || 'power';
         const params = new URLSearchParams({
@@ -223,23 +220,28 @@ async function loadTelemetry() {
         });
         if (selectedMeter.value) params.set('meter_id', selectedMeter.value);
         const res = await api.get<TelemetryResponse>(`/api/v1/customer/usage/telemetry?${params}`);
+        if (request !== telemetryRequest) return;
         if (res.oem) oemInfo.value = res.oem;
         if (res.current) currentReadings.value = res.current;
-        if (res.today_kwh != null) todayKwh.value = res.today_kwh;
-        if (res.wallet_balance_minor != null) walletBalanceMinor.value = res.wallet_balance_minor;
-        if (res.meters && res.meters.length) {
-            meters.value = res.meters;
+        todayKwh.value = res.today_kwh ?? null;
+        walletBalanceMinor.value = res.wallet_balance_minor ?? null;
+        meters.value = res.meters ?? [];
+        if (meters.value.length) {
             if (!selectedMeter.value) {
                 selectedMeter.value = res.meter_id || res.meters[0];
-                meterNumber.value = selectedMeter.value;
             }
         }
         chartSeries.value = res.series ?? [];
         chartKey.value++; // trigger kinetic redraw
     } catch (e: any) {
-        console.warn('Telemetry load error:', e);
+        if (request !== telemetryRequest) return;
+        telemetryError.value = 'Unable to load meter readings.';
+        currentReadings.value = emptyReadings();
+        todayKwh.value = null;
+        walletBalanceMinor.value = null;
+        chartSeries.value = [];
     } finally {
-        telemetryLoading.value = false;
+        if (request === telemetryRequest) telemetryLoading.value = false;
     }
 }
 
@@ -249,7 +251,7 @@ async function triggerRemoteRead() {
     remoteMessage.value = null;
     try {
         const activeItem = ALL_DATA_ITEMS.find(i => i.label === selectedDataItem.value);
-        const res = await api.post<{ ok: boolean; status: string; readings: any }>('/api/v1/customer/usage/remote-read', {
+        const res = await api.post<{ ok: boolean; status: string; readings: any; timestamp: string | null }>('/api/v1/customer/usage/remote-read', {
             meter_id: selectedMeter.value,
             data_item: activeItem?.key || 'power',
         });
@@ -257,10 +259,10 @@ async function triggerRemoteRead() {
             currentReadings.value = {
                 ...currentReadings.value,
                 ...res.readings,
-                captured_at: new Date().toISOString(),
+                captured_at: res.timestamp,
             };
         }
-        remoteMessage.value = { type: 'success', text: 'Live meter reading received.' };
+        remoteMessage.value = { type: 'success', text: 'Latest recorded reading retrieved.' };
         await loadTelemetry();
     } catch (e: any) {
         remoteMessage.value = { type: 'error', text: e?.message ?? 'Failed to read meter remotely.' };
@@ -270,21 +272,10 @@ async function triggerRemoteRead() {
     }
 }
 
-function searchMeter() {
-    const value = meterNumber.value.trim().toUpperCase();
-    if (value && !/^[A-Z0-9_-]{3,64}$/.test(value)) {
-        meterError.value = 'Enter a valid meter number.';
-        return;
-    }
-    meterError.value = '';
-    selectedMeter.value = value;
-    loadTelemetry();
-}
-
 function selectMeterQuick(meter: string) {
-    meterNumber.value = meter;
     selectedMeter.value = meter;
-    meterError.value = '';
+    currentReadings.value = emptyReadings();
+    chartSeries.value = [];
     loadTelemetry();
 }
 
@@ -332,7 +323,7 @@ onUnmounted(() => {
               <h1>Your usage</h1>
               <span class="live-pill-badge" :class="{ inactive: !oemSupportsLive }">
                 <span class="ping-dot" />
-                Live
+                Recorded
               </span>
             </div>
             <!-- Meter Selector / Subtitle -->
@@ -381,7 +372,7 @@ onUnmounted(() => {
           <div class="metric-title-group">
             <span class="metric-kind">{{ heroConfig.label }}</span>
             <div class="metric-big-number">{{ heroConfig.value }}</div>
-            <div class="metric-reading-time">Reading as of {{ capturedTimeFormatted }}</div>
+            <div class="metric-reading-time">{{ currentReadings.captured_at ? `Reading as of ${capturedTimeFormatted}` : capturedTimeFormatted }}</div>
           </div>
 
           <!-- Timeframe Segmented Control (Live OEM Gated) -->
@@ -416,7 +407,7 @@ onUnmounted(() => {
               @click="setTimeframe('live')"
             >
               <span class="tiny-pulse" />
-              Live
+              Auto-refresh
             </button>
           </div>
         </div>
@@ -428,7 +419,7 @@ onUnmounted(() => {
               <path d="M3 3v18h18" />
               <path d="m19 9-5 5-4-4-3 3" />
             </svg>
-            <span>No telemetry recorded for {{ selectedMeter || 'this meter' }} in {{ timeframe }} view.</span>
+            <span>{{ telemetryError ? 'Readings are unavailable.' : `No telemetry recorded for ${selectedMeter || 'this meter'} in ${timeframe} view.` }}</span>
           </div>
 
           <svg
@@ -546,7 +537,7 @@ onUnmounted(() => {
             >
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
             </svg>
-            {{ remoteReading ? 'Polling meter…' : 'Fetch live reading' }}
+            {{ remoteReading ? 'Checking readings…' : 'Refresh recorded reading' }}
           </button>
           <span v-if="remoteMessage" class="remote-feedback" :class="remoteMessage.type">
             {{ remoteMessage.text }}
@@ -566,7 +557,7 @@ onUnmounted(() => {
           </div>
           <div class="kpi-content">
             <span class="kpi-label">Today</span>
-            <strong class="kpi-value">{{ todayKwh.toFixed(1) }} kWh</strong>
+            <strong class="kpi-value">{{ todayKwh == null ? 'Unavailable' : `${todayKwh.toFixed(1)} kWh` }}</strong>
           </div>
         </div>
 
@@ -585,27 +576,9 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <!-- ── Meter Search Form ─────────────────────────────────────────── -->
-      <form class="meter-search" @submit.prevent="searchMeter">
-        <label>
-          <span>Find by meter number</span>
-          <input
-            v-model="meterNumber"
-            class="meter-input"
-            type="text"
-            list="customer-consumption-meters"
-            placeholder="Enter meter number"
-            :aria-invalid="Boolean(meterError)"
-            :aria-describedby="meterError ? 'customer-meter-error' : undefined"
-            @input="meterError = ''"
-          />
-          <datalist id="customer-consumption-meters">
-            <option v-for="meter in meters" :key="meter" :value="meter" />
-          </datalist>
-        </label>
-        <button type="submit" class="meter-submit" :disabled="telemetryLoading">View analytics</button>
-        <span v-if="meterError" id="customer-meter-error" class="meter-error" role="alert">{{ meterError }}</span>
-      </form>
+      <div v-if="telemetryError" role="alert" class="meter-error">
+        {{ telemetryError }} <button type="button" @click="loadTelemetry">Try again</button>
+      </div>
     </div>
   </AppShell>
 </template>
