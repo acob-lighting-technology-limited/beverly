@@ -29,6 +29,7 @@ const route = useRoute();
 const router = useRouter();
 const state = ref<KycState | null>(null);
 const documentPolicy = ref<any>(null);
+const kycEnabled = computed(() => documentPolicy.value?.customer_enabled === true);
 const loading = ref(true);
 const error = ref('');
 const notice = ref('');
@@ -115,6 +116,8 @@ async function load() {
     if (!requirement.value.identity.includes(identityDocumentType.value)) identityDocumentType.value = requirement.value.identity[0] ?? 'national_id';
     if (!requirement.value.address.includes(addressDocumentType.value)) addressDocumentType.value = requirement.value.address[0] ?? 'utility_bill';
   } catch (cause: any) {
+    state.value = null;
+    documentPolicy.value = null;
     error.value = cause?.message ?? 'Your verification status could not be loaded.';
   } finally {
     loading.value = false;
@@ -222,13 +225,13 @@ onMounted(load);
     <header class="kyc-hero">
       <div>
         <p class="eyebrow">Account verification</p>
-        <h1>{{ forcedKyc ? 'Complete your verification' : 'Verification, when you need it' }}</h1>
-        <p>{{ forcedKyc ? 'KYC is required for your account before you continue.' : 'Start using your wallet now. Upgrade only for higher limits.' }}</p>
+        <h1>{{ state && !kycEnabled ? 'Verification is off' : forcedKyc ? 'Complete your verification' : 'Verification, when you need it' }}</h1>
+        <p>{{ state && !kycEnabled ? 'No identity documents are required now.' : forcedKyc ? 'KYC is required for your account before you continue.' : 'Start using your wallet now. Upgrade only for higher limits.' }}</p>
       </div>
       <button class="bw-btn" type="button" :disabled="loading || submitting" @click="load">Refresh</button>
     </header>
 
-    <section v-if="!loading && state" class="tier-grid" aria-label="Verification tiers">
+    <section v-if="!loading && state && kycEnabled" class="tier-grid" aria-label="Verification tiers">
       <article v-for="level in [0, 1, 2]" :key="level" :class="['tier-card', { active: tier >= level }]">
         <span>Tier {{ level }}</span>
         <strong>{{ level === 0 ? 'Wallet ready' : level === 1 ? 'Identity verified' : 'Enhanced review' }}</strong>
@@ -246,7 +249,12 @@ onMounted(load);
       <div v-if="error" class="bw-alert danger" role="alert">{{ error }}</div>
       <div v-if="notice" class="bw-alert success" role="status">{{ notice }}</div>
 
-      <section v-if="pending" class="bw-card status-card" role="status">
+      <section v-if="!kycEnabled" class="bw-card status-card complete-card" role="status">
+        <span class="complete-mark">✓</span>
+        <div><h2>Verification is off</h2><p>No identity documents are required now.</p></div>
+        <button class="bw-btn primary" type="button" @click="continueWallet">Continue to wallet</button>
+      </section>
+      <section v-else-if="pending" class="bw-card status-card" role="status">
         <span class="status-dot"></span>
         <div><h2>Review in progress</h2><p>Beverly is reviewing your Tier {{ state.review?.requested_tier ?? requestedTier }} evidence.</p></div>
         <button class="bw-btn" type="button" @click="load">Refresh status</button>

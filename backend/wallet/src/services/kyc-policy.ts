@@ -39,12 +39,20 @@ export const DEFAULT_KYC_POLICY: KycPolicy = {
     vendor: { tier2: { identity: ['national_id', 'voters_card', 'passport', 'drivers_license'], selfie: true, address: ['utility_bill', 'bank_statement'] } },
 };
 
+class KycPolicyUnavailableError extends Error {
+    readonly code = 'kyc_policy_unavailable';
+    readonly statusCode = 503;
+    readonly expose = true;
+    constructor() { super('Verification settings are unavailable. Try again shortly.'); }
+}
+
 export async function getKycPolicy(): Promise<KycPolicy> {
     try {
         const { data, error } = await adminClient.from('system_settings').select('value').eq('key', SETTING_KEY).maybeSingle();
-        if (error || !data?.value) return DEFAULT_KYC_POLICY;
+        if (error) throw new KycPolicyUnavailableError();
+        if (!data?.value) return DEFAULT_KYC_POLICY;
         return kycPolicySchema.parse(data.value);
-    } catch { return DEFAULT_KYC_POLICY; }
+    } catch { throw new KycPolicyUnavailableError(); }
 }
 export async function updateKycPolicy(policy: KycPolicy, actorId: string): Promise<KycPolicy> {
     const current = await getKycPolicy();
@@ -75,17 +83,21 @@ export async function isKycEnabled(subjectType: KycSubjectType): Promise<boolean
 }
 
 export async function isKycRequiredForSubject(subjectType: KycSubjectType, subjectId: string): Promise<boolean> {
+    return (await getKycDecision(subjectType, subjectId)).required;
+}
+
+export async function getKycDecision(subjectType: KycSubjectType, subjectId: string): Promise<{ policy: KycPolicy; required: boolean }> {
     const policy = await getKycPolicy();
     const enabled = subjectType === 'customer' ? policy.customer_enabled : policy.vendor_enabled;
-    if (!enabled) return false;
+    if (!enabled) return { policy, required: false };
     const scope = subjectType === 'customer' ? policy.customer_scope : policy.vendor_scope;
-    if (scope === 'all') return true;
+    if (scope === 'all') return { policy, required: true };
     const enforcedFrom = subjectType === 'customer' ? policy.customer_enforced_from : policy.vendor_enforced_from;
-    if (!enforcedFrom) return true;
+    if (!enforcedFrom) return { policy, required: true };
     const table = subjectType === 'customer' ? 'customers' : 'vendor_organizations';
     const { data, error } = await adminClient.from(table).select('created_at').eq('id', subjectId).maybeSingle();
-    if (error || !(data as any)?.created_at) return true;
-    return new Date((data as any).created_at).getTime() >= new Date(enforcedFrom).getTime();
+    if (error || !(data as any)?.created_at) throw new KycPolicyUnavailableError();
+    return { policy, required: new Date((data as any).created_at).getTime() >= new Date(enforcedFrom).getTime() };
 }
 
 export async function assertKycUploadAllowed(input: { subjectType: KycSubjectType; tier: 1 | 2; documentType: KycDocumentType; mimeType: string }): Promise<void> {
@@ -251,7 +263,7 @@ export async function assertWalletDailyDebitLimitAllowed(
         const usedNaira = (totalUsed / 100).toLocaleString('en-NG', { style: 'currency', currency: 'NGN' });
         const reqNaira = (amountMinor / 100).toLocaleString('en-NG', { style: 'currency', currency: 'NGN' });
         throw new WalletDebitLimitError(
-            `This transaction of ${reqNaira} exceeds your daily debit limit of ${limitNaira}. (Total used today: ${usedNaira}). Complete KYC verification to upgrade your daily limit.`,
+            `This transaction of ${reqNaira} exceeds your daily debit limit of ${limitNaira}. (Total used today: ${usedNaira}). Contact support about your daily limit.`,
         );
     }
 

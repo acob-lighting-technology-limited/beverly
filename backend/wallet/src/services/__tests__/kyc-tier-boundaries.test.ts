@@ -3,6 +3,7 @@ import {
     assertWalletDailyDebitLimitAllowed,
     DEFAULT_KYC_POLICY,
     isKycRequiredForSubject,
+    getKycDecision,
     WalletDebitLimitError,
     kycTierSettingsUpdateSchema,
 } from '../kyc-policy.js';
@@ -276,6 +277,28 @@ describe('KYC Tier Debit Limit Boundary Enforcement', () => {
 
 describe('KYC rollout scope', () => {
     beforeEach(() => vi.clearAllMocks());
+
+    it('reports unavailable settings instead of inventing an enabled policy', async () => {
+        fromMock.mockImplementation(() => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: { message: 'storage unavailable' } }) }) }) }));
+        await expect(getKycDecision('vendor', 'vendor-1')).rejects.toMatchObject({ code: 'kyc_policy_unavailable', statusCode: 503 });
+    });
+
+    it('does not require vendor verification when disabled', async () => {
+        const policy = { ...DEFAULT_KYC_POLICY, vendor_enabled: false };
+        fromMock.mockImplementation(() => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { value: policy }, error: null }) }) }) }));
+        await expect(isKycRequiredForSubject('vendor', 'vendor-1')).resolves.toBe(false);
+    });
+
+    it.each([
+        ['2026-10-11T12:00:00.000Z', false],
+        ['2026-10-13T12:00:00.000Z', true],
+    ])('applies the vendor new-account cutoff to %s', async (createdAt, required) => {
+        const policy = { ...DEFAULT_KYC_POLICY, vendor_scope: 'new' as const, vendor_enforced_from: '2026-10-12T12:00:00.000Z' };
+        fromMock.mockImplementation((table: string) => ({ select: () => ({ eq: () => ({ maybeSingle: async () => table === 'system_settings'
+            ? { data: { value: policy }, error: null }
+            : { data: { created_at: createdAt }, error: null } }) }) }));
+        await expect(isKycRequiredForSubject('vendor', 'vendor-1')).resolves.toBe(required);
+    });
 
     it('grandfathers subjects created before a new-users activation cutoff', async () => {
         const policy = { ...DEFAULT_KYC_POLICY, customer_scope: 'new' as const, customer_enforced_from: '2026-10-12T12:00:00.000Z' };

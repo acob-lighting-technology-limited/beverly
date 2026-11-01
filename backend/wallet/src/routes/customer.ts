@@ -53,7 +53,7 @@ import {
 } from '../services/customer-kyc.js';
 import { activateKycUpload, createKycUpload, currentKycState, KycReviewError, submitKycReview } from '../services/kyc-reviews.js';
 import { getKycTierPolicy, KycTierPolicyError } from '../services/kyc-tier-policy.js';
-import { getKycPolicy, isKycRequiredForSubject } from '../services/kyc-policy.js';
+import { getKycDecision } from '../services/kyc-policy.js';
 import {
     customerPurchase, previewCustomerPurchase, initiateCustomerFunding, dispatchGeneratedCustomerToken,
     linkMeter, unlinkMeter, listCustomerMeters, listCustomerMeterLinkHistory, listCustomerPurchases, sendTokenSmsToCustomer,
@@ -612,10 +612,8 @@ const customer: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.get('/kyc/policy', { preHandler: fastify.requireCustomer() }, async (req) => ({
-        policy: await getKycPolicy(),
-        required: await isKycRequiredForSubject('customer', req.actor!.customerId!),
-    }));
+    fastify.get('/kyc/policy', { preHandler: fastify.requireCustomer() }, async (req) =>
+        getKycDecision('customer', req.actor!.customerId!));
 
     fastify.post('/kyc/documents/upload-url', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
         const body = z.object({
@@ -938,7 +936,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
         return result;
     });
 
-    fastify.post('/purchase/preview', { preHandler: fastify.requireKycTier(0) }, async (req, reply) => {
+    fastify.post('/purchase/preview', { preHandler: fastify.requireKycTier(1) }, async (req, reply) => {
         const { meter_id, amount_minor } = req.body as { meter_id: string; amount_minor: number };
         if (!meter_id || !amount_minor) {
             return reply.code(400).send({ error: 'missing_fields', message: 'meter_id and amount_minor required.' });
@@ -952,7 +950,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.post('/purchase', { preHandler: fastify.requireKycTier(0) }, async (req, reply) => {
+    fastify.post('/purchase', { preHandler: fastify.requireKycTier(1) }, async (req, reply) => {
         if (!/^\d{4}$/.test(String((req.body as { pin?: unknown } | null)?.pin ?? ''))) {
             return reply.code(409).send({ error: 'vend_pin_required', message: 'Enter your four-digit vending PIN.' });
         }
@@ -1272,7 +1270,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
         return getMeterPrices();
     });
 
-    fastify.post('/meter-orders', { preHandler: fastify.requireCustomer() }, async (req, reply) => {
+    fastify.post('/meter-orders', { preHandler: fastify.requireKycTier(1) }, async (req, reply) => {
         if (!env.PAYSTACK_PAYMENTS_ENABLED) {
             return reply.code(503).send({
                 error: 'paystack_temporarily_unavailable',

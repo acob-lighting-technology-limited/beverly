@@ -18,7 +18,7 @@ export function presentVendorVendFailure(
         return {
             showPopup: false,
             blockConfirmation: true,
-            action: 'Complete Tier 1 verification. Beverly approval unlocks vending.',
+            action: 'Complete Tier 2 verification. Beverly approval unlocks vending.',
         };
     }
     if (code === 'oem_quota_circuit_unavailable') {

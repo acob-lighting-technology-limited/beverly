@@ -2,12 +2,9 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/auth';
 import { api } from '../lib/api';
 
-let kycRequirement: { required: boolean; expires: number } | null = null;
 async function isKycRequired(): Promise<boolean> {
-    if (kycRequirement && kycRequirement.expires > Date.now()) return kycRequirement.required;
     try {
         const result = await api.get<{ required: boolean }>('/api/v1/customer/kyc/policy');
-        kycRequirement = { required: result.required, expires: Date.now() + 30_000 };
         return result.required;
     } catch { return false; }
 }
@@ -36,7 +33,7 @@ const routes: RouteRecordRaw[] = [
     { path: '/verify',     name: 'verify',   component: () => import('../views/Verify.vue') },
     { path: '/kyc',        name: 'kyc',      component: () => import('../views/Kyc.vue'),       meta: { auth: true } },
     { path: '/onboard-meter', name: 'onboard-meter', component: () => import('../views/OnboardMeter.vue'), meta: { auth: true } },
-    { path: '/buy-token',  name: 'buy-token', component: () => import('../views/BuyToken.vue'), meta: { auth: true } },
+    { path: '/buy-token',  name: 'buy-token', component: () => import('../views/BuyToken.vue'), meta: { auth: true, kyc: 1 } },
     { path: '/vend-pin', name: 'vend-pin', component: () => import('../views/VendPin.vue'), meta: { auth: true } },
     { path: '/buy-meter',    name: 'buy-meter',    component: () => import('../views/BuyMeter.vue'),    meta: { auth: true, kyc: 1 } },
     { path: '/meter-orders', name: 'meter-orders', component: () => import('../views/MeterOrders.vue'), meta: { auth: true } },
@@ -81,14 +78,14 @@ router.beforeEach(async (to) => {
     if (to.meta.guest && auth.isAuthenticated) {
         return { name: 'home' };
     }
-    const kycRequired = auth.isAuthenticated && await isKycRequired();
     const requiredKyc = Number(to.meta.kyc ?? 0);
+    const kycRequired = auth.isAuthenticated && requiredKyc > 0 && await isKycRequired();
     if (kycRequired && requiredKyc > 0) {
         if ((auth.customer?.kyc_tier ?? 0) < requiredKyc) {
             await auth.refreshProfile();
         }
         if ((auth.customer?.kyc_tier ?? 0) < requiredKyc) {
-            return { name: 'kyc', query: { reason: `tier_${requiredKyc}` } };
+            return { name: 'kyc', query: { reason: `tier_${requiredKyc}`, redirect: to.fullPath } };
         }
     }
     if (to.name === 'buy-token') {

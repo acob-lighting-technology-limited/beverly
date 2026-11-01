@@ -9,7 +9,6 @@ import { api, ApiError, idempotencyHeaders, newIdempotencyKey } from '../lib/api
 import { naira, kwh } from '../lib/format';
 import { downloadReceipt, purchaseReceipt, viewReceipt } from '../lib/receipts';
 import { presentVendorVendFailure } from '../lib/vend-errors';
-import { useVendorAuthStore } from '../stores/auth';
 import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
 type Step = 'meter' | 'amount' | 'preview' | 'success' | 'failed';
@@ -86,7 +85,6 @@ function showResultPopup(tone: 'success' | 'danger' | 'info', title: string, mes
 const authOpen = ref(false);
 const authorization = ref('');
 const authError = ref('');
-const auth = useVendorAuthStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -215,9 +213,8 @@ const result = ref<{ token: string | null; units: number; receiptId: string | nu
 const normalizedMeterId = computed(() => meterId.value.trim());
 const meterIdValid = computed(() => normalizedMeterId.value.length >= 4 && normalizedMeterId.value.length <= 80);
 const amountMinor = computed(() => Math.max(0, Math.round(amountNaira.value * 100)));
-const vendorKycReady = computed(() => Number(auth.user?.kyc_tier ?? 0) >= 1 && auth.user?.kyc_status === 'verified');
 const meterLiveVerified = computed(() => meter.value?.liveVerified !== false);
-const canVend = computed(() => meterLiveVerified.value && vendorKycReady.value);
+const canVend = computed(() => meterLiveVerified.value);
 const vendingConfigurationBlocked = computed(() => [
     'energy_authorization_missing',
     'energy_authorization_misconfigured',
@@ -266,7 +263,6 @@ const flowSteps = computed(() => [
 ]);
 const confirmLabel = computed(() => {
     if (loading.value) return isDirectCredit.value ? 'Applying credit...' : 'Generating token...';
-    if (!vendorKycReady.value) return 'Tier 1 verification required';
     if (vendingConfigurationBlocked.value) return 'Vending unavailable';
     if (!canVend.value) return 'Bind meter before vend';
     return `Confirm - ${naira(preview.value?.amountMinor)}`;
@@ -830,12 +826,6 @@ async function remoteSendGeneratedToken() {
           </button>
           <button class="bw-btn sm" @click="dismissRecoverableVend">Dismiss</button>
         </div>
-      </div>
-
-      <div v-if="!vendorKycReady" class="bw-alert info" role="status" style="margin-bottom: var(--s-3); display: grid; gap: 6px">
-        <strong>Tier 1 verification required</strong>
-        <span>Funding remains available. Beverly approval unlocks token vending.</span>
-        <router-link to="/kyc" class="bw-btn sm primary" style="width: fit-content; text-decoration:none">Open KYC verification</router-link>
       </div>
 
       <Transition name="step-anim" mode="out-in">

@@ -2,12 +2,9 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useVendorAuthStore } from '../stores/auth';
 import { api } from '../lib/api';
 
-let kycRequirement: { required: boolean; expires: number } | null = null;
 async function isKycRequired(): Promise<boolean> {
-    if (kycRequirement && kycRequirement.expires > Date.now()) return kycRequirement.required;
     try {
         const result = await api.get<{ required: boolean }>('/api/v1/vendor/kyc/policy');
-        kycRequirement = { required: result.required, expires: Date.now() + 30_000 };
         return result.required;
     } catch { return false; }
 }
@@ -32,12 +29,12 @@ const routes: RouteRecordRaw[] = [
     { path: '/vend-access',     name: 'vend-access',    component: () => import('../views/VendAccess.vue'),    meta: { auth: true } },
     { path: '/',                name: 'dashboard',      component: () => import('../views/Dashboard.vue'),     meta: { auth: true } },
     { path: '/wallet',          name: 'wallet',         component: () => import('../views/Wallet.vue'),        meta: { auth: true } },
-    { path: '/wallet/fund',     name: 'fund',           component: () => import('../views/Fund.vue'),          meta: { auth: true, kyc: 2 } },
+    { path: '/wallet/fund',     name: 'fund',           component: () => import('../views/Fund.vue'),          meta: { auth: true } },
     { path: '/wallet/funding',  name: 'funding-history',component: () => import('../views/FundingHistory.vue'),meta: { auth: true } },
     { path: '/vend',            name: 'vend',           component: () => import('../views/Vend.vue'),          meta: { auth: true, kyc: 2 } },
     { path: '/meter-orders',    name: 'meter-orders',   component: () => import('../views/MeterOrders.vue'),   meta: { auth: true } },
     { path: '/meter-orders/new',name: 'meter-order-new',component: () => import('../views/MeterOrderCreate.vue'),meta: { auth: true } },
-    { path: '/remote-send',     name: 'remote-send',    component: () => import('../views/RemoteSend.vue'),    meta: { auth: true, kyc: 2 } },
+    { path: '/remote-send',     name: 'remote-send',    component: () => import('../views/RemoteSend.vue'),    meta: { auth: true } },
     { path: '/transactions',    name: 'transactions',   component: () => import('../views/Transactions.vue'),  meta: { auth: true } },
     { path: '/receipts',        name: 'receipts',       component: () => import('../views/Receipts.vue'),      meta: { auth: true } },
     { path: '/statement',       name: 'statement',      component: () => import('../views/Statement.vue'),     meta: { auth: true } },
@@ -94,6 +91,13 @@ router.beforeEach(async (to) => {
         return { name: 'vend-access', query: { redirect: to.fullPath } };
     }
     const requiredKyc = Number(to.meta.kyc ?? 0);
-    if (auth.isAuthenticated && requiredKyc > 0 && await isKycRequired() && Number(auth.user?.kyc_tier ?? 0) < requiredKyc) return { name: 'kyc', query: { reason: `tier_${requiredKyc}` } };
+    if (auth.isAuthenticated && requiredKyc > 0 && await isKycRequired()) {
+        if (Number(auth.user?.kyc_tier ?? 0) < requiredKyc || auth.user?.kyc_status !== 'verified') {
+            try { await auth.refreshMe(); } catch { /* Keep the existing verification state. */ }
+        }
+        if (Number(auth.user?.kyc_tier ?? 0) < requiredKyc || auth.user?.kyc_status !== 'verified') {
+            return { name: 'kyc', query: { reason: `tier_${requiredKyc}`, redirect: to.fullPath } };
+        }
+    }
     return true;
 });

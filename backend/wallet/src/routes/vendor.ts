@@ -74,7 +74,7 @@ import { revokePortalSession } from '../services/portal-session.js';
 import { passwordSessionId, replaceVendorPassword, VendorPasswordChangeError } from '../services/vendor-password-change.js';
 import { activateKycUpload, createKycUpload, currentKycState, KycReviewError, submitKycReview } from '../services/kyc-reviews.js';
 import { getKycTierPolicy, KycTierPolicyError } from '../services/kyc-tier-policy.js';
-import { getKycPolicy, isKycRequiredForSubject } from '../services/kyc-policy.js';
+import { getKycDecision } from '../services/kyc-policy.js';
 import { pushConfig, removePushSubscription, savePushSubscription } from '../services/push-notifications.js';
 import { assertOemVendAvailable, OemQuotaCircuitError } from '../services/oem-quota-circuit.js';
 import { vendorSupportMeters, authorizeSupportMeters, supportMeterSelection } from '../services/support-meters.js';
@@ -348,10 +348,8 @@ const route: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.get('/kyc/policy', { preHandler: fastify.requireVendor() }, async (req) => ({
-        policy: await getKycPolicy(),
-        required: await isKycRequiredForSubject('vendor', req.actor!.vendorOrganizationId!),
-    }));
+    fastify.get('/kyc/policy', { preHandler: fastify.requireVendor() }, async (req) =>
+        getKycDecision('vendor', req.actor!.vendorOrganizationId!));
 
     fastify.post('/kyc/documents/upload-url', { preHandler: fastify.requireVendor() }, async (req, reply) => {
         const body = z.object({
