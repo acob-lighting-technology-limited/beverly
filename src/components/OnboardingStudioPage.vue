@@ -1,9 +1,11 @@
 <template>
   <section class="onboarding-studio">
     <BasePageHeader
+      class="studio-header"
       title="Station Onboarding Studio"
-      description="Create a station. Add the required records. Open the live pages."
+      description="Set up a station and track its readiness."
     >
+      <template #eyebrow><span class="studio-eyebrow">Station setup</span></template>
       <template #actions>
         <div class="studio-header-actions">
           <BaseButton variant="ghost" :loading="loading" @click="refreshBoard">Refresh</BaseButton>
@@ -12,7 +14,7 @@
       </template>
     </BasePageHeader>
 
-    <BaseCard v-if="error" class="studio-alert studio-alert-error">
+    <BaseCard v-if="error" class="studio-alert studio-alert-error" role="alert">
       <strong>Board load failed.</strong>
       <span>{{ error }}</span>
     </BaseCard>
@@ -20,7 +22,7 @@
     <div class="studio-topbar">
       <BaseCard class="studio-picker-card">
         <label class="studio-picker">
-          <span>Working Station</span>
+          <span>Working station</span>
           <BaseSelect v-model="selectedStation" @change="refreshBoard">
             <option value="">Select station</option>
             <option v-for="option in stationOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -30,7 +32,7 @@
 
       <BaseCard class="studio-status-card">
         <div class="studio-status-copy">
-          <span class="studio-status-label">Current State</span>
+          <span class="studio-status-label">Station readiness</span>
           <strong>{{ selectedStationLabel }}</strong>
         </div>
         <div class="studio-status-badges">
@@ -41,7 +43,7 @@
       </BaseCard>
     </div>
 
-    <div class="studio-metric-grid">
+    <div class="studio-metric-grid" aria-label="Station records">
       <BaseCard v-for="card in metricCards" :key="card.label" class="studio-metric-card">
         <span>{{ card.label }}</span>
         <strong>{{ card.value }}</strong>
@@ -52,9 +54,11 @@
       <BaseCard class="studio-panel">
         <div class="studio-panel-head">
           <div>
-            <h2>Setup Steps</h2>
-            <p>Complete the basics in order.</p>
+            <span class="studio-eyebrow">Onboarding</span>
+            <h2>Setup steps</h2>
+            <p>Complete the steps for your station.</p>
           </div>
+          <span class="studio-progress">{{ completedStepCount }} / {{ steps.length }} ready</span>
         </div>
 
         <div class="studio-step-list">
@@ -79,7 +83,7 @@
               >
                 {{ step.actionLabel }}
               </BaseButton>
-              <BaseButton variant="ghost" @click="jumpTo(step.routeHash)">Open Page</BaseButton>
+              <BaseButton variant="ghost" :aria-label="`Open ${step.title} page`" @click="jumpTo(step.routeHash)">Open page</BaseButton>
             </div>
           </article>
         </div>
@@ -89,8 +93,9 @@
         <BaseCard class="studio-panel">
           <div class="studio-panel-head">
             <div>
-              <h2>Quick Links</h2>
-              <p>Open the next pages fast.</p>
+              <span class="studio-eyebrow">Shortcuts</span>
+              <h2>Quick links</h2>
+              <p>Available when your station is ready.</p>
             </div>
           </div>
           <div class="studio-link-list">
@@ -104,15 +109,16 @@
         <BaseCard class="studio-panel">
           <div class="studio-panel-head">
             <div>
-              <h2>Notes</h2>
-              <p>Keep the lane clean.</p>
+              <span class="studio-eyebrow">Before you start</span>
+              <h2>Setup notes</h2>
+              <p>Keep records aligned.</p>
             </div>
           </div>
           <ul class="studio-note-list">
-            <li>Pick station first.</li>
-            <li>Gateway and meter stay station scoped.</li>
-            <li>Tariff stays global.</li>
-            <li>Account binds vending and reports.</li>
+            <li>Select a station first.</li>
+            <li>Gateways and meters belong to a station.</li>
+            <li>Tariffs are shared across stations.</li>
+            <li>Accounts link customers, meters and tariffs.</li>
           </ul>
           <p v-if="lastCompletion" class="studio-last-completion">{{ lastCompletion }}</p>
         </BaseCard>
@@ -242,6 +248,9 @@ export default {
   computed: {
     steps() {
       return stepOrder;
+    },
+    completedStepCount() {
+      return this.steps.filter((step) => this.stepCompleted(step)).length;
     },
     metricCards() {
       return [
@@ -408,204 +417,70 @@ export default {
 </script>
 
 <style scoped>
-.onboarding-studio {
-  display: grid;
-  gap: 18px;
+.onboarding-studio { display: grid; gap: 18px; min-width: 0; }
+.studio-header :deep(.base-page-header__copy) { max-width: 640px; }
+.studio-eyebrow, .studio-picker span, .studio-status-label, .studio-metric-card span {
+  color: var(--text-muted); font-size: 11px; font-weight: 700;
+  letter-spacing: .075em; text-transform: uppercase;
 }
-
-.studio-header-actions,
-.studio-status-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.studio-alert,
-.studio-picker-card,
-.studio-status-card,
-.studio-metric-card,
-.studio-panel {
-  padding: 18px;
-}
-
-.studio-alert {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.studio-alert-error {
-  border: 1px solid color-mix(in srgb, var(--color-danger) 24%, transparent);
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
-}
-
-.studio-topbar,
-.studio-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-}
-
-.studio-picker,
-.studio-status-card,
-.studio-step-copy,
-.studio-panel,
-.studio-link-list,
-.studio-step-list,
-.studio-side {
-  display: grid;
-  gap: 12px;
-}
-
-.studio-picker span,
-.studio-status-label,
-.studio-metric-card span {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.studio-status-copy strong,
-.studio-metric-card strong,
-.studio-panel-head h2,
-.studio-step-head h3 {
-  margin: 0;
-  color: var(--text-strong);
-}
-
-.studio-status-copy strong,
-.studio-metric-card strong {
-  font-size: 24px;
-}
-
-.studio-metric-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.studio-metric-card {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-}
-
-.studio-panel {
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
-  box-shadow: var(--shadow-sm);
-}
-
-.studio-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.studio-panel-head p,
-.studio-step-copy p,
-.studio-step-meta,
-.studio-note-list,
-.studio-last-completion {
-  margin: 0;
-  color: var(--text-muted);
-}
-
-.studio-step-list {
-  gap: 14px;
-}
-
-.studio-step {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
-  padding: 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: var(--bg-card);
-}
-
-.studio-step.is-ready {
-  border-color: color-mix(in srgb, var(--color-success) 28%, transparent);
-  box-shadow: inset 3px 0 0 var(--color-success);
-}
-
-.studio-step.is-waiting {
-  opacity: 0.8;
-}
-
-.studio-step-order {
-  width: 56px;
-  height: 56px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-md);
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.studio-step-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.studio-step-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  font-size: 12px;
-}
-
-.studio-step-actions {
-  display: grid;
-  gap: 10px;
-}
-
-.studio-link-list .base-button {
-  justify-content: flex-start;
-}
-
-.studio-note-list {
-  padding-left: 18px;
-}
-
+.studio-eyebrow { display: block; margin-bottom: 5px; color: var(--primary); }
+.studio-header-actions, .studio-status-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.studio-header-actions :deep(.base-button) { min-height: 44px; }
+.studio-alert, .studio-picker-card, .studio-status-card, .studio-panel { padding: 16px; }
+.studio-alert { display: flex; flex-wrap: wrap; gap: 8px; }
+.studio-alert-error { border: 1px solid color-mix(in srgb, var(--color-danger) 24%, transparent); background: var(--color-danger-soft); color: var(--color-danger); }
+.studio-topbar { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 12px; }
+.studio-picker { display: grid; gap: 8px; }
+.studio-status-card { display: grid; align-content: center; gap: 10px; min-width: 0; }
+.studio-status-copy { display: grid; gap: 4px; min-width: 0; }
+.studio-status-copy strong { color: var(--text-strong); font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+.studio-status-badges .base-badge { white-space: normal; }
+.studio-metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.studio-metric-card { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 14px 16px; }
+.studio-metric-card strong { color: var(--text-strong); font-size: 24px; line-height: 1; font-variant-numeric: tabular-nums; }
+.studio-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(240px, .75fr); gap: 14px; align-items: start; }
+.studio-panel, .studio-side { display: grid; gap: 14px; min-width: 0; }
+.studio-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.studio-panel-head h2, .studio-step-head h3 { margin: 0; color: var(--text-strong); }
+.studio-panel-head h2 { font-size: 18px; line-height: 1.25; }
+.studio-panel-head p, .studio-step-copy p, .studio-step-meta, .studio-note-list, .studio-last-completion { margin: 0; color: var(--text-muted); }
+.studio-panel-head p { margin-top: 4px; font-size: 13px; }
+.studio-progress { flex: none; padding: 6px 9px; border-radius: 999px; background: var(--primary-light); color: var(--primary); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.studio-step-list, .studio-link-list { display: grid; gap: 8px; }
+.studio-step { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); }
+.studio-step.is-ready { border-color: color-mix(in srgb, var(--color-success) 28%, var(--border-color)); }
+.studio-step-order { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--primary-light); color: var(--primary); font-size: 12px; font-weight: 800; }
+.studio-step-copy { display: grid; gap: 6px; min-width: 0; }
+.studio-step-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.studio-step-head h3 { font-size: 15px; line-height: 1.35; }
+.studio-step-copy p { font-size: 13px; line-height: 1.5; }
+.studio-step-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; line-height: 1.4; }
+.studio-step-meta span:first-child { color: var(--text-strong); font-weight: 600; }
+.studio-step-actions { display: grid; gap: 6px; }
+.studio-step-actions :deep(.base-button), .studio-link-list :deep(.base-button) { min-height: 44px; }
+.studio-link-list :deep(.base-button) { justify-content: flex-start; text-align: left; }
+.studio-note-list { display: grid; gap: 9px; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.studio-last-completion { font-size: 12px; }
 @media (max-width: 1180px) {
-  .studio-metric-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+  .studio-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .studio-layout { grid-template-columns: minmax(0, 1fr); }
+  .studio-side { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 }
-
-@media (max-width: 880px) {
-  .studio-topbar,
-  .studio-layout,
-  .studio-step {
-    grid-template-columns: 1fr;
-  }
-
-  .studio-step-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
-  .studio-metric-grid,
-  .studio-step-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .studio-alert {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+  .onboarding-studio { gap: 12px; }
+  .studio-topbar { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .studio-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .studio-metric-card { padding: 12px; }
+  .studio-metric-card strong { font-size: 21px; }
+  .studio-panel, .studio-picker-card, .studio-status-card { padding: 14px; }
+  .studio-side { grid-template-columns: minmax(0, 1fr); }
+  .studio-step { grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding: 12px; }
+  .studio-step-order { width: 32px; height: 32px; }
+  .studio-step-actions { grid-column: 2; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .studio-step-actions :deep(.base-button) { padding-inline: 8px; }
+}
+@media (max-width: 360px) {
+  .studio-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .studio-step-actions { grid-column: 1 / -1; }
 }
 </style>
