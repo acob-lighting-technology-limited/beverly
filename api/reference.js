@@ -523,7 +523,7 @@ function routeHashForWritePath(pathname) {
 }
 
 function stationFromPayload(payload) {
-  const value = payload?.stationId ?? payload?.SITE_ID ?? payload?.siteId ?? "";
+  const value = payload?.stationId ?? payload?.station_id ?? payload?.SITE_ID ?? payload?.siteId ?? "";
   return String(value || "").trim();
 }
 
@@ -540,9 +540,13 @@ function stationAnalyticsRequestScope(request, payload = {}) {
   if (!role || ["super-admin", "admin", "administrator"].includes(role)) {
     return { ...payload };
   }
-  const stationId = String(actor.stationId || "").trim();
-  if (!stationId) return null;
-  return { ...payload, stationId, stationIds: [stationId] };
+  const allowed = actorStationIds(actor);
+  if (allowed.includes('*')) return { ...payload };
+  if (!allowed.length) return null;
+  const requested = requestedStationIds(payload);
+  const selected = requested.length ? requested.filter((id) => allowed.includes(id)) : allowed;
+  if (!selected.length) return null;
+  return { ...payload, stationId: selected.length === 1 ? selected[0] : '', stationIds: selected };
 }
 
 function requestedStationIds(payload = {}) {
@@ -598,10 +602,17 @@ function authFailure(status, pathname, reason) {
 }
 
 function actorCanAccessStation(actor, payload) {
-  const actorStation = String(actor?.stationId || "").trim();
-  const requestedStation = stationFromPayload(payload);
-  if (!actorStation || !requestedStation) return true;
-  return String(actorStation).toUpperCase() === String(requestedStation).toUpperCase();
+  const allowed = actorStationIds(actor);
+  if (allowed.includes('*')) return true;
+  if (!allowed.length) return !['operations-manager', 'operations-officer'].includes(String(actor?.roleId || '').toLowerCase().replace(/_/g, '-'));
+  const requested = [...requestedStationIds(payload), ...['stationId', 'station_id', 'SITE_ID', 'siteId']
+    .map((key) => String(payload?.[key] || '').trim().toUpperCase())].filter(Boolean);
+  return requested.every((station) => allowed.includes(station));
+}
+
+function actorStationIds(actor) {
+  return [...new Set([...(Array.isArray(actor?.stationIds) ? actor.stationIds : []), actor?.stationId]
+    .map((value) => String(value || '').trim().toUpperCase()).filter(Boolean))];
 }
 
 const CRM_STAFF_ROLES = new Set([
@@ -681,13 +692,17 @@ async function authorizeRequest(request, pathname, requestData) {
     : [requestData?.parsedBody || {}];
   const payload = payloads[0] || {};
   const actorStation = String(resolvedActor?.stationId || "").trim().toUpperCase();
+  const query = new URL(String(request.url || pathname), 'http://localhost').searchParams;
+  const queryStations = ['stationId', 'station_id', 'siteId', 'SITE_ID', 'stationIds']
+    .flatMap((key) => query.getAll(key).flatMap((value) => value.split(',')));
 
-  if (normalizedRole !== "super-admin" && payloads.some((item) => !actorCanAccessStation(resolvedActor, item))) {
+  if (normalizedRole !== "super-admin" && (payloads.some((item) => !actorCanAccessStation(resolvedActor, item))
+    || !actorCanAccessStation(resolvedActor, { stationIds: queryStations }))) {
     return authFailure(403, pathname, "Station scope violation");
   }
-  if (normalizedRole !== "super-admin" && actorStation) {
+  if (normalizedRole !== "super-admin" && actorStation && !actorStationIds(resolvedActor).includes('*')) {
     for (const item of payloads) {
-      if (!stationFromPayload(item)) item.stationId = actorStation;
+      if (!stationFromPayload(item) && !requestedStationIds(item).length) item.stationId = actorStation;
     }
   }
 
@@ -2558,7 +2573,14 @@ async function buildConsumptionAudit() {
 
 async function loginResponse(payload) {
   if (supabaseAuthEnabled()) {
-    const supabaseResult = await signInWithPassword(payload);
+    const supabaseResult = await signInWithPassword(payload, {
+      verifyStaffMfa: async (token, code) => {
+        const path = '/api/v1/admin/mfa/challenge/verify';
+        const result = await proxyCanonicalWallet({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' } }, path, jsonRequestData({ code }));
+        if (!result || result.status >= 500) throw new Error('Staff MFA service unavailable');
+        return result.status === 200 && result.body?.ok === true;
+      }
+    });
     if (supabaseResult?.status === 200) return supabaseResult;
     return supabaseResult;
   }
@@ -4910,17 +4932,17 @@ async function dispatchLocalDatabaseAction(request, pathname, requestData) {
     return readDailyMeterSummary({ requestPayload: requestData.parsedBody });
   }
   if (pathname === "/api/local/stations") {
-    const actorStation = String(request.__auth?.stationId || "").trim().toUpperCase();
+    const assignedStations = actorStationIds(request.__auth);
     const allStations = await fetchLiveStationDirectory(request);
-    const stations = request.__auth?.roleId === "super-admin" || !actorStation
+    const stations = request.__auth?.roleId === "super-admin" || assignedStations.includes('*')
       ? allStations
-      : allStations.filter((station) => String(station?.stationId || station?.id || "").trim().toUpperCase() === actorStation);
+      : allStations.filter((station) => assignedStations.includes(String(station?.stationId || station?.id || "").trim().toUpperCase()));
     return localJobResponse({ stations, count: stations.length });
   }
   if (pathname === "/api/local/consumption/station-analytics") {
     const scopedPayload = stationAnalyticsRequestScope(request, requestData.parsedBody);
     if (!scopedPayload) return authFailure(403, pathname, "Station assignment required");
-    if (!scopedPayload.stationId) scopedPayload.stationIds = await fetchLiveStationIds(request);
+    if (!scopedPayload.stationId && !scopedPayload.stationIds?.length) scopedPayload.stationIds = await fetchLiveStationIds(request);
     return readStationConsumptionAnalytics({
       requestPayload: scopedPayload,
     });
@@ -5617,6 +5639,11 @@ async function dispatchLocalDatabaseAction(request, pathname, requestData) {
 
   if (methodUpper === "PATCH" && pathname.match(/^\/api\/v1\/admin\/meter-orders\/[^/]+$/)) {
     return localJobResponse({ updated: true });
+  }
+
+  // Disable the legacy simulated verification endpoints.
+  if (pathname.startsWith("/api/auth/mfa/")) {
+    return { status: 503, body: { error: "mfa_unavailable", msg: "Manage staff verification in Wallet Admin." } };
   }
 
   if (methodUpper === "GET" && pathname === "/api/auth/mfa/factors") {
@@ -6431,7 +6458,7 @@ async function dispatchLocalDatabaseAction(request, pathname, requestData) {
     if (!refreshToken) {
       return { status: 400, body: { code: 400, msg: "refreshToken required", reason: "refreshToken required", data: null, result: null } };
     }
-    const refreshed = await refreshAccessToken(refreshToken);
+    const refreshed = await refreshAccessToken(refreshToken, request.__crmSession ? cookieValue(request, 'bev_token') : '');
     if (!refreshed || !refreshed.token) {
       return { status: 401, body: { code: 401, msg: "Session expired", reason: "Session expired", data: null, result: null } };
     }

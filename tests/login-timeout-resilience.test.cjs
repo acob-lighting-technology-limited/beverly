@@ -20,6 +20,7 @@ const previousEnv = {
   SUPABASE_AUTH_ENABLED: process.env.SUPABASE_AUTH_ENABLED,
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   JWT_SECRET: process.env.JWT_SECRET,
   VERCEL_ENV: process.env.VERCEL_ENV
 };
@@ -56,11 +57,17 @@ function request(port) {
   process.env.SUPABASE_AUTH_ENABLED = "true";
   process.env.SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_ANON_KEY = "anon-test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-test";
   process.env.JWT_SECRET = "test-session-secret";
   process.env.VERCEL_ENV = "production";
   handler._test.resetContractCache();
+  let databaseRole = 'super-admin';
   global.fetch = async (url) => {
+    if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, status: 200, text: async () => '[]' };
     assert(!String(url).includes("/feature_flags"), "Login must not query the live-write feature flag.");
+    if (String(url).includes('/rest/v1/users')) {
+      return { ok: true, status: 200, text: async () => JSON.stringify([{ id: 'staff-row', auth_user_id: 'admin-auth', user_id: 'admin-auth', role_key: databaseRole, station_ids: ['*'] }]) };
+    }
     assert(String(url).includes("/auth/v1/token?grant_type=password"), "Login must call Supabase Auth directly.");
     return {
       ok: true,
@@ -84,9 +91,12 @@ function request(port) {
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
-    const result = await request(server.address().port);
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.body.data.roleId, "super-admin");
+    for (const role of ['super-admin', 'operations-manager', 'operations-officer']) {
+      databaseRole = role;
+      const result = await request(server.address().port);
+      assert.strictEqual(result.status, 200);
+      assert.strictEqual(result.body.data.roleId, role);
+    }
   } finally {
     await new Promise((resolve) => server.close(resolve));
     restoreEnvironment();

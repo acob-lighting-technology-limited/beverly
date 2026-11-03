@@ -5,7 +5,8 @@ const {
   resolveAuthEmail,
   getAuthUserByIdentifier,
   authUserFromAccessToken,
-  signInWithPassword
+  signInWithPassword,
+  refreshAccessToken
 } = require("../backend/src/services/supabase-service");
 
 const previousEnv = {
@@ -24,6 +25,10 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
 process.env.LOGIN_EMAIL_DOMAIN = "org.acoblighting.com";
 
 global.fetch = async (url) => {
+  if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, text: async () => '[]' };
+  if (String(url).includes('/rest/v1/users')) {
+    return { ok: true, text: async () => JSON.stringify([{ id: 'admin-row', auth_user_id: 'admin-auth', user_id: 'admin-auth', user_name: 'Admin', role_key: 'super-admin' }]) };
+  }
   if (String(url).includes("/auth/v1/user")) {
     return {
       ok: true,
@@ -63,6 +68,7 @@ global.fetch = async (url) => {
   assert.strictEqual((await authUserFromAccessToken("admin-token")).roleId, "super-admin");
 
   global.fetch = async (url) => {
+  if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, text: async () => '[]' };
     if (String(url).includes("/auth/v1/user")) {
       return {
         ok: true,
@@ -82,9 +88,9 @@ global.fetch = async (url) => {
             auth_user_id: "staff-auth",
             user_id: "staff-auth",
             email: "staff@acoblighting.com",
-            name: "Staff User",
+            user_name: "Staff User",
             role_key: "operations-manager",
-            remark: "wallet.dashboard.view"
+            station_ids: ["UMAISHA", "TUNGA"]
           }
         ])
       };
@@ -94,6 +100,45 @@ global.fetch = async (url) => {
   const staffActor = await authUserFromAccessToken("staff-token");
   assert.strictEqual(staffActor.roleId, "operations-manager");
   assert.strictEqual(staffActor.userName, "Staff User");
+  assert.deepStrictEqual(staffActor.stationIds, ["UMAISHA", "TUNGA"]);
+
+  global.fetch = async (url) => {
+  if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, text: async () => '[]' };
+    if (String(url).includes('/auth/v1/user')) return { ok: true, text: async () => JSON.stringify({ id: 'impostor', user_metadata: { role_key: 'super-admin' } }) };
+    if (String(url).includes('/rest/v1/users')) return { ok: true, text: async () => '[]' };
+    return { ok: true, text: async () => '[]' };
+  };
+  assert.strictEqual(await authUserFromAccessToken('forged-staff'), null, 'editable metadata must not grant staff access');
+
+  global.fetch = async (url) => {
+  if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, text: async () => '[]' };
+    if (String(url).includes('/auth/v1/token')) return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 'forged', user: { id: 'impostor', user_metadata: { role_key: 'super-admin' } } }) };
+    if (String(url).includes('/rest/v1/users')) return { ok: true, text: async () => '[]' };
+    throw new Error(`unexpected URL: ${url}`);
+  };
+  assert.strictEqual((await signInWithPassword({ userId: 'fake@example.com', password: 'secret' })).status, 403, 'CRM login requires a staff profile');
+
+  global.fetch = async (url) => {
+  if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, text: async () => '[]' };
+    if (String(url).includes('/auth/v1/token')) return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 'pending', user: { id: 'staff-auth' } }) };
+    if (String(url).includes('/rest/v1/users')) return { ok: true, text: async () => JSON.stringify([{ id: 'staff-row', role_key: 'operations-officer', password_reset_required: true }]) };
+    throw new Error(`unexpected URL: ${url}`);
+  };
+  assert.strictEqual((await signInWithPassword({ userId: 'staff@example.com', password: 'secret' })).status, 403, 'staff setup must finish before CRM access');
+
+  for (const role of ['operations-manager', 'operations-officer']) {
+    global.fetch = async (url) => {
+  if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, text: async () => '[]' };
+      if (String(url).includes('/auth/v1/token')) return { ok: true, status: 200, text: async () => JSON.stringify({ access_token: 'valid', refresh_token: 'refresh', user: { id: 'staff-auth', email: 'staff@example.com', user_metadata: { role_key: 'super-admin' } } }) };
+      if (String(url).includes('/rest/v1/users')) return { ok: true, text: async () => JSON.stringify([{ id: 'staff-row', auth_user_id: 'staff-auth', user_id: 'staff-auth', user_name: 'Staff User', role_key: role, station_ids: ['*'] }]) };
+      throw new Error(`unexpected URL: ${url}`);
+    };
+    const login = await signInWithPassword({ userId: 'staff@example.com', password: 'secret' });
+    assert.strictEqual(login.status, 200);
+    assert.strictEqual(login.body.data.roleId, role, 'staff database role overrides editable metadata');
+    const refreshed = await refreshAccessToken('refresh');
+    assert.strictEqual(refreshed.roleId, role, 'refresh must retain the database role');
+  }
 
   global.fetch = async () => {
     throw new Error("network down");
@@ -104,6 +149,7 @@ global.fetch = async (url) => {
 
   let transientAttempts = 0;
   global.fetch = async (url) => {
+  if (String(url).includes('/rest/v1/staff_mfa_factors')) return { ok: true, text: async () => '[]' };
     if (String(url).includes("/auth/v1/token")) {
       transientAttempts += 1;
       if (transientAttempts === 1) {

@@ -24,6 +24,24 @@ assert.strictEqual(
 );
 
 assert.deepStrictEqual(
+  _test.stationAnalyticsRequestScope(
+    { __auth: { roleId: 'operations-officer', stationIds: ['*'] } },
+    { stationIds: ['TUNGA', 'UMAISHA'] }
+  ),
+  { stationIds: ['TUNGA', 'UMAISHA'] },
+  'staff assigned all stations may request any station'
+);
+
+assert.deepStrictEqual(
+  _test.stationAnalyticsRequestScope(
+    { __auth: { roleId: 'operations-officer', stationId: 'UMAISHA', stationIds: ['UMAISHA', 'TUNGA'] } },
+    { stationIds: ['TUNGA'] }
+  ),
+  { stationId: 'TUNGA', stationIds: ['TUNGA'] },
+  'staff may select any assigned station'
+);
+
+assert.deepStrictEqual(
   _test.requestedStationIds({ stationIds: ["ofemili", " OFEMILI ", "tunga", ""] }),
   ["OFEMILI", "TUNGA"],
   "aggregate refresh station identifiers must normalize and deduplicate"
@@ -125,12 +143,32 @@ async function withEnv(env, run) {
 
 async function main() {
   const authServer = await startServer((req, res) => {
+    if (req.url.startsWith('/rest/v1/staff_mfa_factors')) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('[]'); return; }
+    if (req.url.startsWith('/rest/v1/users')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const isOps = req.url.includes('ops-auth');
+      const isOfficer = req.url.includes('officer-auth');
+      const isAllStations = req.url.includes('allstations-auth');
+      const isUnassigned = req.url.includes('unassigned-auth');
+      res.end(JSON.stringify(isOps ? [{ id: 'ops-row', auth_user_id: 'ops-auth', user_id: 'ops', user_name: 'Ops User', role_key: 'operations-manager', station_id: 'UMAISHA', station_ids: ['UMAISHA'] }] : isOfficer ? [{ id: 'officer-row', auth_user_id: 'officer-auth', user_id: 'officer', role_key: 'operations-officer', station_ids: ['UMAISHA', 'TUNGA'] }] : isAllStations ? [{ id: 'all-row', auth_user_id: 'allstations-auth', user_id: 'officer-all', role_key: 'operations-officer', station_ids: ['*'] }] : isUnassigned ? [{ id: 'unassigned-row', auth_user_id: 'unassigned-auth', role_key: 'operations-officer', station_ids: [] }] : []));
+      return;
+    }
+    if (req.url.startsWith('/rest/v1/vendor_users')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify([{ id: 'vendor-row', vendor_organization_id: 'vendor-org', role: 'vendor', email: 'temper@org.acoblighting.com', status: 'active', vendor_organizations: { status: 'approved', station_id: 'UMAISHA' } }]));
+      return;
+    }
     if (req.url !== "/auth/v1/user") {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "not found" }));
       return;
     }
     const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+    if (token === 'officer-token' || token === 'allstations-token' || token === 'unassigned-token') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ id: token === 'officer-token' ? 'officer-auth' : token === 'allstations-token' ? 'allstations-auth' : 'unassigned-auth', email: 'staff@example.test', user_metadata: { role_key: 'super-admin' } }));
+      return;
+    }
     if (token === "ops-token") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
@@ -173,10 +211,26 @@ async function main() {
       SUPABASE_AUTH_ENABLED: "true",
       SUPABASE_URL: `http://127.0.0.1:${authPort}`,
       SUPABASE_ANON_KEY: "anon-test",
+      SUPABASE_SERVICE_ROLE_KEY: "service-test",
       LIVE_API_PROXY_ENABLED: "false",
       ALLOW_LIVE_WRITES: "false",
       WEBHOOK_SECRET: ""
     }, async () => {
+      const officerRequest = { method: 'POST', headers: { authorization: 'Bearer officer-token' } };
+      assert.strictEqual(await _test.authorizeRequest(officerRequest, '/api/customer/read', { parsedBody: { stationId: 'TUNGA' } }), null);
+      assert.strictEqual(officerRequest.__auth.roleId, 'operations-officer');
+      const denied = await _test.authorizeRequest({ method: 'POST', headers: { authorization: 'Bearer officer-token' } }, '/api/customer/read', { parsedBody: { stationId: 'OGUFA' } });
+      assert.strictEqual(denied.status, 403);
+      const deniedSnakeCase = await _test.authorizeRequest({ method: 'POST', headers: { authorization: 'Bearer officer-token' } }, '/api/customer/read', { parsedBody: { station_id: 'OGUFA' } });
+      assert.strictEqual(deniedSnakeCase.status, 403);
+      const conflictingStations = await _test.authorizeRequest({ method: 'POST', headers: { authorization: 'Bearer officer-token' } }, '/api/customer/read', { parsedBody: { stationId: 'TUNGA', station_id: 'OGUFA' } });
+      assert.strictEqual(conflictingStations.status, 403);
+      const deniedQuery = await _test.authorizeRequest({ method: 'GET', url: '/api/local/abnormal-alarms?station_id=OGUFA', headers: { authorization: 'Bearer officer-token' } }, '/api/local/abnormal-alarms', { parsedBody: {} });
+      assert.strictEqual(deniedQuery.status, 403);
+      const wildcard = await _test.authorizeRequest({ method: 'POST', headers: { authorization: 'Bearer allstations-token' } }, '/api/customer/read', { parsedBody: { stationId: 'OGUFA' } });
+      assert.strictEqual(wildcard, null);
+      const unassigned = await _test.authorizeRequest({ method: 'POST', headers: { authorization: 'Bearer unassigned-token' } }, '/api/customer/read', { parsedBody: {} });
+      assert.strictEqual(unassigned.status, 403);
       const publicTelemetryIngest = await request(port, "POST", "/api/system/client-errors", {
         errors: [{ message: "bounded browser telemetry", event: "test" }]
       });

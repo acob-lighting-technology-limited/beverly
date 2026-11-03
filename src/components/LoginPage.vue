@@ -99,6 +99,10 @@
             </span>
             <span v-if="fieldErrors.password" class="auth-field-error">{{ fieldErrors.password }}</span>
           </label>
+          <label v-if="mfaRequired" class="auth-field">
+            <span class="auth-field-label">Verification code</span>
+            <span class="auth-field-wrap"><BaseInput v-model.trim="form.mfaCode" name="mfaCode" type="text" autocomplete="one-time-code" placeholder="Authenticator or recovery code" /></span>
+          </label>
         </fieldset>
 
         <div class="auth-row">
@@ -121,12 +125,6 @@
 
       </form>
 
-      <MfaChallengeModal
-        v-if="mfaRequired"
-        :factor-id="mfaFactorId"
-        @verified="onMfaVerified"
-        @cancelled="onMfaCancelled"
-      />
     </section>
   </main>
 </template>
@@ -134,19 +132,17 @@
 <script>
 import { login } from "../services/api";
 import { recordClientError } from "../services/error-logger.mjs";
-import { getMFAStatus } from "../services/mfa-service.mjs";
 import { playLoginVoice, unlockLoginVoice } from "../utils/voice";
 import BaseButton from "./base/BaseButton.vue";
 import BaseCheckbox from "./base/BaseCheckbox.vue";
 import BaseIconButton from "./base/BaseIconButton.vue";
 import BaseInput from "./base/BaseInput.vue";
-import MfaChallengeModal from "./MfaChallengeModal.vue";
 
 const rememberedUserKey = "beverly.rememberedUser";
 
 export default {
   name: "LoginPage",
-  components: { BaseButton, BaseCheckbox, BaseIconButton, BaseInput, MfaChallengeModal },
+  components: { BaseButton, BaseCheckbox, BaseIconButton, BaseInput },
   data() {
     return {
       showPassword: false,
@@ -159,10 +155,10 @@ export default {
       maintenanceNotice: "",
       focused: "",
       mfaRequired: false,
-      mfaFactorId: null,
       form: {
         userId: "",
         password: "",
+        mfaCode: "",
         verifycode: "s3b9"
       }
     };
@@ -210,24 +206,19 @@ export default {
       this.loading = true;
       if (!this.rememberUsername) localStorage.removeItem(rememberedUserKey);
       try {
-        await login({ userId: this.form.userId, password: this.form.password });
+        await login({ userId: this.form.userId, password: this.form.password, mfaCode: this.form.mfaCode });
         if (this.rememberUsername) localStorage.setItem(rememberedUserKey, this.form.userId);
         else localStorage.removeItem(rememberedUserKey);
-
-        // Check MFA enrollment
-        try {
-          const mfa = await getMFAStatus();
-          if (mfa.enrolled) {
-            this.mfaRequired = true;
-            this.mfaFactorId = mfa.factorId;
-            this.loading = false;
-            return;
-          }
-        } catch { /* MFA unavailable — proceed without */ }
 
         playLoginVoice();
         this.$emit("logged-in");
       } catch (err) {
+        const reason = err?.response?.data?.error;
+        if (reason === "mfa_required" || reason === "mfa_invalid") {
+          this.mfaRequired = true;
+          this.error = reason === "mfa_required" ? "Enter your verification code." : "That verification code is invalid.";
+          return;
+        }
         this.error = this.loginErrorMessage(err);
         this.errorReference = recordClientError("login-submit-error", err, {
           userId: this.form.userId
@@ -240,6 +231,7 @@ export default {
       const errors = {};
       if (!this.form.userId) errors.userId = "Email is required.";
       if (!this.form.password) errors.password = "Password is required.";
+      if (this.mfaRequired && !this.form.mfaCode) errors.mfaCode = "Verification code is required.";
       return errors;
     },
     loginErrorMessage(error) {
@@ -291,16 +283,6 @@ export default {
         const first = this.$el.querySelector(".auth-field--invalid input");
         if (first) first.focus();
       });
-    },
-    onMfaVerified() {
-      this.mfaRequired = false;
-      this.mfaFactorId = null;
-      playLoginVoice();
-      this.$emit("logged-in");
-    },
-    onMfaCancelled() {
-      this.mfaRequired = false;
-      this.mfaFactorId = null;
     }
   },
   watch: {
