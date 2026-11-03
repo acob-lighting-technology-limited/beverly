@@ -134,6 +134,34 @@ importers:
         specifier: ^2.0.26
         version: 2.2.12(typescript@5.9.3)
 
+  apps/battery-swap:
+    dependencies:
+      '@beverly/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
+      leaflet:
+        specifier: ^1.9.4
+        version: 1.9.4
+      pinia:
+        specifier: ^2.2.0 || ^3.0.0
+        version: 3.0.4(typescript@5.9.3)(vue@3.5.43(typescript@5.9.3))
+      vue:
+        specifier: 3.5.43
+        version: 3.5.43(typescript@5.9.3)
+      vue-router:
+        specifier: ^4.4.0
+        version: 4.6.4(vue@3.5.43(typescript@5.9.3))
+    devDependencies:
+      '@vitejs/plugin-vue':
+        specifier: ^5.0.5
+        version: 5.2.4(vite@5.4.21(@types/node@20.19.41)(terser@5.51.2))(vue@3.5.43(typescript@5.9.3))
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vite:
+        specifier: ^5.3.0
+        version: 5.4.21(@types/node@20.19.41)(terser@5.51.2)
+
   apps/customer:
     dependencies:
       '@beverly/tokens':
