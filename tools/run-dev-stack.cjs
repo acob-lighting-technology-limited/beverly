@@ -83,6 +83,7 @@ const colors = {
   vendor:   "\x1b[33m",
   customer: "\x1b[34m",
   landing:  "\x1b[95m",
+  battery:  "\x1b[92m",
 };
 const RESET = "\x1b[0m";
 
@@ -161,6 +162,15 @@ const services = [
     args: ["dev"],
     cwd: path.join(root, "apps/wallet-landing"),
     url: "http://localhost:5176",
+    walletGroup: true,
+  },
+  {
+    name: "battery",
+    cmd: isWin ? "npx.cmd" : "npx",
+    args: ["vite", "--port", "5177"],
+    cwd: path.join(root, "apps/battery-swap"),
+    url: "http://localhost:5177",
+    walletGroup: true,
     walletGroup: true,
   },
 ];

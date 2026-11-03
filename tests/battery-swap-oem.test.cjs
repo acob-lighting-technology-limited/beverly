@@ -62,4 +62,21 @@ assert.ok(tokenContent.includes('--acob-brand-mint:   #7dfc9a;'), "ACOB mint tok
 assert.ok(tokenContent.includes('--acob-bg:           #f4f8f5;'), "Light theme ground #f4f8f5 missing");
 assert.ok(tokenContent.includes('--acob-bg:           #03090a;'), "Dark theme ground #03090a missing");
 
+// 8. Standalone Battery Swap Portal (apps/battery-swap)
+const portalPkg = JSON.parse(fs.readFileSync(path.join(root, "apps/battery-swap/package.json"), "utf8"));
+assert.strictEqual(portalPkg.name, "@beverly/battery-swap-app", "Portal package name mismatch");
+assert.ok(fs.existsSync(path.join(root, "apps/battery-swap/src/App.vue")), "apps/battery-swap/src/App.vue missing");
+assert.ok(fs.existsSync(path.join(root, "apps/battery-swap/src/router/index.ts")), "apps/battery-swap/src/router/index.ts missing");
+
+const vercelConfig = JSON.parse(fs.readFileSync(path.join(root, "vercel.json"), "utf8"));
+assert.ok(vercelConfig.redirects.some(r => r.source === "/battery-swap"), "vercel.json missing /battery-swap redirect");
+assert.ok(vercelConfig.rewrites.some(r => r.source === "/battery-swap/:path*"), "vercel.json missing /battery-swap rewrite");
+
+assert.ok(appContent.includes('batterySwapUrl'), "App.vue missing batterySwapUrl computed property");
+assert.ok(appContent.includes('resolvePostLoginRedirect'), "App.vue missing resolvePostLoginRedirect");
+
+const landingPortalsContent = fs.readFileSync(path.join(root, "apps/wallet-landing/src/portals.ts"), "utf8");
+assert.ok(landingPortalsContent.includes("batterySwap: 'http://localhost:5177/'"), "landing portals.ts missing dev portal");
+assert.ok(landingPortalsContent.includes("batterySwap: '/battery-swap/'"), "landing portals.ts missing prod portal");
+
 console.log("All Battery Swap standalone operations, detached sidebar & ACOB design tokens checks passed! (100% GREEN)");

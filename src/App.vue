@@ -204,6 +204,10 @@
                     <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
                     <span>{{ translate('common.switchOem') }}</span>
                   </BaseButton>
+                  <a :href="batterySwapUrl" class="bw-user-menu-item" role="menuitem" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem;">
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="1.8" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    <span>Battery Swap Portal</span>
+                  </a>
                   <div class="user-theme-submenu">
                     <BaseButton
                       variant="quiet"
@@ -455,6 +459,12 @@ export default {
     };
   },
   computed: {
+    batterySwapUrl() {
+      const configured = String(import.meta.env?.VITE_BATTERY_SWAP_URL || "").trim();
+      return configured || (import.meta.env?.DEV
+        ? `${window.location.protocol}//${window.location.hostname}:5177/`
+        : `${window.location.origin}/battery-swap/`);
+    },
     oemStore() {
       return useOemStore();
     },
@@ -807,7 +817,13 @@ export default {
       if (!readSessionState()) {
         this.currentRoleId = null;
         this.currentUserName = null;
-        window.location.hash = "#/login";
+        const currentRoute = window.location.hash && !window.location.hash.startsWith("#/login") ? window.location.hash : "";
+        if (currentRoute) {
+          try { sessionStorage.setItem("beverly_post_login_redirect", currentRoute); } catch {}
+          window.location.hash = `#/login?redirect=${encodeURIComponent(currentRoute)}`;
+        } else {
+          window.location.hash = "#/login";
+        }
         this.syncHash();
         return;
       }
@@ -828,7 +844,13 @@ export default {
           clearSessionCookies();
           this.currentRoleId = null;
           this.currentUserName = null;
-          if (!this.isLogin) window.location.hash = "#/login";
+          const currentRoute = window.location.hash && !window.location.hash.startsWith("#/login") ? window.location.hash : "";
+          if (currentRoute) {
+            try { sessionStorage.setItem("beverly_post_login_redirect", currentRoute); } catch {}
+            if (!this.isLogin) window.location.hash = `#/login?redirect=${encodeURIComponent(currentRoute)}`;
+          } else if (!this.isLogin) {
+            window.location.hash = "#/login";
+          }
           this.syncHash();
           return;
         }
@@ -869,7 +891,13 @@ export default {
           // Explicit 401/403 session rejection — clear cookies and redirect to sign in.
           this.currentRoleId = null;
           clearSessionCookies();
-          if (!this.isLogin) window.location.hash = "#/login";
+          const currentRoute = window.location.hash && !window.location.hash.startsWith("#/login") ? window.location.hash : "";
+          if (currentRoute) {
+            try { sessionStorage.setItem("beverly_post_login_redirect", currentRoute); } catch {}
+            if (!this.isLogin) window.location.hash = `#/login?redirect=${encodeURIComponent(currentRoute)}`;
+          } else if (!this.isLogin) {
+            window.location.hash = "#/login";
+          }
           this.syncHash();
         } else {
           // Transient network error / temporary server issue — preserve session state
@@ -913,6 +941,14 @@ export default {
         window.location.assign(landingUrl);
         return;
       }
+      if (normalized.startsWith("#/battery-swap") || normalized.startsWith("#/swap") || normalized === "#/battery") {
+        const configured = String(import.meta.env?.VITE_BATTERY_SWAP_URL || "").trim();
+        const batterySwapUrl = configured || (import.meta.env?.DEV
+          ? `${window.location.protocol}//${window.location.hostname}:5177/`
+          : `${window.location.origin}/battery-swap/`);
+        window.location.assign(batterySwapUrl);
+        return;
+      }
       if (normalizeHash(nextHash) === "#/prepay-report/site-consumption") {
         window.location.hash = "#/prepay-report/station-consumption";
         return;
@@ -943,17 +979,36 @@ export default {
       this.width = window.innerWidth;
       if (wasDesktop && this.width <= 1024) this.sidebarOpen = false;
     },
+    resolvePostLoginRedirect() {
+      let target = "";
+      const hashStr = window.location.hash || this.hash || "";
+      const match = hashStr.match(/[?&]redirect=([^&]+)/);
+      if (match && match[1]) {
+        try { target = decodeURIComponent(match[1]); } catch { target = match[1]; }
+      }
+      if (!target) {
+        try {
+          target = sessionStorage.getItem("beverly_post_login_redirect") || "";
+          sessionStorage.removeItem("beverly_post_login_redirect");
+        } catch {}
+      }
+      if (target && !target.startsWith("#")) target = `#${target.startsWith("/") ? "" : "/"}${target}`;
+      if (!target || target.startsWith("#/login")) target = "#/dashboard";
+      return target;
+    },
     async goDashboard() {
       this.currentRoleId = null;
       this.currentUserName = null;
-      this.hash = "#/dashboard";
-      window.location.hash = "#/dashboard";
+      const target = this.resolvePostLoginRedirect();
+      this.hash = target;
+      window.location.hash = target;
       await this.loadUser();
     },
     async handleOemSelected() {
       playLoginVoice();
-      this.hash = "#/dashboard";
-      window.location.hash = "#/dashboard";
+      const target = this.resolvePostLoginRedirect();
+      this.hash = target;
+      window.location.hash = target;
     },
     switchOem() {
       this.userDropdownOpen = false;

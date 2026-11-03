@@ -17,6 +17,7 @@ const DEV_PORTALS = {
     customer: 'http://localhost:5173/',
     vendor: 'http://localhost:5174/',
     admin: 'http://localhost:5175/',
+    batterySwap: 'http://localhost:5177/',
 } as const;
 
 const PROD_PORTALS = {
@@ -24,6 +25,7 @@ const PROD_PORTALS = {
     customer: '/wallet-customer/',
     vendor: '/wallet-vendor/',
     admin: '/wallet-admin/',
+    batterySwap: '/battery-swap/',
 } as const;
 
 const DEFAULT_PORTALS = import.meta.env.DEV ? DEV_PORTALS : PROD_PORTALS;
@@ -38,4 +40,5 @@ export const PORTAL_URLS = {
     customer: resolve(env.VITE_CUSTOMER_URL, DEFAULT_PORTALS.customer),
     vendor: resolve(env.VITE_VENDOR_URL, DEFAULT_PORTALS.vendor),
     admin: resolve(env.VITE_ADMIN_URL, DEFAULT_PORTALS.admin),
+    batterySwap: resolve(env.VITE_BATTERY_SWAP_URL, DEFAULT_PORTALS.batterySwap),
 };
