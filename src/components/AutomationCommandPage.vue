@@ -1,14 +1,16 @@
 <template>
   <div class="automation-page">
     <BasePageHeader
+      class="automation-header"
       title="Automation Command Center"
-      description="Wire alert webhooks, runtime remediation, and live automation visibility."
+      description="Manage alerts, recovery and delivery activity."
     >
+      <template #eyebrow><span class="automation-eyebrow">Operations</span></template>
       <template #actions>
         <div class="automation-actions">
           <BaseButton variant="ghost" :disabled="loading" @click="refreshData">Refresh</BaseButton>
-          <BaseButton variant="ghost" :disabled="saving" @click="sendTestAlert">Send Test Alert</BaseButton>
-          <BaseButton variant="primary" :disabled="saving" @click="saveControl">{{ saving ? "Saving..." : "Save Control" }}</BaseButton>
+          <BaseButton variant="ghost" :disabled="saving" @click="sendTestAlert">Send test alert</BaseButton>
+          <BaseButton variant="primary" :disabled="saving" @click="saveControl">{{ saving ? "Saving..." : "Save settings" }}</BaseButton>
         </div>
       </template>
     </BasePageHeader>
@@ -25,10 +27,11 @@
       <BaseCard class="automation-panel" tone="glass">
         <div class="automation-panel-head">
           <div>
-            <h2>Alert Webhooks</h2>
-            <p>Post incidents to external responders.</p>
+            <span class="automation-eyebrow">Notifications</span>
+            <h2>Alert webhooks</h2>
+            <p>Send incidents to your configured endpoints.</p>
           </div>
-          <BaseButton variant="ghost" @click="addWebhook">Add Webhook</BaseButton>
+          <BaseButton variant="ghost" @click="addWebhook">Add webhook</BaseButton>
         </div>
         <div v-if="form.webhooks.length" class="automation-stack">
           <div v-for="(hook, index) in form.webhooks" :key="hook.id" class="webhook-card">
@@ -49,13 +52,13 @@
                 <span>Secret</span>
                 <div class="automation-secret-row">
                   <BaseInput :type="revealedSecrets[hook.id] ? 'text' : 'password'" v-model="hook.secret" placeholder="Optional shared secret" />
-                  <BaseButton variant="ghost" @click="toggleSecret(hook.id)">{{ revealedSecrets[hook.id] ? "Hide" : "Show" }}</BaseButton>
+                  <BaseButton variant="ghost" :aria-label="`${revealedSecrets[hook.id] ? 'Hide' : 'Show'} secret for ${hook.name || `webhook ${index + 1}`}`" @click="toggleSecret(hook.id)">{{ revealedSecrets[hook.id] ? "Hide" : "Show" }}</BaseButton>
                 </div>
                 <small class="automation-secret-meta">{{ maskSecret(hook.secret) }}</small>
               </label>
               <label class="automation-field automation-field-inline">
                 <span>Enabled</span>
-                <BaseToggle v-model="hook.enabled" />
+                <BaseToggle v-model="hook.enabled" :aria-label="`Enable ${hook.name || `webhook ${index + 1}`}`" />
               </label>
             </div>
             <div class="automation-event-pills">
@@ -71,18 +74,19 @@
       <BaseCard class="automation-panel" tone="glass">
         <div class="automation-panel-head">
           <div>
-            <h2>Auto-Remediation</h2>
-            <p>Apply safe runtime recovery hooks.</p>
+            <span class="automation-eyebrow">Recovery</span>
+            <h2>Auto-remediation</h2>
+            <p>Choose how automation responds to failures.</p>
           </div>
         </div>
         <div class="automation-remediation-list">
           <div class="automation-policy-grid">
             <label class="automation-field">
-              <span>Retry Count</span>
+              <span>Retry count</span>
               <BaseInput v-model.number="form.deliveryPolicy.retryCount" type="number" min="0" max="5" />
             </label>
             <label class="automation-field">
-              <span>Retry Delay Ms</span>
+              <span>Retry delay (ms)</span>
               <BaseInput v-model.number="form.deliveryPolicy.retryDelayMs" type="number" min="0" max="10000" />
             </label>
           </div>
@@ -91,28 +95,28 @@
               <strong>Retry failed refresh once</strong>
               <span>Re-run a failed refresh target before incident closeout.</span>
             </div>
-            <BaseToggle v-model="form.remediation.retryFailedRefreshOnce" />
+            <BaseToggle v-model="form.remediation.retryFailedRefreshOnce" aria-label="Retry failed refresh once" />
           </label>
           <label class="automation-switch">
             <div>
               <strong>Capture incident artifact</strong>
               <span>Persist incident payloads into the automation incident ledger.</span>
             </div>
-            <BaseToggle v-model="form.remediation.captureIncidentArtifact" />
+            <BaseToggle v-model="form.remediation.captureIncidentArtifact" aria-label="Capture incident artifact" />
           </label>
           <label class="automation-switch">
             <div>
               <strong>Force write guard on auth failure</strong>
               <span>Drop `ALLOW_LIVE_WRITES` to `false` after live auth failure.</span>
             </div>
-            <BaseToggle v-model="form.remediation.forceWriteGuardOnAuthFailure" />
+            <BaseToggle v-model="form.remediation.forceWriteGuardOnAuthFailure" aria-label="Force write guard on auth failure" />
           </label>
           <label class="automation-switch">
             <div>
               <strong>Run hot refresh on smoke failure</strong>
               <span>Kick a hot refresh cycle after failed smoke telemetry lands.</span>
             </div>
-            <BaseToggle v-model="form.remediation.runHotRefreshOnSmokeFailure" />
+            <BaseToggle v-model="form.remediation.runHotRefreshOnSmokeFailure" aria-label="Run hot refresh on smoke failure" />
           </label>
         </div>
       </BaseCard>
@@ -120,8 +124,9 @@
       <BaseCard class="automation-panel automation-panel-wide" tone="glass">
         <div class="automation-panel-head">
           <div>
-            <h2>Lane Readout</h2>
-            <p>Current automation footprint by operational lane.</p>
+            <span class="automation-eyebrow">Overview</span>
+            <h2>Automation lanes</h2>
+            <p>Current automation status by lane.</p>
           </div>
         </div>
         <div class="lane-grid">
@@ -143,8 +148,9 @@
       <BaseCard class="automation-panel automation-panel-wide" tone="glass">
         <div class="automation-panel-head">
           <div>
-            <h2>Webhook Delivery History</h2>
-            <p>Latest delivery attempts across all incident alerts.</p>
+            <span class="automation-eyebrow">Activity</span>
+            <h2>Webhook delivery history</h2>
+            <p>Recent attempts to deliver incident alerts.</p>
           </div>
         </div>
         <div v-if="deliveryHistory.length" class="delivery-table-wrap">
@@ -160,11 +166,11 @@
             </thead>
             <tbody>
               <tr v-for="entry in deliveryHistory" :key="entry.id">
-                <td>{{ formatTime(entry.createdAt) }}</td>
-                <td>{{ entry.incidentKind }}</td>
-                <td>{{ entry.webhookName }}</td>
-                <td>{{ entry.status || "-" }}</td>
-                <td>
+                <td data-label="Time">{{ formatTime(entry.createdAt) }}</td>
+                <td data-label="Incident">{{ entry.incidentKind }}</td>
+                <td data-label="Webhook">{{ entry.webhookName }}</td>
+                <td data-label="Status">{{ entry.status || "-" }}</td>
+                <td data-label="Result">
                   <span class="lane-badge" :class="entry.ok ? 'ready' : 'error'">{{ entry.ok ? "delivered" : "failed" }}</span>
                 </td>
               </tr>
@@ -177,7 +183,8 @@
       <BaseCard class="automation-panel automation-panel-wide" tone="glass">
         <div class="automation-panel-head">
           <div>
-            <h2>Incident Feed</h2>
+            <span class="automation-eyebrow">Activity</span>
+            <h2>Incident feed</h2>
             <p>Latest automation alerts and remediation outcomes.</p>
           </div>
         </div>
@@ -258,7 +265,7 @@ export default {
       const summary = this.report?.summary || {};
       return [
         { label: "Automations", value: summary.total || 0, meta: `${summary.ready || 0} ready` },
-        { label: "Webhooks", value: this.form.webhooks.filter((hook) => hook.enabled && hook.url).length, meta: "active endpoints" },
+        { label: "Webhooks", value: this.form.webhooks.filter((hook) => hook.enabled && hook.url).length, meta: "enabled in settings" },
         { label: "Deliveries", value: this.deliveryHistory.length, meta: "webhook attempts" },
         { label: "Retries", value: this.form.deliveryPolicy.retryCount, meta: `${this.form.deliveryPolicy.retryDelayMs} ms delay` }
       ];
@@ -355,324 +362,82 @@ export default {
 </script>
 
 <style scoped>
-.automation-page {
-  display: grid;
-  gap: 18px;
-}
-
-.automation-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.automation-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.automation-summary-card {
-  padding: 18px;
-}
-
-.automation-summary-label {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-.automation-summary-value {
-  margin-top: 10px;
-  color: var(--text-strong);
-  font-size: 32px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.automation-summary-meta {
-  margin-top: 10px;
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.automation-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
-  gap: 16px;
-}
-
-.automation-panel {
-  padding: 20px;
-}
-
-.automation-panel-wide {
-  grid-column: 1 / -1;
-}
-
-.automation-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 18px;
-}
-
-.automation-panel-head h2 {
-  margin: 0;
-  color: var(--text-strong);
-  font-size: 18px;
-}
-
-.automation-panel-head p {
-  margin: 6px 0 0;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.automation-stack,
-.incident-list,
-.lane-grid {
-  display: grid;
-  gap: 14px;
-}
-
-.webhook-card,
-.lane-card,
-.incident-card {
-  padding: 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
-}
-
-.webhook-card-head,
-.incident-topline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.automation-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.automation-field {
-  display: grid;
-  gap: 8px;
-}
-
-.automation-field span {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-
-.automation-field-inline {
-  align-items: end;
-}
-
-.automation-event-pills {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-}
-
-.automation-secret-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-}
-
-.automation-secret-meta {
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.automation-remediation-list {
-  display: grid;
-  gap: 14px;
-}
-
-.automation-policy-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.automation-switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 14px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
-}
-
-.automation-switch strong,
-.lane-entry strong {
-  display: block;
-  color: var(--text-strong);
-  font-size: 14px;
-}
-
-.automation-switch span,
-.lane-entry span,
-.incident-card p,
-.incident-meta {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.lane-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.lane-title {
-  color: var(--text-strong);
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.lane-entry {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.lane-badge {
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-
-.lane-badge.ready,
-.lane-badge.info {
-  background: var(--success-bg);
-  color: var(--success);
-}
-
-.lane-badge.conditional,
-.lane-badge.warning {
-  background: var(--warning-bg);
-  color: var(--warning);
-}
-
-.lane-badge.missing,
-.lane-badge.error {
-  background: var(--danger-bg);
-  color: var(--danger);
-}
-
-.incident-card p {
-  margin: 10px 0 6px;
-}
-
-.incident-strip {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-
-.incident-strip span {
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--primary-light);
-  color: var(--primary);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.delivery-table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-}
-
-.delivery-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 680px;
-}
-
-.delivery-table th,
-.delivery-table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border-color);
-  text-align: left;
-  font-size: 12px;
-}
-
-.delivery-table th {
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-.automation-empty {
-  padding: 20px;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-lg);
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.automation-page :deep(.base-input),
-.automation-page :deep(.base-select) {
-  background: var(--bg-card);
-  color: var(--text-main);
-}
-
-.automation-page :deep(.base-input:focus),
-.automation-page :deep(.base-select:focus) {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-light);
-}
-
+.automation-page { display: grid; gap: 18px; min-width: 0; }
+.automation-header :deep(.base-page-header__copy) { max-width: 640px; }
+.automation-eyebrow { display: block; margin-bottom: 5px; color: var(--primary); font-size: 11px; font-weight: 700; letter-spacing: .075em; text-transform: uppercase; }
+.automation-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.automation-actions :deep(.base-button) { min-height: 44px; }
+.automation-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.automation-summary-card { min-width: 0; padding: 14px 16px; }
+.automation-summary-label { color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spacing: .075em; text-transform: uppercase; }
+.automation-summary-value { margin-top: 7px; color: var(--text-strong); font-size: 25px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.automation-summary-meta { margin-top: 5px; color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.automation-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 14px; align-items: start; }
+.automation-panel { min-width: 0; padding: 16px; }
+.automation-panel-wide { grid-column: 1 / -1; }
+.automation-panel-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.automation-panel-head h2 { margin: 0; color: var(--text-strong); font-size: 18px; line-height: 1.25; }
+.automation-panel-head p { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.automation-panel-head :deep(.base-button) { min-height: 44px; }
+.automation-stack, .incident-list, .lane-grid, .automation-remediation-list { display: grid; gap: 10px; }
+.lane-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 275px), 1fr)); }
+.webhook-card, .lane-card, .incident-card { min-width: 0; padding: 14px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); }
+.webhook-card-head, .incident-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.webhook-card-head strong, .incident-topline strong { min-width: 0; overflow-wrap: anywhere; }
+.webhook-card-head :deep(.base-button) { min-height: 44px; }
+.automation-form-grid, .automation-policy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.automation-field { display: grid; gap: 6px; min-width: 0; }
+.automation-field span { color: var(--text-muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .075em; }
+.automation-field-inline { align-content: end; }
+.automation-event-pills { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 14px; }
+.automation-secret-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.automation-secret-row :deep(.base-button) { min-height: 44px; }
+.automation-secret-meta { color: var(--text-muted); font-size: 12px; }
+.automation-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); }
+.automation-switch > div { min-width: 0; }
+.automation-switch :deep(.base-toggle) { flex: none; }
+.automation-switch strong, .lane-entry strong { display: block; color: var(--text-strong); font-size: 14px; line-height: 1.35; }
+.automation-switch span, .lane-entry span, .incident-card p, .incident-meta { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.automation-switch span { display: block; margin-top: 3px; }
+.lane-list { display: grid; gap: 12px; margin-top: 12px; }
+.lane-title { color: var(--text-strong); font-size: 15px; font-weight: 700; }
+.lane-entry { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.lane-entry > div { min-width: 0; }
+.lane-entry span { display: block; overflow-wrap: anywhere; }
+.lane-badge { flex: none; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.lane-badge.ready, .lane-badge.info { background: var(--success-bg); color: var(--success); }
+.lane-badge.conditional, .lane-badge.warning { background: var(--warning-bg); color: var(--warning); }
+.lane-badge.missing, .lane-badge.error { background: var(--danger-bg); color: var(--danger); }
+.incident-card p { margin: 8px 0 6px; }
+.incident-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.incident-strip span { padding: 4px 8px; border-radius: 999px; background: var(--primary-light); color: var(--primary); font-size: 11px; font-weight: 700; }
+.delivery-table-wrap { overflow-x: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); }
+.delivery-table { width: 100%; border-collapse: collapse; min-width: 680px; }
+.delivery-table th, .delivery-table td { padding: 11px 12px; border-bottom: 1px solid var(--border-color); text-align: left; font-size: 12px; }
+.delivery-table th { color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spacing: .075em; text-transform: uppercase; }
+.delivery-table tr:last-child td { border-bottom: 0; }
+.automation-empty { padding: 18px 14px; border: 1px dashed var(--border-color); border-radius: var(--radius-md); color: var(--text-muted); font-size: 13px; text-align: center; }
+.automation-page :deep(.base-input), .automation-page :deep(.base-select) { background: var(--bg-card); color: var(--text-main); }
+.automation-page :deep(.base-input:focus-visible), .automation-page :deep(.base-select:focus-visible) { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
 @media (max-width: 1100px) {
-  .automation-summary-grid,
-  .automation-layout,
-  .automation-form-grid,
-  .automation-policy-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+  .automation-layout { grid-template-columns: minmax(0, 1fr); }
+  .automation-panel-wide { grid-column: auto; }
 }
-
-@media (max-width: 760px) {
-  .automation-summary-grid,
-  .automation-layout,
-  .automation-form-grid,
-  .automation-policy-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .automation-panel-head,
-  .automation-switch,
-  .lane-entry,
-  .incident-topline {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+@media (max-width: 640px) {
+  .automation-page { gap: 12px; }
+  .automation-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .automation-summary-card, .automation-panel { padding: 14px; }
+  .automation-summary-value { font-size: 22px; }
+  .automation-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .delivery-table-wrap { overflow: visible; border: 0; }
+  .delivery-table, .delivery-table tbody, .delivery-table tr, .delivery-table td { display: block; min-width: 0; width: 100%; }
+  .delivery-table thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .delivery-table tr { margin-bottom: 8px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-card); }
+  .delivery-table tr:last-child { margin-bottom: 0; }
+  .delivery-table td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; border-bottom: 0; overflow-wrap: anywhere; text-align: right; }
+  .delivery-table td::before { content: attr(data-label); flex: none; color: var(--text-muted); font-size: 11px; font-weight: 700; text-align: left; }
+}
+@media (max-width: 360px) {
+  .automation-policy-grid { grid-template-columns: minmax(0, 1fr); }
 }
 </style>

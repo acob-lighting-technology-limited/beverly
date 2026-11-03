@@ -21,38 +21,7 @@
             <span class="oem-hero-name">{{ currentOemDisplayName }}</span>
           </div>
 
-          <div class="oem-hero-pill oem-hero-pill--strategy">
-            <span class="oem-strategy-tag">{{ vendingStrategyPill }}</span>
-          </div>
-
-          <div class="oem-hero-pill oem-hero-pill--status">
-            <span class="hero-status-dot"></span>
-            <span>Active Grid Integration</span>
-          </div>
         </div>
-
-        <div class="oem-hero-sites">
-          <svg class="oem-hero-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-            <circle cx="12" cy="10" r="3"></circle>
-          </svg>
-          <span class="oem-hero-subtitle-text">{{ workspaceSubtitle }}</span>
-        </div>
-      </div>
-
-      <div class="oem-hero-actions">
-        <BaseButton
-          class="btn-switch-workspace"
-          size="sm"
-          variant="outline"
-          title="Switch OEM Workspace"
-          @click="switchWorkspace"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="btn-switch-icon" aria-hidden="true">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
-          </svg>
-          <span>Switch OEM Workspace</span>
-        </BaseButton>
       </div>
     </header>
 
@@ -248,25 +217,6 @@ export default {
           ? this.oemStore.currentOemId.toUpperCase()
           : "Calinmeter")
       );
-    },
-    vendingStrategyPill() {
-      if (this.isSparkMeter) {
-        return "Direct Credit (Over-the-Air Account Top-up)";
-      }
-      if (this.isMiyaji) {
-        return "BaaS / Subscription Swapping";
-      }
-      return "STS Token (20-Digit Keypad)";
-    },
-    workspaceSubtitle() {
-      if (this.isSparkMeter) {
-        const count = this.panel?.totalAccountCount ? Number(this.panel.totalAccountCount).toLocaleString() : "3,073";
-        return `${count} Smart Meters across 8 Grid Sites: OTU-COSTAIN, Adebayo, Oloyan, Sule, Adewale, Mile 13, Ajegunle, Onipanu`;
-      }
-      if (this.isMiyaji) {
-        return "Smart EV Battery Swapping Stations & Connected Fleet Telemetry";
-      }
-      return "Calinmeter Prepayment Grid Architecture & Standard Transfer Specification (STS)";
     },
     cards() {
       const theme = this.chartTheme || {};
@@ -598,10 +548,6 @@ export default {
       };
       const alarm = map[label] || "";
       window.location.hash = `#/prepay-report/abnormal-alarm${alarm ? `?alarm=${encodeURIComponent(alarm)}` : ""}`;
-    },
-    switchWorkspace() {
-      this.oemStore.clearSelection();
-      window.location.hash = "#/dashboard";
     }
   }
 };
@@ -614,7 +560,7 @@ export default {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 16px 20px;
+  padding: 10px 16px;
   margin-bottom: 20px;
   background: var(--bg-card, #ffffff);
   border: 1px solid var(--border-color, rgba(148, 163, 184, 0.16));
@@ -708,70 +654,6 @@ export default {
   height: 13px;
 }
 
-.oem-hero-pill--strategy {
-  background: rgba(245, 158, 11, 0.1);
-  color: #b45309;
-  border: 1px solid rgba(245, 158, 11, 0.2);
-}
-
-.oem-hero-pill--status {
-  background: rgba(16, 185, 129, 0.1);
-  color: #047857;
-  border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.hero-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35);
-  animation: hero-pulse 2s infinite ease-in-out;
-}
-
-.oem-hero-sites {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-muted, #64748b);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.oem-hero-pin {
-  width: 14px;
-  height: 14px;
-  color: var(--primary, #059669);
-  flex-shrink: 0;
-}
-
-.oem-hero-subtitle-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.oem-hero-actions {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.btn-switch-workspace {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-switch-icon {
-  width: 14px;
-  height: 14px;
-}
-
 .dashboard-live-dot {
   display: inline-block;
   width: 7px;
@@ -838,15 +720,4 @@ export default {
   color: #f8fafc;
 }
 
-[data-theme="executive"] .oem-hero-pill--strategy {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fcd34d;
-  border-color: rgba(245, 158, 11, 0.3);
-}
-
-[data-theme="executive"] .oem-hero-pill--status {
-  background: rgba(16, 185, 129, 0.15);
-  color: #6ee7b7;
-  border-color: rgba(16, 185, 129, 0.3);
-}
 </style>
