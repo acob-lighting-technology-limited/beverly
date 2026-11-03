@@ -1,5 +1,7 @@
 "use strict";
 
+const crypto = require('node:crypto');
+
 const defaultBuckets = ["uploads", "imports", "exports", "receipts"];
 const defaultLoginDomain = "org.acoblighting.com";
 const defaultRequestTimeoutMs = 15000;
@@ -187,19 +189,34 @@ const CRM_STAFF_ROLES = new Set([
 async function staffActorFromAuthUser(user = {}, fallback = {}) {
   if (!serviceConfigured() || !user.id) return null;
   const encodedUserId = encodeURIComponent(user.id);
-  const rows = await restRequest(`/users?select=id,auth_user_id,user_id,email,name,role_key,remark,station_id&or=(auth_user_id.eq.${encodedUserId},user_id.eq.${encodedUserId})&limit=1`);
+  const rows = await restRequest(`/users?select=id,auth_user_id,user_id,email,user_name,role_key,station_id,station_ids,password_reset_required&or=(auth_user_id.eq.${encodedUserId},user_id.eq.${encodedUserId})&limit=1`);
   const staff = Array.isArray(rows) ? rows[0] : null;
-  const roleId = staff?.role_key || fallback.roleId || "";
+  const roleId = staff?.role_key || "";
   if (!staff || !roleId) return null;
+  const stationIds = [...new Set([...(Array.isArray(staff.station_ids) ? staff.station_ids : []), staff.station_id].map((value) => String(value || '').trim().toUpperCase()).filter(Boolean))];
   return {
     authUserId: staff.auth_user_id || user.id,
     userId: staff.user_id || staff.id || fallback.userId || user.id,
-    userName: staff.name || staff.email || fallback.userName || user.email || "",
+    userName: staff.user_name || staff.email || user.email || "",
     roleId,
-    remark: staff.remark || fallback.remark || "",
-    stationId: staff.station_id || fallback.stationId || "",
+    remark: "",
+    stationId: stationIds.includes('*') ? '' : (stationIds[0] || ''),
+    stationIds,
+    passwordResetRequired: staff.password_reset_required === true,
     email: staff.email || user.email || fallback.email || ""
   };
+}
+
+async function staffMfaState(userId, token) {
+  const id = encodeURIComponent(String(userId || ''));
+  const factors = await restRequest(`/staff_mfa_factors?select=id&auth_user_id=eq.${id}&status=eq.active&limit=1`);
+  if (!Array.isArray(factors)) throw new Error('Staff MFA status unavailable');
+  if (!factors.length) return { required: false, verified: false };
+  if (!token) return { required: true, verified: false };
+  const hash = crypto.createHash('sha256').update(`${token}:beverly-staff-mfa`).digest('hex');
+  const sessions = await restRequest(`/staff_mfa_sessions?select=expires_at&auth_user_id=eq.${id}&token_hash=eq.${hash}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}&limit=1`);
+  if (!Array.isArray(sessions)) throw new Error('Staff MFA session unavailable');
+  return { required: true, verified: sessions.length > 0, expiresAt: sessions[0]?.expires_at || null };
 }
 
 async function vendorActorFromAuthUser(user = {}, fallback = {}) {
@@ -260,7 +277,7 @@ async function resolveAuthEmail(identifier, explicitEmail = "") {
   return normalizeIdentifier(authUser?.email) || emailFromLogin(normalizedIdentifier);
 }
 
-async function signInWithPassword({ userId, password }) {
+async function signInWithPassword({ userId, password, mfaCode }, options = {}) {
   if (!authEnabled() || !configured()) return null;
   const key = anonKey() || serviceRoleKey();
   let email = "";
@@ -316,8 +333,13 @@ async function signInWithPassword({ userId, password }) {
 
   const user = body.user || {};
   const metadataActor = normalizedActorFromAuthUser(user, email);
-  const actor = await staffActorFromAuthUser(user, metadataActor).catch(() => metadataActor) || metadataActor;
-  const normalizedRole = String(actor.roleId || '').toLowerCase();
+  let actor;
+  try {
+    actor = await staffActorFromAuthUser(user, metadataActor);
+  } catch {
+    return { status: 503, body: { code: 503, msg: 'Staff account verification is temporarily unavailable.', reason: 'Staff account verification is temporarily unavailable.', data: null, result: null } };
+  }
+  const normalizedRole = String(actor?.roleId || '').toLowerCase();
   if (!CRM_STAFF_ROLES.has(normalizedRole)) {
     return {
       status: 403,
@@ -333,6 +355,20 @@ async function signInWithPassword({ userId, password }) {
         }
       }
     };
+  }
+  if (actor.passwordResetRequired) {
+    return { status: 403, body: { code: 403, msg: 'Complete staff account setup in Wallet Admin before signing in.', reason: 'Complete staff account setup in Wallet Admin before signing in.', data: null, result: null } };
+  }
+  try {
+    const mfa = await staffMfaState(user.id, body.access_token);
+    if (mfa.required && !mfa.verified) {
+      if (!String(mfaCode || '').trim()) return { status: 403, body: { code: 403, error: 'mfa_required', msg: 'Enter your staff security code.', data: null, result: null } };
+      if (typeof options.verifyStaffMfa !== 'function') return { status: 503, body: { code: 503, error: 'mfa_unavailable', msg: 'Staff verification is temporarily unavailable.', data: null, result: null } };
+      const verified = await options.verifyStaffMfa(body.access_token, String(mfaCode).trim());
+      if (!verified || !(await staffMfaState(user.id, body.access_token)).verified) return { status: 403, body: { code: 403, error: 'mfa_invalid', msg: 'Enter a valid security code.', data: null, result: null } };
+    }
+  } catch {
+    return { status: 503, body: { code: 503, error: 'mfa_unavailable', msg: 'Staff verification is temporarily unavailable.', data: null, result: null } };
   }
   return {
     status: 200,
@@ -370,7 +406,7 @@ async function signInWithPassword({ userId, password }) {
   };
 }
 
-async function refreshAccessToken(refreshToken) {
+async function refreshAccessToken(refreshToken, previousAccessToken = '') {
   const token = String(refreshToken || "").trim();
   const key = anonKey() || serviceRoleKey();
   if (!authEnabled() || !configured() || !token || !key) return null;
@@ -387,7 +423,19 @@ async function refreshAccessToken(refreshToken) {
   }
   if (!response.ok || !body?.access_token) return null;
   const user = body.user || {};
-  const actor = normalizedActorFromAuthUser(user);
+  const actor = await staffActorFromAuthUser(user).catch(() => null);
+  if (!actor || actor.passwordResetRequired || !CRM_STAFF_ROLES.has(String(actor.roleId || '').toLowerCase())) return null;
+  try {
+    const mfa = await staffMfaState(user.id, previousAccessToken);
+    if (mfa.required) {
+      if (!mfa.verified || !mfa.expiresAt) return null;
+      const tokenHash = crypto.createHash('sha256').update(`${body.access_token}:beverly-staff-mfa`).digest('hex');
+      await restRequest('/staff_mfa_sessions?on_conflict=token_hash', {
+        method: 'POST', prefer: 'resolution=merge-duplicates,return=minimal',
+        body: { auth_user_id: user.id, token_hash: tokenHash, expires_at: mfa.expiresAt, verified_at: new Date().toISOString() },
+      });
+    }
+  } catch { return null; }
   return {
     token: body.access_token,
     refreshToken: body.refresh_token,
@@ -414,20 +462,16 @@ async function authUserFromAccessToken(accessToken) {
   }));
   if (!response.ok) return null;
   const actor = normalizedActorFromAuthUser(body || {});
-  if (actor.roleId === "vendor" || actor.roleId === "vendor_user" || actor.roleId === "vendor-user") {
-    try {
-      const vendorActor = await vendorActorFromAuthUser(body || {}, actor);
-      if (vendorActor) return vendorActor;
-    } catch {
-      return actor;
-    }
+  const staffActor = await staffActorFromAuthUser(body || {});
+  if (staffActor) {
+    if (staffActor.passwordResetRequired) return null;
+    const mfa = await staffMfaState(body.id, token);
+    return mfa.required && !mfa.verified ? null : staffActor;
   }
-  if (actor.roleId) return actor;
-  try {
-    return await staffActorFromAuthUser(body || {}, actor);
-  } catch {
-    return actor;
+  if (["vendor", "vendor_user", "vendor-user"].includes(String(actor.roleId).toLowerCase())) {
+    return await vendorActorFromAuthUser(body || {}, actor);
   }
+  return null;
 }
 
 function adminEmailsFallback() {

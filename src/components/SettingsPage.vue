@@ -84,21 +84,8 @@
 
           <div class="profile-section-title" style="margin-top:28px">Two-Factor Authentication</div>
           <div class="mfa-section-body">
-            <div v-if="mfaLoading" class="mfa-loading">Loading…</div>
-            <div v-else-if="mfaStatus.enrolled" class="mfa-status">
-              <div class="mfa-status-badge mfa-enabled">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Enabled
-              </div>
-              <p class="mfa-hint">Your account is protected with two-factor authentication.</p>
-              <div class="mfa-actions"><BaseButton size="sm" variant="danger" @click="disableMFA">Disable 2FA</BaseButton></div>
-            </div>
-            <div v-else class="mfa-status">
-              <div class="mfa-status-badge mfa-disabled">Not Enabled</div>
-              <p class="mfa-hint">Protect your account with a second verification step.</p>
-              <BaseButton size="sm" variant="primary" @click="mfaSetupOpen = true">Enable 2FA</BaseButton>
-            </div>
-            <MfaSetupFlow v-if="mfaSetupOpen" @complete="onMfaSetupComplete" @cancelled="mfaSetupOpen = false" />
+            <p class="mfa-hint">Manage staff verification in Wallet Admin.</p>
+            <a href="/wallet-admin/">Open Wallet Admin</a>
           </div>
 
         </div>
@@ -227,9 +214,7 @@ import BaseButton from "./base/BaseButton.vue";
 import BaseIconButton from "./base/BaseIconButton.vue";
 import BaseInput from "./base/BaseInput.vue";
 import BaseToggle from "./base/BaseToggle.vue";
-import MfaSetupFlow from "./MfaSetupFlow.vue";
 import { changeUserPassword, loadPreferenceState, savePreferenceState } from "../services/profile-store.mjs";
-import { getMFAStatus, unenrollMFA } from "../services/mfa-service.mjs";
 import { getApi, putApi, setRuntimeLiveWritesAllowed } from "../services/api.js";
 import { crmPushNotifications } from "../services/push-notifications.mjs";
 
@@ -243,7 +228,7 @@ function normalizeThemeChoice(theme) {
 
 export default {
   name: "SettingsPage",
-  components: { BaseButton, BaseIconButton, BaseInput, BaseToggle, MfaSetupFlow },
+  components: { BaseButton, BaseIconButton, BaseInput, BaseToggle },
   emits: ["close", "theme-change"],
   props: {
     userName: { type: String, default: "ACB(admin)" },
@@ -272,9 +257,6 @@ export default {
         { id: "tokenAlerts", label: "Token Alerts", desc: "Notify on token generation" },
         { id: "systemAlerts", label: "System Alerts", desc: "System maintenance notices" }
       ],
-      mfaStatus: { enrolled: false, factorId: null },
-      mfaLoading: true,
-      mfaSetupOpen: false,
       liveControl: {
         enabled: false,
         environment: "",
@@ -287,7 +269,7 @@ export default {
     };
   },
   async mounted() {
-    await Promise.all([this.loadMfaStatus(), this.syncDevicePush()]);
+    await this.syncDevicePush();
   },
   computed: {
     roleName() {
@@ -430,21 +412,6 @@ export default {
       this.prefs = savePreferenceState(this.prefs);
       this.prefsMessage = "Preferences saved.";
       setTimeout(() => { this.prefsMessage = ""; }, 3000);
-    },
-    async loadMfaStatus() {
-      this.mfaLoading = true;
-      try {
-        this.mfaStatus = await getMFAStatus();
-      } catch { this.mfaStatus = { enrolled: false, factorId: null }; }
-      this.mfaLoading = false;
-    },
-    async disableMFA() {
-      await unenrollMFA(this.mfaStatus.factorId);
-      await this.loadMfaStatus();
-    },
-    async onMfaSetupComplete() {
-      this.mfaSetupOpen = false;
-      await this.loadMfaStatus();
     }
   }
 };

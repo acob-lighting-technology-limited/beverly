@@ -555,12 +555,12 @@ async function main() {
       assert(sanitizedAccountRequest.body.includes('"pageSize":500'), "account live proxy must preserve supported bulk page sizes");
 
       const mfaFactorsAlias = await request(proxyPort, "GET", "/auth/mfa/factors");
-      assert.strictEqual(mfaFactorsAlias.status, 200);
-      assert.deepStrictEqual(mfaFactorsAlias.body.result.factors, []);
+      assert.strictEqual(mfaFactorsAlias.status, 503);
+      assert.strictEqual(mfaFactorsAlias.body.error, 'mfa_unavailable');
 
       const mfaFactorsApiPath = await request(proxyPort, "GET", "/api/auth/mfa/factors");
-      assert.strictEqual(mfaFactorsApiPath.status, 200);
-      assert.deepStrictEqual(mfaFactorsApiPath.body.result.factors, []);
+      assert.strictEqual(mfaFactorsApiPath.status, 503);
+      assert.strictEqual(mfaFactorsApiPath.body.error, 'mfa_unavailable');
     });
 
     assert(upstreamRequests.some((entry) => entry.url === "/API/RemoteMeterTask/GetReadingTask?SITE_ID=KYAKALE"), "query string or path normalization failed");
