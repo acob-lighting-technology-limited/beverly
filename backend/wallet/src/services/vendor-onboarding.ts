@@ -29,12 +29,18 @@ export class OnboardingError extends Error {
             ? 404
             : ['single_station_required'].includes(code)
                 ? 422
-                : ['vendor_closed_final', 'invitation_already_accepted'].includes(code)
+                : ['vendor_closed_final', 'invitation_already_accepted', 'vendor_email_in_use'].includes(code)
                     ? 409
                     : code.endsWith('_failed') || code.includes('provisioning_') || code === 'password_recovery_required'
                         ? 503
                         : 400;
     }
+}
+
+function isExistingAuthUser(error: unknown): boolean {
+    const authError = error as { status?: number; code?: string; message?: string } | null;
+    return authError?.code === 'email_exists'
+        || /already (been )?registered|already exists/i.test(authError?.message ?? '');
 }
 
 export interface CreateVendorInput {
@@ -192,6 +198,13 @@ export async function createVendorOrganization(input: CreateVendorInput): Promis
             },
         });
         if (authErr || !authUserData.user) {
+            if (isExistingAuthUser(authErr)) {
+                throw new OnboardingError(
+                    'This email already has a Beverly login. Use a different primary-user email or update the existing account.',
+                    'vendor_email_in_use',
+                    authErr,
+                );
+            }
             throw new OnboardingError(
                 'Vendor login account could not be created.',
                 'auth_create_failed',

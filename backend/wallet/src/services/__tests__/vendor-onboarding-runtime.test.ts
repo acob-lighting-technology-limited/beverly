@@ -122,6 +122,23 @@ describe('vendor onboarding runtime workflow', () => {
         });
     });
 
+    it('identifies a primary email already used by Beverly', async () => {
+        generateLink.mockResolvedValue({
+            data: { user: null },
+            error: { status: 422, code: 'email_exists', message: 'User already registered' },
+        });
+        const { createVendorOrganization } = await import('../vendor-onboarding.js');
+
+        await expect(createVendorOrganization(input)).rejects.toMatchObject({
+            code: 'vendor_email_in_use',
+            statusCode: 409,
+            message: 'This email already has a Beverly login. Use a different primary-user email or update the existing account.',
+        });
+        expect(writes).toEqual(expect.arrayContaining([
+            expect.objectContaining({ operation: 'delete', table: 'vendor_organizations' }),
+        ]));
+    });
+
     it('replays an already completed domain provisioning without creating or exposing another password', async () => {
         existingProvision = true;
         const { createVendorOrganization } = await import('../vendor-onboarding.js');

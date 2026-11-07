@@ -54,7 +54,10 @@ function vendorCreationErrorMessage(error: unknown): string {
         return 'The request took too long. Check the vendor list before retrying.';
     }
     if (error.code === 'auth_create_failed') {
-        return 'The vendor login could not be created. Verify the email, then retry.';
+        return 'The vendor login could not be created. Retry once. Contact support if it continues.';
+    }
+    if (error.code === 'vendor_email_in_use') {
+        return 'This email already has a Beverly login. Use a different primary-user email or update the existing account.';
     }
     if (error.code === 'single_station_required' || error.code === 'validation_failed') {
         return 'Some vendor details are invalid. Review each form step.';
