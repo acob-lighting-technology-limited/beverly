@@ -10,7 +10,7 @@ import { vendorPasswordError } from '@beverly/tokens/password-policy';
 import { env } from '../config/env.js';
 import { abandonWalletIdempotency, assertClientIdempotencyKey, claimWalletIdempotency, completeWalletIdempotency, hashIdempotency } from '../services/idempotency.js';
 import { adminClient } from '../db/supabase.js';
-import { createVendorOrganization, resendVendorInvitation, setVendorStatus } from '../services/vendor-onboarding.js';
+import { changeVendorLoginEmail, createVendorOrganization, resendVendorInvitation, setVendorStatus } from '../services/vendor-onboarding.js';
 import { approveFundingRequest, rejectFundingRequest, listPendingFunding, reconcileApprovedFundingCredits, attachProofUrls } from '../services/funding.js';
 import { getBalance, captureHold, releaseHold } from '../services/ledger.js';
 import { setOwnerWalletStatus, setWalletStatus, WalletStateError } from '../services/wallets.js';
@@ -485,6 +485,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'DELETE /vendor-applications/:id': 'wallet.vendors.manage',
     'POST /vendors': 'wallet.vendors.manage',
     'POST /vendors/:id/invitation/resend': 'wallet.vendors.manage',
+    'POST /vendors/:id/login-email': 'wallet.vendors.manage',
     'GET /vendors': 'wallet.vendors.review',
     'GET /vendors/summary': 'wallet.vendors.review',
     'GET /vendors/analytics': 'wallet.vendors.review',
@@ -1949,6 +1950,45 @@ const route: FastifyPluginAsync = async (fastify) => {
         try {
             const result = await resendVendorInvitation(id);
             await completeWalletIdempotency(scope, idempotencyKey, { invitationDelivery: result.invitationDelivery });
+            return result;
+        } catch (error) {
+            await abandonWalletIdempotency(scope, idempotencyKey, fingerprint).catch(() => undefined);
+            throw error;
+        }
+    });
+
+    fastify.post('/vendors/:id/login-email', async (req, reply) => {
+        const idempotencyKey = requireIdempotencyKey(req, reply);
+        if (!idempotencyKey) return undefined;
+        const id = z.string().uuid().parse((req.params as { id: string }).id);
+        const body = z.object({
+            loginEmail: z.string().trim().email().max(254),
+            reason: z.string().trim().min(4).max(500),
+        }).parse(req.body);
+        const { data: vendor, error: vendorError } = await adminClient
+            .from('vendor_organizations')
+            .select('station_id')
+            .eq('id', id)
+            .maybeSingle();
+        if (vendorError) throw vendorError;
+        if (!vendor) return reply.code(404).send({ error: 'not_found', message: 'Vendor not found.' });
+        const assignedStations = staffStations(req);
+        if (assignedStations && !assignedStations.includes(String((vendor as any).station_id ?? '').toUpperCase())) {
+            return reply.code(403).send({ error: 'station_scope_forbidden', message: 'Vendor is outside your station scope.' });
+        }
+        const scope = `vendor.login-email.change:${id}`;
+        const fingerprint = hashIdempotency([id, req.actor!.userId, body.loginEmail.toLowerCase(), body.reason]);
+        const claim = await claimWalletIdempotency(scope, idempotencyKey, fingerprint);
+        if (claim.state === 'pending') return reply.code(409).send({ error: 'login_email_change_in_progress', message: 'Sign-in email change is already in progress.' });
+        if (claim.state === 'replay') return { ...(claim.responsePayload as object), replayed: true };
+        try {
+            const result = await changeVendorLoginEmail({
+                vendorOrganizationId: id,
+                loginEmail: body.loginEmail,
+                changedByStaffId: req.actor!.userId,
+                reason: body.reason,
+            });
+            await completeWalletIdempotency(scope, idempotencyKey, result);
             return result;
         } catch (error) {
             await abandonWalletIdempotency(scope, idempotencyKey, fingerprint).catch(() => undefined);

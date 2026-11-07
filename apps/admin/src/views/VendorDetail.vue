@@ -41,6 +41,33 @@ const loading    = ref(true);
 const banner     = ref<{ tone: 'success' | 'error'; text: string } | null>(null);
 const invitationBusy = ref(false);
 const resentTemporaryPassword = ref<string | null>(null);
+const loginEmailEditing = ref(false);
+const loginEmailSaving = ref(false);
+const loginEmailForm = ref({ loginEmail: '', reason: '' });
+
+function startLoginEmailChange() {
+    loginEmailForm.value = { loginEmail: '', reason: '' };
+    loginEmailEditing.value = true;
+}
+
+async function saveLoginEmail() {
+    loginEmailSaving.value = true;
+    banner.value = null;
+    try {
+        const response = await api.post<{ loginEmail: string }>(
+            `/api/v1/admin/vendors/${id}/login-email`,
+            loginEmailForm.value,
+            { headers: { 'Idempotency-Key': crypto.randomUUID() } },
+        );
+        await loadDetail();
+        loginEmailEditing.value = false;
+        banner.value = { tone: 'success', text: `Sign-in email changed to ${response.loginEmail}. Existing sessions ended.` };
+    } catch (error: unknown) {
+        banner.value = { tone: 'error', text: error instanceof Error ? error.message : 'Sign-in email change failed.' };
+    } finally {
+        loginEmailSaving.value = false;
+    }
+}
 
 async function resendInvitation() {
     invitationBusy.value = true;
@@ -708,6 +735,8 @@ onMounted(loadDetail);
             <dt>Station</dt>        <dd class="bw-mono">{{ stationDisplayLabel(detail.vendor.station_id) }}</dd>
           </template>
           <template v-if="detail.invitation">
+            <dt>Sign-in email</dt>
+            <dd class="bw-mono">{{ detail.invitation.email }}</dd>
             <dt>Email ownership</dt>
             <dd>
               <span :class="['bw-badge', detail.invitation.email_verified_at ? 'success' : 'warning']">
@@ -727,6 +756,19 @@ onMounted(loadDetail);
               <button class="bw-btn sm" type="button" :disabled="invitationBusy" @click="resendInvitation">
                 {{ invitationBusy ? 'Sending…' : 'Resend invitation' }}
               </button>
+            </dd>
+            <dt v-if="canManageVendors">Sign-in access</dt>
+            <dd v-if="canManageVendors" class="login-email-access">
+              <button v-if="!loginEmailEditing" class="bw-btn sm" type="button" @click="startLoginEmailChange">Change sign-in email</button>
+              <form v-else class="login-email-form" @submit.prevent="saveLoginEmail">
+                <p>Contact email stays separate.</p>
+                <label>New sign-in email<input v-model.trim="loginEmailForm.loginEmail" required type="email" maxlength="254" /></label>
+                <label>Reason<textarea v-model.trim="loginEmailForm.reason" required minlength="4" maxlength="500" rows="2" /></label>
+                <div class="vendor-edit-actions">
+                  <button class="bw-btn sm" type="button" :disabled="loginEmailSaving" @click="loginEmailEditing = false">Cancel</button>
+                  <button class="bw-btn sm primary" type="submit" :disabled="loginEmailSaving">{{ loginEmailSaving ? 'Saving…' : 'Save sign-in email' }}</button>
+                </div>
+              </form>
             </dd>
           </template>
           <template v-if="detail.vendor.bank_name">
@@ -1180,6 +1222,12 @@ onMounted(loadDetail);
 .vendor-edit-form textarea { resize: vertical; }
 .vendor-edit-form .wide { grid-column: 1 / -1; }
 .vendor-edit-actions { display: flex; justify-content: flex-end; gap: var(--s-2); }
+.login-email-access { grid-column: span 3; }
+.login-email-form { display: grid; gap: var(--s-2); max-width: 460px; }
+.login-email-form p { margin: 0; color: var(--text-muted); font-size: var(--t-xs); }
+.login-email-form label { display: grid; gap: 4px; color: var(--text-muted); font-size: var(--t-xs); font-weight: 700; }
+.login-email-form input, .login-email-form textarea { width: 100%; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; color: var(--text); font: inherit; }
+.login-email-form input:focus, .login-email-form textarea:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-glow); }
 
 /* ── Wallet ── */
 .wallet-head { display: flex; justify-content: space-between; align-items: start; padding: var(--s-4); border-bottom: 1px solid var(--border); }
@@ -1251,6 +1299,7 @@ onMounted(loadDetail);
   .ov-dl dt    { font-weight: 700; }
   .vendor-edit-form { grid-template-columns: 1fr; }
   .vendor-edit-form .wide { grid-column: auto; }
+  .login-email-access { grid-column: auto; }
   .ledger-row  { grid-template-columns: 1fr auto; }
   .ledger-when, .ledger-bal { grid-column: 1 / -1; opacity: 0.7; }
   .tabs        { overflow-x: auto; }
