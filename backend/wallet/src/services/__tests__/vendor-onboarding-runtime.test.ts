@@ -4,7 +4,9 @@ type Row = Record<string, any>;
 const writes: Array<{ operation: string; table: string; payload?: any }> = [];
 let failInsertTable: string | null = null;
 let failInsertMessage = '';
+let failUpdateTable: string | null = null;
 let existingProvision = false;
+let changingLoginEmail = false;
 
 class Query {
     private operation = '';
@@ -21,9 +23,14 @@ class Query {
     then(resolve: (value: any) => any, reject: (reason: any) => any) { return this.execute(false).then(resolve, reject); }
     private async execute(single: boolean) {
         if (this.operation === 'insert' && failInsertTable === this.table) return { data: null, error: { message: failInsertMessage || `${this.table} failed` } };
+        if (this.operation === 'update' && failUpdateTable === this.table) return { data: null, error: { message: `${this.table} update failed` } };
         if (this.operation === 'insert' && single) {
             const id = this.table === 'vendor_organizations' ? 'org-1' : this.table === 'vendor_users' ? 'vendor-user-1' : 'row-1';
             return { data: { id, ...this.payload }, error: null };
+        }
+        if (this.operation === '' && single && changingLoginEmail) {
+            if (this.table === 'vendor_organizations') return { data: { id: 'org-1', legal_name: 'Example Energy Limited', station_id: 'TUNGA' }, error: null };
+            if (this.table === 'vendor_users') return { data: { id: 'vendor-user-1', auth_user_id: 'auth-user-1', email: 'owner@example.test' }, error: null };
         }
         if (this.operation === '' && single && existingProvision) {
             if (this.table === 'vendor_organizations') return { data: { id: 'org-existing', provisioning_status: 'active' }, error: null };
@@ -37,10 +44,12 @@ class Query {
 const createUser = vi.fn();
 const generateLink = vi.fn();
 const deleteUser = vi.fn();
+const updateUserById = vi.fn();
+const signOut = vi.fn();
 vi.mock('../../db/supabase.js', () => ({
     adminClient: {
         from: (table: string) => new Query(table),
-        auth: { admin: { createUser, generateLink, deleteUser } },
+        auth: { admin: { createUser, generateLink, deleteUser, updateUserById, signOut } },
     },
 }));
 vi.mock('../wallets.js', () => ({
@@ -73,11 +82,15 @@ describe('vendor onboarding runtime workflow', () => {
         writes.splice(0);
         failInsertTable = null;
         failInsertMessage = '';
+        failUpdateTable = null;
         existingProvision = false;
+        changingLoginEmail = false;
         vi.clearAllMocks();
         createUser.mockResolvedValue({ data: { user: { id: 'auth-user-1' } }, error: null });
         generateLink.mockResolvedValue({ data: { user: { id: 'auth-user-1' }, properties: { action_link: 'https://example.test/verify-vendor' } }, error: null });
         deleteUser.mockResolvedValue({ error: null });
+        updateUserById.mockResolvedValue({ error: null });
+        signOut.mockResolvedValue({ error: null });
         sendEmail.mockResolvedValue({ messageId: 'email-1' });
     });
 
@@ -122,6 +135,23 @@ describe('vendor onboarding runtime workflow', () => {
         });
     });
 
+    it('identifies a primary email already used by Beverly', async () => {
+        generateLink.mockResolvedValue({
+            data: { user: null },
+            error: { status: 422, code: 'email_exists', message: 'User already registered' },
+        });
+        const { createVendorOrganization } = await import('../vendor-onboarding.js');
+
+        await expect(createVendorOrganization(input)).rejects.toMatchObject({
+            code: 'vendor_email_in_use',
+            statusCode: 409,
+            message: 'This email already has a Beverly login. Use a different primary-user email or update the existing account.',
+        });
+        expect(writes).toEqual(expect.arrayContaining([
+            expect.objectContaining({ operation: 'delete', table: 'vendor_organizations' }),
+        ]));
+    });
+
     it('replays an already completed domain provisioning without creating or exposing another password', async () => {
         existingProvision = true;
         const { createVendorOrganization } = await import('../vendor-onboarding.js');
@@ -139,5 +169,53 @@ describe('vendor onboarding runtime workflow', () => {
         expect(createUser).not.toHaveBeenCalled();
         expect(sendEmail).not.toHaveBeenCalled();
         expect(writes).not.toEqual(expect.arrayContaining([expect.objectContaining({ operation: 'insert' })]));
+    });
+
+    it('moves a vendor sign-in email, syncs the profile, and ends active sessions', async () => {
+        changingLoginEmail = true;
+        const { changeVendorLoginEmail } = await import('../vendor-onboarding.js');
+
+        await expect(changeVendorLoginEmail({
+            vendorOrganizationId: 'org-1',
+            loginEmail: 'pf.zubo@yahoo.com',
+            changedByStaffId: 'staff-1',
+            reason: 'Correct primary email',
+        })).resolves.toEqual({ loginEmail: 'pf.zubo@yahoo.com' });
+
+        expect(updateUserById).toHaveBeenCalledWith('auth-user-1', { email: 'pf.zubo@yahoo.com', email_confirm: true });
+        expect(signOut).toHaveBeenCalledWith('auth-user-1', 'global');
+        expect(writes).toEqual(expect.arrayContaining([
+            expect.objectContaining({ table: 'vendor_users', operation: 'update', payload: expect.objectContaining({ email: 'pf.zubo@yahoo.com', email_verified_at: expect.any(String) }) }),
+        ]));
+    });
+
+    it('does not attach an email that already belongs to another Beverly login', async () => {
+        changingLoginEmail = true;
+        updateUserById.mockResolvedValueOnce({ error: { code: 'email_exists', message: 'User already registered' } });
+        const { changeVendorLoginEmail } = await import('../vendor-onboarding.js');
+
+        await expect(changeVendorLoginEmail({
+            vendorOrganizationId: 'org-1',
+            loginEmail: 'pf.zubo@yahoo.com',
+            changedByStaffId: 'staff-1',
+            reason: 'Correct primary email',
+        })).rejects.toMatchObject({ code: 'vendor_email_in_use', statusCode: 409 });
+        expect(signOut).not.toHaveBeenCalled();
+    });
+
+    it('restores the Auth email when profile synchronization fails', async () => {
+        changingLoginEmail = true;
+        failUpdateTable = 'vendor_users';
+        const { changeVendorLoginEmail } = await import('../vendor-onboarding.js');
+
+        await expect(changeVendorLoginEmail({
+            vendorOrganizationId: 'org-1',
+            loginEmail: 'pf.zubo@yahoo.com',
+            changedByStaffId: 'staff-1',
+            reason: 'Correct primary email',
+        })).rejects.toMatchObject({ code: 'login_email_update_failed' });
+        expect(updateUserById).toHaveBeenNthCalledWith(1, 'auth-user-1', { email: 'pf.zubo@yahoo.com', email_confirm: true });
+        expect(updateUserById).toHaveBeenNthCalledWith(2, 'auth-user-1', { email: 'owner@example.test', email_confirm: true });
+        expect(signOut).not.toHaveBeenCalled();
     });
 });

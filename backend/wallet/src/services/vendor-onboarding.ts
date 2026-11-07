@@ -29,12 +29,18 @@ export class OnboardingError extends Error {
             ? 404
             : ['single_station_required'].includes(code)
                 ? 422
-                : ['vendor_closed_final', 'invitation_already_accepted'].includes(code)
+                : ['vendor_closed_final', 'invitation_already_accepted', 'vendor_email_in_use', 'vendor_login_email_unchanged'].includes(code)
                     ? 409
                     : code.endsWith('_failed') || code.includes('provisioning_') || code === 'password_recovery_required'
                         ? 503
                         : 400;
     }
+}
+
+function isExistingAuthUser(error: unknown): boolean {
+    const authError = error as { status?: number; code?: string; message?: string } | null;
+    return authError?.code === 'email_exists'
+        || /already (been )?registered|already exists/i.test(authError?.message ?? '');
 }
 
 export interface CreateVendorInput {
@@ -192,6 +198,13 @@ export async function createVendorOrganization(input: CreateVendorInput): Promis
             },
         });
         if (authErr || !authUserData.user) {
+            if (isExistingAuthUser(authErr)) {
+                throw new OnboardingError(
+                    'This email already has a Beverly login. Use a different primary-user email or update the existing account.',
+                    'vendor_email_in_use',
+                    authErr,
+                );
+            }
             throw new OnboardingError(
                 'Vendor login account could not be created.',
                 'auth_create_failed',
@@ -404,6 +417,95 @@ export async function resendVendorInvitation(vendorOrganizationId: string): Prom
         await adminClient.from('vendor_users').update({ invitation_status: 'failed', invitation_error: reason }).eq('id', (user as any).id);
         return { temporaryPassword, invitationDelivery: { status: 'failed', reason } };
     }
+}
+
+export async function changeVendorLoginEmail(input: {
+    vendorOrganizationId: string;
+    loginEmail: string;
+    changedByStaffId: string;
+    reason: string;
+}): Promise<{ loginEmail: string }> {
+    const loginEmail = input.loginEmail.trim().toLowerCase();
+    const { data: organization, error: organizationError } = await adminClient
+        .from('vendor_organizations')
+        .select('id, legal_name, station_id')
+        .eq('id', input.vendorOrganizationId)
+        .maybeSingle();
+    if (organizationError || !organization) throw new OnboardingError('Vendor organization was not found.', 'vendor_not_found');
+
+    const { data: user, error: userError } = await adminClient
+        .from('vendor_users')
+        .select('id, auth_user_id, email')
+        .eq('vendor_organization_id', input.vendorOrganizationId)
+        .limit(1)
+        .maybeSingle();
+    const oldEmail = String((user as any)?.email ?? '').trim().toLowerCase();
+    if (userError || !user || !(user as any).auth_user_id || !oldEmail) {
+        throw new OnboardingError('Vendor login account was not found.', 'login_email_update_failed', userError);
+    }
+    if (oldEmail === loginEmail) {
+        throw new OnboardingError('This is already the vendor sign-in email.', 'vendor_login_email_unchanged');
+    }
+
+    const authUserId = (user as any).auth_user_id as string;
+    const { error: authError } = await adminClient.auth.admin.updateUserById(authUserId, {
+        email: loginEmail,
+        email_confirm: true,
+    });
+    if (authError) {
+        if (isExistingAuthUser(authError)) {
+            throw new OnboardingError('This email already has a Beverly login. It cannot be attached to this vendor.', 'vendor_email_in_use', authError);
+        }
+        throw new OnboardingError('Vendor sign-in email could not be updated.', 'login_email_update_failed', authError);
+    }
+
+    const rollbackAuthEmail = async () => adminClient.auth.admin.updateUserById(authUserId, {
+        email: oldEmail,
+        email_confirm: true,
+    });
+    const { error: profileError } = await adminClient
+        .from('vendor_users')
+        .update({ email: loginEmail, email_verified_at: new Date().toISOString() })
+        .eq('id', (user as any).id);
+    if (profileError) {
+        const { error: rollbackError } = await rollbackAuthEmail();
+        if (rollbackError) {
+            await logSecurityEvent('suspicious_activity', {
+                actorUserId: authUserId,
+                severity: 'high',
+                metadata: { surface: 'vendor_login_email_change', reason: 'profile_sync_and_auth_rollback_failed' },
+            }).catch(() => undefined);
+            throw new OnboardingError('Sign-in email recovery requires support assistance.', 'login_email_recovery_required', profileError);
+        }
+        throw new OnboardingError('Vendor sign-in email could not be saved.', 'login_email_update_failed', profileError);
+    }
+
+    const { error: revokeError } = await adminClient.auth.admin.signOut(authUserId, 'global');
+    if (revokeError) {
+        const { error: profileRollbackError } = await adminClient.from('vendor_users').update({ email: oldEmail }).eq('id', (user as any).id);
+        const { error: authRollbackError } = await rollbackAuthEmail();
+        if (profileRollbackError || authRollbackError) {
+            await logSecurityEvent('suspicious_activity', {
+                actorUserId: authUserId,
+                severity: 'high',
+                metadata: { surface: 'vendor_login_email_change', reason: 'session_revocation_and_rollback_failed' },
+            }).catch(() => undefined);
+            throw new OnboardingError('Sign-in email recovery requires support assistance.', 'login_email_recovery_required', revokeError);
+        }
+        throw new OnboardingError('Existing vendor sessions could not be ended. No email change was saved.', 'login_email_session_revocation_failed', revokeError);
+    }
+
+    await logAction({
+        actorUserId: input.changedByStaffId,
+        actorType: 'staff',
+        action: 'vendor.login_email_changed',
+        targetType: 'vendor_organization',
+        targetId: input.vendorOrganizationId,
+        before: { loginEmail: oldEmail },
+        after: { loginEmail },
+        metadata: { reason: input.reason },
+    });
+    return { loginEmail };
 }
 
 export async function setVendorStatus(
