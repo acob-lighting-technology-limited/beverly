@@ -191,7 +191,7 @@ describe('vendor onboarding runtime workflow', () => {
 
     it('does not attach an email that already belongs to another Beverly login', async () => {
         changingLoginEmail = true;
-        updateUserById.mockResolvedValueOnce({ error: { code: 'email_exists', message: 'User already registered' } });
+        updateUserById.mockResolvedValueOnce({ error: { message: 'Email already exists' } });
         const { changeVendorLoginEmail } = await import('../vendor-onboarding.js');
 
         await expect(changeVendorLoginEmail({

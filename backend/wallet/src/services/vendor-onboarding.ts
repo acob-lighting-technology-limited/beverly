@@ -39,8 +39,9 @@ export class OnboardingError extends Error {
 
 function isExistingAuthUser(error: unknown): boolean {
     const authError = error as { status?: number; code?: string; message?: string } | null;
+    const message = authError?.message ?? '';
     return authError?.code === 'email_exists'
-        || /already (been )?registered|already exists/i.test(authError?.message ?? '');
+        || /already (been )?registered|already exists|email.*(?:exists|registered|in use)|user.*(?:exists|registered)/i.test(message);
 }
 
 export interface CreateVendorInput {
