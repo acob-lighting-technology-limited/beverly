@@ -1992,6 +1992,11 @@ const route: FastifyPluginAsync = async (fastify) => {
             return result;
         } catch (error) {
             await abandonWalletIdempotency(scope, idempotencyKey, fingerprint).catch(() => undefined);
+            const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
+            if (cause && typeof cause === 'object') {
+                const authError = cause as { status?: number; code?: string; name?: string };
+                req.log.error({ vendorId: id, status: authError.status, code: authError.code, name: authError.name }, 'Vendor login email change failed');
+            }
             throw error;
         }
     });
