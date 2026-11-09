@@ -15,7 +15,7 @@ const vendorPush = createPushNotifications('vendor', {
         });
     },
     remove: (endpoint) => api.del(`/api/v1/vendor/push/subscription?endpoint=${encodeURIComponent(endpoint)}`),
-});
+}, import.meta.env.BASE_URL);
 
 export const deviceNotificationState = vendorPush.state;
 export const enableDeviceNotifications = vendorPush.enable;

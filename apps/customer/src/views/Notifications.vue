@@ -41,7 +41,7 @@ interface PreferenceGroup {
 const tab = ref<'inbox' | 'settings'>('inbox');
 const router = useRouter();
 const deviceState = ref<DeviceNotificationState>(customerPushNotifications.state());
-const deviceBusy = ref(false);
+const deviceBusy = ref(true);
 const deviceError = ref('');
 
 async function toggleDeviceNotifications() {
@@ -320,7 +320,9 @@ async function savePrefs() {
 
 onMounted(async () => {
     await Promise.all([loadInbox(), loadPrefs()]);
-    void customerPushNotifications.sync().then((state) => { deviceState.value = state; }).catch(() => undefined);
+    void customerPushNotifications.sync().then((state) => { deviceState.value = state; })
+        .catch((error) => { deviceState.value = 'default'; deviceError.value = error?.message ?? 'Device registration failed.'; })
+        .finally(() => { deviceBusy.value = false; });
 });
 </script>
 

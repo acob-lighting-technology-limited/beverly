@@ -187,7 +187,7 @@ function main() {
   assert(emailTemplates.includes('formatAnnouncementBody'), "Announcement emails must preserve message formatting.");
   assert(resendAdapter.includes("inlineContentId: 'beverly-logo'"), "Resend must attach the Beverly logo inline.");
   assert(resendAdapter.includes("batchCompatibleHtml"), "Batch email branding must use a hosted asset.");
-  assert(resendAdapter.includes("attachments: undefined"), "Batch requests must never include unsupported attachments.");
+  assert(resendAdapter.includes("attachments: m.attachments"), "Batch requests must carry selected email attachments.");
   assert(webhookRoutes.includes("verifyResendSignature"), "Resend webhooks must verify signatures.");
   assert(webhookRoutes.includes("email_message_id"), "Resend webhooks must update tracked deliveries.");
   assert(webhookRoutes.includes("email.suppressed"), "Suppressed email delivery must be tracked.");

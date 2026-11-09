@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { formatNotificationBody } from './notification-content.js';
+import { formatAnnouncementMarkup, formatNotificationBody } from './notification-content.js';
 
 interface NotificationDetail {
+    type?: string;
     title: string;
     body: string;
     metadata?: { path?: string } | Record<string, unknown>;
@@ -29,6 +30,7 @@ const closeButton = ref<HTMLButtonElement | null>(null);
 const restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 const previousOverflow = document.body.style.overflow;
 const blocks = computed(() => formatNotificationBody(props.notification.body));
+const announcementHtml = computed(() => props.notification.type === 'admin_announcement' ? formatAnnouncementMarkup(props.notification.body).html : '');
 const hasPath = computed(() => typeof props.notification.metadata?.path === 'string' && Boolean(props.notification.metadata.path));
 
 function trapFocus(event: KeyboardEvent) {
@@ -84,9 +86,10 @@ onBeforeUnmount(() => {
           </header>
 
           <div id="notification-detail-content" class="notification-detail__content">
+            <div v-if="announcementHtml" class="notification-detail__paragraph" v-html="announcementHtml" />
             <template v-for="(block, index) in blocks" :key="`${block.kind}-${index}`">
-              <p v-if="block.kind === 'paragraph'" class="notification-detail__paragraph">{{ block.text }}</p>
-              <div v-else class="notification-detail__item">
+              <p v-if="!announcementHtml && block.kind === 'paragraph'" class="notification-detail__paragraph">{{ block.text }}</p>
+              <div v-else-if="!announcementHtml" class="notification-detail__item">
                 <strong aria-hidden="true">{{ block.marker }}</strong>
                 <p>{{ block.text }}</p>
               </div>

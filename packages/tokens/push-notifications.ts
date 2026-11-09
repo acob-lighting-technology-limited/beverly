@@ -19,14 +19,18 @@ function applicationServerKey(value: string): ArrayBuffer {
     return Uint8Array.from(raw, (character) => character.charCodeAt(0)).buffer as ArrayBuffer;
 }
 
-function readyServiceWorker(): Promise<ServiceWorkerRegistration> {
-    return Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Service worker unavailable.')), 10_000)),
-    ]);
+async function readyServiceWorker(scopePath: string): Promise<ServiceWorkerRegistration> {
+    const scope = new URL(scopePath, location.origin).href;
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+        const registration = await navigator.serviceWorker.getRegistration(scope);
+        if (registration?.scope === scope && registration.active) return registration;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error('This portal’s service worker is unavailable. Reload and try again.');
 }
 
-export function createPushNotifications(portal: string, transport: PushTransport) {
+export function createPushNotifications(portal: string, transport: PushTransport, scopePath = '/') {
     const disabledKey = `beverly.${portal}.push.disabled`;
     const disabled = () => {
         try { return localStorage.getItem(disabledKey) === '1'; } catch { return false; }
@@ -45,7 +49,7 @@ export function createPushNotifications(portal: string, transport: PushTransport
     const subscribe = async (): Promise<DeviceNotificationState> => {
         const config = await transport.getConfig();
         if (!config.available || !config.publicKey) return 'unavailable';
-        const registration = await readyServiceWorker();
+        const registration = await readyServiceWorker(scopePath);
         let subscription = await registration.pushManager.getSubscription();
         if (!subscription) {
             subscription = await registration.pushManager.subscribe({
@@ -72,7 +76,7 @@ export function createPushNotifications(portal: string, transport: PushTransport
         },
         async disable(): Promise<DeviceNotificationState> {
             if (!supported()) return 'unsupported';
-            const registration = await readyServiceWorker();
+            const registration = await readyServiceWorker(scopePath);
             const subscription = await registration.pushManager.getSubscription();
             if (subscription) {
                 await transport.remove(subscription.endpoint).catch(() => undefined);

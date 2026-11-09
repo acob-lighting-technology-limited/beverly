@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import { api } from '../lib/api';
@@ -22,18 +22,19 @@ const router = useRouter();
 const items = ref<Notification[]>([]);
 const unreadCount = ref(0);
 const nextCursor = ref<string | null>(null);
+const page = ref(1);
+const pageCursors = ref<(string | null)[]>([null]);
+const totalCount = ref(0);
 const loading = ref(false);
 const markingAll = ref(false);
 const error = ref('');
 const filter = ref<'all' | 'unread' | 'read'>('all');
 const filters = ['all', 'unread', 'read'] as const;
 const deviceState = ref<DeviceNotificationState>(adminPushNotifications.state());
-const deviceBusy = ref(false);
+const deviceBusy = ref(true);
 const deviceMessage = ref('');
 const selectedNotification = ref<Notification | null>(null);
-const filteredItems = computed(() => items.value.filter((item) =>
-    filter.value === 'all' || (filter.value === 'read' ? item.read : !item.read)
-));
+let loadRequest = 0;
 
 function formatDate(value: string) {
     const date = new Date(value);
@@ -44,22 +45,27 @@ function formatDate(value: string) {
     return date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short' });
 }
 
-async function load(reset = true) {
+async function load(targetPage = 1) {
+    const request = ++loadRequest;
     loading.value = true;
     error.value = '';
     try {
-        const cursor = !reset && nextCursor.value ? `&cursor=${encodeURIComponent(nextCursor.value)}` : '';
-        const response = await api.get<{ notifications: Notification[]; nextCursor: string | null; unreadCount: number }>(
-            `/api/v1/admin/notifications?limit=20${cursor}`,
+        const cursor = pageCursors.value[targetPage - 1] ? `&cursor=${encodeURIComponent(pageCursors.value[targetPage - 1]!)}` : '';
+        const response = await api.get<{ notifications: Notification[]; nextCursor: string | null; unreadCount: number; totalCount: number }>(
+            `/api/v1/admin/notifications?limit=20&status=${filter.value}${cursor}`,
         );
-        items.value = reset ? response.notifications : [...items.value, ...response.notifications];
+        if (request !== loadRequest) return;
+        items.value = response.notifications;
         nextCursor.value = response.nextCursor;
+        totalCount.value = response.totalCount;
+        page.value = targetPage;
+        if (response.nextCursor) pageCursors.value[targetPage] = response.nextCursor;
         unreadCount.value = response.unreadCount;
         publishNotificationCount(unreadCount.value);
     } catch (caught: any) {
-        error.value = caught?.message ?? 'Notifications failed to load.';
+        if (request === loadRequest) error.value = caught?.message ?? 'Notifications failed to load.';
     } finally {
-        loading.value = false;
+        if (request === loadRequest) loading.value = false;
     }
 }
 
@@ -72,6 +78,7 @@ async function openNotification(item: Notification) {
             item.read = true;
             unreadCount.value = Math.max(0, unreadCount.value - 1);
             publishNotificationCount(unreadCount.value);
+            if (filter.value === 'unread') await load(page.value);
         } catch (caught: any) {
             error.value = caught?.message ?? 'Notification could not be marked read.';
         }
@@ -99,6 +106,7 @@ async function markAllRead() {
         items.value.forEach((item) => { item.read = true; });
         unreadCount.value = 0;
         publishNotificationCount(0);
+        if (filter.value === 'unread') await load(1);
     } catch (caught: any) {
         error.value = caught?.message ?? 'Notifications could not be marked read.';
     } finally {
@@ -114,6 +122,8 @@ async function toggleDeviceNotifications() {
         deviceState.value = deviceState.value === 'enabled'
             ? await adminPushNotifications.disable()
             : await adminPushNotifications.enable();
+        if (deviceState.value === 'unavailable') deviceMessage.value = 'Push delivery is unavailable. Contact an administrator.';
+        if (deviceState.value === 'blocked') deviceMessage.value = 'Allow notifications in browser settings.';
     } catch (caught: any) {
         deviceMessage.value = caught?.message ?? 'Device notifications could not be updated.';
     } finally {
@@ -123,8 +133,13 @@ async function toggleDeviceNotifications() {
 
 onMounted(() => {
     void load();
-    void adminPushNotifications.sync().then((state) => { deviceState.value = state; }).catch(() => undefined);
+    void adminPushNotifications.sync()
+        .then((state) => { deviceState.value = state; })
+        .then(() => { if (deviceState.value === 'unavailable') deviceMessage.value = 'Push delivery is unavailable. Contact an administrator.'; })
+        .catch((caught) => { deviceState.value = 'default'; deviceMessage.value = caught?.message ?? 'Device registration failed.'; })
+        .finally(() => { deviceBusy.value = false; });
 });
+watch(filter, () => { pageCursors.value = [null]; items.value = []; void load(); });
 </script>
 
 <template>
@@ -160,16 +175,16 @@ onMounted(() => {
 
     <section class="notification-list">
       <div v-if="loading && !items.length" class="an-empty bw-card">Loading...</div>
-      <div v-else-if="!items.length" class="an-empty bw-card">
+      <div v-else-if="!items.length && filter === 'all'" class="an-empty bw-card">
         <strong>No operational alerts.</strong>
         <span>Funding, disputes, and support updates appear here.</span>
       </div>
-      <div v-else-if="!filteredItems.length" class="an-empty bw-card">
+      <div v-else-if="!items.length" class="an-empty bw-card">
         <strong>No {{ filter }} notifications.</strong>
         <span>Choose another filter.</span>
       </div>
       <button
-        v-for="item in filteredItems"
+        v-for="item in items"
         v-else
         :key="item.id"
         type="button"
@@ -187,10 +202,10 @@ onMounted(() => {
       </button>
     </section>
 
-    <div v-if="nextCursor" class="an-more">
-      <button class="bw-btn" :disabled="loading" @click="load(false)">
-        {{ loading ? 'Loading...' : 'Load more' }}
-      </button>
+    <div v-if="totalCount" class="an-more" aria-label="Notification pages">
+      <span>Page {{ page }} · {{ totalCount }} {{ filter === 'all' ? 'notifications' : filter + ' notifications' }}</span>
+      <button class="bw-btn" :disabled="loading || page === 1" @click="load(page - 1)">Previous</button>
+      <button class="bw-btn" :disabled="loading || !nextCursor" @click="load(page + 1)">Next</button>
     </div>
 
     <NotificationDetailModal
@@ -232,8 +247,10 @@ onMounted(() => {
 .notification-preview { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .an-row time { font-size: var(--t-xs); white-space: nowrap; }
 .an-empty { min-height: 220px; display: grid; place-items: center; gap: var(--s-2); color: var(--text-muted); text-align: center; }
-.an-more { display: flex; justify-content: center; margin-top: var(--s-4); }
+.an-more { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-4); color: var(--text-muted); }
 @media (max-width: 640px) {
+  .an-more { justify-content: flex-start; padding-right: 150px; }
+  .an-more span { flex-basis: 100%; }
   .an-head { display: grid; }
   .device-notifications { align-items: center; flex-direction: row; }
   .device-actions { flex: 0 0 auto; }

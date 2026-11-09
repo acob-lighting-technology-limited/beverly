@@ -7,6 +7,7 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { vendorPasswordError } from '@beverly/tokens/password-policy';
+import { announcementAttachmentSchema, dispatchAnnouncementDevicePush, previewAnnouncementEmail, validAnnouncementAttachment } from '../services/announcement-delivery.js';
 import { env } from '../config/env.js';
 import { abandonWalletIdempotency, assertClientIdempotencyKey, claimWalletIdempotency, completeWalletIdempotency, hashIdempotency } from '../services/idempotency.js';
 import { adminClient } from '../db/supabase.js';
@@ -41,7 +42,7 @@ import { activateProfilePicture, assertProfilePictureSop, PROFILE_PICTURE_BUCKET
 import { runMalwareScan } from '../services/file-scan.js';
 import { createAdminMeterOrder, assertMeterOrderTransition, getMeterPrices, rejectMeterOrder, updateMeterPrices } from '../services/meter-orders.js';
 import { revokePortalSession } from '../services/portal-session.js';
-import { pushConfig, removePushSubscription, savePushSubscription, sendWebPush } from '../services/push-notifications.js';
+import { pushConfig, removePushSubscription, savePushSubscription } from '../services/push-notifications.js';
 import { notifyVendor } from '../services/vendor-notifications.js';
 import adminVendorAnalyticsRoutes from './admin-vendor-analytics.js';
 import adminVendorTransferRoutes from './admin-vendor-transfers.js';
@@ -154,7 +155,7 @@ type AnnouncementReachability = 'account' | 'email';
 function isLegacyAnnouncementSchemaError(error: any): boolean {
     const text = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
     return /admin_announcements|admin_announcement_deliveries/i.test(text)
-        && /request_key|delivery_status|email_(recipient|sent|failed|message|status)/i.test(text)
+        && /request_key|delivery_status|email_(recipient|sent|failed|message|status)|attachment_(name|content_type|base64)/i.test(text)
         && /column|schema cache|could not find/i.test(text);
 }
 
@@ -588,6 +589,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'GET /announcements/recipients': 'wallet.announcements.manage',
     'GET /announcements/recipients/export.csv': 'wallet.announcements.manage',
     'POST /announcements': 'wallet.announcements.manage',
+    'POST /announcements/preview': 'wallet.announcements.manage',
     'POST /announcements/:id/retry-email': 'wallet.announcements.manage',
     'GET /refunds': 'wallet.refunds.manage',
     'GET /refunds/summary': 'wallet.refunds.manage',
@@ -998,20 +1000,30 @@ const route: FastifyPluginAsync = async (fastify) => {
         return { ok: true };
     });
 
-    fastify.get('/notifications', async (req) => {
+    fastify.get('/notifications', async (req, reply) => {
         const query = z.object({
             limit: z.coerce.number().int().min(1).max(100).default(20),
-            cursor: z.string().datetime().optional(),
+            cursor: z.string().max(100).optional(),
+            status: z.enum(['all', 'unread', 'read']).default('all'),
         }).parse(req.query ?? {});
+        const [cursorTime, cursorId] = query.cursor?.split('|') ?? [];
+        if (query.cursor && (!z.string().datetime().safeParse(cursorTime).success || !z.string().uuid().safeParse(cursorId).success)) {
+            return reply.code(400).send({ error: 'invalid_cursor', message: 'Notification page cursor is invalid.' });
+        }
         let rowsQuery = adminClient
             .from('notifications')
             .select('id, type, title, body, metadata, read, created_at')
             .eq('recipient_type', 'staff')
             .eq('recipient_id', req.actor!.userId)
             .order('created_at', { ascending: false })
-            .limit(query.limit);
-        if (query.cursor) rowsQuery = rowsQuery.lt('created_at', query.cursor);
-        const [{ data, error }, { count, error: countError }] = await Promise.all([
+            .order('id', { ascending: false })
+            .limit(query.limit + 1);
+        if (cursorTime && cursorId) rowsQuery = rowsQuery.or(`created_at.lt.${cursorTime},and(created_at.eq.${cursorTime},id.lt.${cursorId})`);
+        if (query.status !== 'all') rowsQuery = rowsQuery.eq('read', query.status === 'read');
+        let totalQuery = adminClient.from('notifications').select('id', { count: 'exact', head: true })
+            .eq('recipient_type', 'staff').eq('recipient_id', req.actor!.userId);
+        if (query.status !== 'all') totalQuery = totalQuery.eq('read', query.status === 'read');
+        const [{ data, error }, { count, error: countError }, { count: totalCount, error: totalError }] = await Promise.all([
             rowsQuery,
             adminClient
                 .from('notifications')
@@ -1019,14 +1031,17 @@ const route: FastifyPluginAsync = async (fastify) => {
                 .eq('recipient_type', 'staff')
                 .eq('recipient_id', req.actor!.userId)
                 .eq('read', false),
+            totalQuery,
         ]);
         if (error) throw error;
         if (countError) throw countError;
-        const notifications = data ?? [];
+        if (totalError) throw totalError;
+        const notifications = (data ?? []).slice(0, query.limit);
         return {
             notifications,
-            nextCursor: notifications.length === query.limit ? notifications.at(-1)?.created_at ?? null : null,
+            nextCursor: (data?.length ?? 0) > query.limit ? `${notifications.at(-1)?.created_at}|${notifications.at(-1)?.id}` : null,
             unreadCount: count ?? 0,
+            totalCount: totalCount ?? 0,
         };
     });
 
@@ -4217,7 +4232,7 @@ const route: FastifyPluginAsync = async (fastify) => {
         const offset = query.offset ?? 0;
         let announcementQuery = adminClient
             .from('admin_announcements')
-            .select('*')
+            .select('id,title,body,audience,station_ids,target_mode,channel,recipient_count,email_recipient_count,email_sent_count,email_failed_count,delivery_status,created_at,attachment_name')
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1);
         if (query.since) announcementQuery = announcementQuery.gte('created_at', query.since);
@@ -4241,10 +4256,18 @@ const route: FastifyPluginAsync = async (fastify) => {
             }));
         }
         if (error) throw error;
-        return { announcements: data ?? [], next_offset: (data?.length ?? 0) === limit ? offset + limit : null };
+        return { announcements: (data ?? []).map(({ attachment_base64, ...row }: any) => row), next_offset: (data?.length ?? 0) === limit ? offset + limit : null };
+    });
+    fastify.post('/announcements/preview', async (req) => {
+        const { title, body, name } = z.object({
+            title: z.string().trim().min(3).max(120),
+            body: z.string().trim().min(5).max(2000),
+            name: z.string().trim().max(120).default('Recipient'),
+        }).parse(req.body ?? {});
+        return previewAnnouncementEmail({ title, body, name });
     });
 
-    fastify.post('/announcements', async (req, reply) => {
+    fastify.post('/announcements', { bodyLimit: 3_000_000 }, async (req, reply) => {
         const requestKey = requireIdempotencyKey(req, reply);
         if (!requestKey) return reply;
         const schema = z.object({
@@ -4255,8 +4278,14 @@ const route: FastifyPluginAsync = async (fastify) => {
             send_to_all: z.boolean().optional(),
             recipient_keys: z.array(z.string().regex(/^(customer|vendor|staff):[0-9a-f-]{36}$/i)).optional(),
             channels: z.array(z.enum(['in_app', 'email'])).min(1).max(2).default(['in_app', 'email']),
+            attachment: announcementAttachmentSchema.optional(),
         });
         const body = schema.parse(req.body ?? {});
+        if (body.attachment) {
+            if (!body.channels.includes('email') || !validAnnouncementAttachment(body.attachment)) {
+                return reply.code(400).send({ error: 'invalid_announcement_attachment', message: 'Attach a valid PDF, PNG, or JPEG under 2 MB to an email announcement.' });
+            }
+        }
         const { data: existingAnnouncement, error: existingError } = await adminClient
             .from('admin_announcements')
             .select('*')
@@ -4274,7 +4303,7 @@ const route: FastifyPluginAsync = async (fastify) => {
             }
             return reply.code(200).send({
                 ok: true,
-                announcement: existingAnnouncement,
+                announcement: (({ attachment_base64, ...row }: any) => row)(existingAnnouncement),
                 delivered: String(existingAnnouncement.channel ?? '').includes('in_app')
                     ? existingAnnouncement.recipient_count ?? 0
                     : existingAnnouncement.email_sent_count ?? 0,
@@ -4294,6 +4323,7 @@ const route: FastifyPluginAsync = async (fastify) => {
         if (!body.send_to_all) recipients = recipients.filter((r) => requestedKeys.has(r.key));
         if (!recipients.length) return reply.code(400).send({ error: 'no_recipients', message: 'Select at least one recipient.' });
         const emailRecipientCount = new Set(recipients.map((recipient) => recipient.email?.trim().toLowerCase()).filter(Boolean)).size;
+        if (body.attachment && !emailRecipientCount) return reply.code(400).send({ error: 'attachment_has_no_email_recipients', message: 'The selected recipients have no email addresses for this attachment.' });
 
         const audienceLabel = audiences.length > 1 ? 'system' : audiences[0] === 'customer' ? 'customers' : audiences[0] === 'vendor' ? 'vendors' : 'staff';
         let { data: announcement, error: annError } = await adminClient
@@ -4310,9 +4340,17 @@ const route: FastifyPluginAsync = async (fastify) => {
                 recipient_count: recipients.length,
                 email_recipient_count: wantsEmail ? emailRecipientCount : 0,
                 delivery_status: wantsEmail && emailRecipientCount > 0 ? 'sending' : 'sent',
+                ...(body.attachment ? {
+                    attachment_name: body.attachment.name,
+                    attachment_content_type: body.attachment.mimeType,
+                    attachment_base64: body.attachment.base64,
+                } : {}),
             })
             .select('*')
             .single();
+        if (body.attachment && isLegacyAnnouncementSchemaError(annError)) {
+            return reply.code(503).send({ error: 'announcement_attachment_unavailable', message: 'Attachment storage is not ready. Try again later.' });
+        }
         if (legacyAnnouncementSchema && isLegacyAnnouncementSchemaError(annError)) {
             ({ data: announcement, error: annError } = await adminClient
                 .from('admin_announcements')
@@ -4381,22 +4419,16 @@ const route: FastifyPluginAsync = async (fastify) => {
             });
         }
 
-        if (wantsNotifications) {
-            for (let offset = 0; offset < recipients.length; offset += 100) {
-                await Promise.allSettled(recipients.slice(offset, offset + 100).map((recipient) =>
-                    sendWebPush(recipient.type, recipient.id, {
-                        title: body.title,
-                        body: body.body,
-                        url: '/notifications',
-                        tag: `announcement:${announcement.id}`,
-                    }, recipient.type === 'staff' ? 'admin' : recipient.type)));
-            }
-        }
+        const devicePush = wantsNotifications
+            ? await dispatchAnnouncementDevicePush(recipients, body.title, body.body, announcement.id)
+            : { accepted: 0, failed: 0, unsubscribed: 0 };
+        if (devicePush.failed) req.log.warn({ announcementId: announcement.id, failed: devicePush.failed }, 'Announcement device push failures');
 
         let emailResult: { sent: number; recipients: number; messages: Array<{ email: string; messageId: string }> } = { sent: 0, recipients: 0, messages: [] };
         try {
             if (wantsEmail && emailRecipientCount > 0) {
-                emailResult = await notifyAdminAnnouncement(recipients, { title: body.title, body: body.body }, requestKey);
+                emailResult = await notifyAdminAnnouncement(recipients, { title: body.title, body: body.body,
+                    attachment: body.attachment ? { name: body.attachment.name, mimeType: body.attachment.mimeType, base64: body.attachment.base64 } : null }, requestKey);
             }
         } catch (emailError: any) {
             const sentCount = Number(emailError?.sentCount ?? 0);
@@ -4459,10 +4491,11 @@ const route: FastifyPluginAsync = async (fastify) => {
             after: { audience: audienceLabel, channels, target_mode: body.send_to_all ? 'all' : 'selected', recipient_count: recipients.length, email_sent_count: emailResult.sent },
         }).catch(() => undefined);
 
+        const { attachment_base64, ...publicAnnouncement } = announcement;
         return reply.code(201).send({
             ok: true,
             announcement: {
-                ...announcement,
+                ...publicAnnouncement,
                 delivery_status: 'sent',
                 email_sent_count: emailResult.sent,
                 email_failed_count: Math.max(0, emailResult.recipients - emailResult.sent),
@@ -4470,6 +4503,9 @@ const route: FastifyPluginAsync = async (fastify) => {
             delivered: wantsNotifications ? recipients.length : emailResult.sent,
             notification_delivered: wantsNotifications ? recipients.length : 0,
             email_delivered: emailResult.sent,
+            device_push_accepted: devicePush.accepted,
+            device_push_failed: devicePush.failed,
+            device_push_unsubscribed: devicePush.unsubscribed,
             tracking_deferred: legacyAnnouncementSchema,
         });
     });
@@ -4531,7 +4567,8 @@ const route: FastifyPluginAsync = async (fastify) => {
         try {
             const result = await notifyAdminAnnouncement(
                 recipients,
-                { title: announcement.title, body: announcement.body },
+                { title: announcement.title, body: announcement.body,
+                    attachment: announcement.attachment_base64 ? { name: announcement.attachment_name, mimeType: announcement.attachment_content_type, base64: announcement.attachment_base64 } : null },
                 `announcement-retry:${id}:${requestKey}`,
             );
             await storeAnnouncementEmailMessages(id, recipients, result.messages);

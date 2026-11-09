@@ -4,7 +4,7 @@ import AppShell from '../components/AppShell.vue';
 import MessageSuccessHover from '../components/MessageSuccessHover.vue';
 import { ApiError, api, shortDate } from '../lib/api';
 import WalletExportWizard from '@beverly/tokens/WalletExportWizard.vue';
-import { formatNotificationBody } from '@beverly/tokens/notification-content';
+import { formatAnnouncementMarkup, formatNotificationBody } from '@beverly/tokens/notification-content';
 import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import type { WalletExportSelection } from '@beverly/tokens/wallet-export-wizard';
@@ -27,6 +27,7 @@ interface Announcement {
     id: string;
     title: string;
     body: string;
+    attachment_name?: string | null;
     audience: string;
     station_ids?: string[];
     target_mode: string;
@@ -49,6 +50,7 @@ interface RecipientSummary {
 const audiences = ref<Record<AudienceKey, boolean>>({ customers: true, vendors: false, staff: false });
 const stations = ref<{ stationId: string; stationName?: string }[]>([]);
 const selectedStationIds = ref<string[]>([]);
+const stationPickerOpen = ref(false);
 const deliveryMode = ref<DeliveryMode>('both');
 const summary = ref<RecipientSummary>({ customers: 0, vendors: 0, staff: 0, total: 0 });
 const audienceTotals = ref<RecipientSummary>({ customers: 0, vendors: 0, staff: 0, total: 0 });
@@ -59,6 +61,12 @@ const sendToAll = ref(true);
 const search = ref('');
 const title = ref('');
 const message = ref('');
+const attachment = ref<{ name: string; mimeType: 'application/pdf' | 'image/png' | 'image/jpeg'; base64: string } | null>(null);
+const attachmentError = ref('');
+const messageInput = ref<HTMLTextAreaElement | null>(null);
+const emailPreviewHtml = ref('');
+const emailPreviewError = ref('');
+const previewLoading = ref(false);
 const recipients = ref<Recipient[]>([]);
 const selectedKeys = ref<string[]>([]);
 const history = ref<Announcement[]>([]);
@@ -230,6 +238,57 @@ function continueCompose() {
         return;
     }
     composeStep.value = Math.min(3, composeStep.value + 1);
+    if (composeStep.value === 3 && deliveryMode.value !== 'notification') void loadEmailPreview();
+}
+
+function formatSelection(kind: 'heading' | 'bold' | 'italic' | 'plain') {
+    const field = messageInput.value;
+    if (!field) return;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    if (kind === 'plain' && start === end) return;
+    const selected = message.value.slice(start, end) || 'Text';
+    const replacement = kind === 'heading' ? `# ${selected}`
+        : kind === 'bold' ? `**${selected}**`
+        : kind === 'italic' ? `*${selected}*`
+        : selected.replace(/^#\s+/gm, '').replace(/\*\*/g, '').replace(/\*/g, '');
+    message.value = `${message.value.slice(0, start)}${replacement}${message.value.slice(end)}`;
+    void nextTick(() => { field.focus(); field.setSelectionRange(start, start + replacement.length); });
+}
+
+async function chooseAttachment(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    attachmentError.value = '';
+    attachment.value = null;
+    if (!file) return;
+    if (!['application/pdf', 'image/png', 'image/jpeg'].includes(file.type) || file.size > 2_000_000) {
+        attachmentError.value = 'Choose a PDF, PNG, or JPEG under 2 MB.';
+        return;
+    }
+    const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+        reader.onerror = () => reject(new Error('The file could not be read.'));
+        reader.readAsDataURL(file);
+    }).catch(() => '');
+    if (!base64) { attachmentError.value = 'The file could not be read.'; return; }
+    attachment.value = { name: file.name, mimeType: file.type as 'application/pdf' | 'image/png' | 'image/jpeg', base64 };
+}
+
+async function loadEmailPreview() {
+    previewLoading.value = true;
+    emailPreviewError.value = '';
+    try {
+        const sample = sendToAll.value ? recipients.value[0] : recipients.value.find((recipient) => selectedKeys.value.includes(recipient.key));
+        const result = await api.post<{ html: string }>('/api/v1/admin/announcements/preview', {
+            title: title.value.trim(), body: message.value.trim(), name: sample?.name ?? 'Recipient',
+        });
+        emailPreviewHtml.value = result.html;
+    } catch (caught: any) {
+        emailPreviewError.value = caught?.message ?? 'Email preview failed.';
+    } finally {
+        previewLoading.value = false;
+    }
 }
 
 function toggleRecipient(key: string) {
@@ -318,7 +377,7 @@ async function sendAnnouncement() {
     sending.value = true;
     banner.value = null;
     try {
-        const response = await api.post<{ delivered: number; notification_delivered: number; email_delivered: number }>('/api/v1/admin/announcements', {
+        const response = await api.post<{ delivered: number; notification_delivered: number; email_delivered: number; device_push_accepted?: number; device_push_failed?: number; device_push_unsubscribed?: number }>('/api/v1/admin/announcements', {
             title: title.value.trim(),
             body: message.value.trim(),
             audiences: selectedAudiences.value,
@@ -326,16 +385,23 @@ async function sendAnnouncement() {
             send_to_all: sendToAll.value,
             recipient_keys: sendToAll.value ? [] : selectedKeys.value,
             channels: channelPayload.value,
+            ...(attachment.value && deliveryMode.value !== 'notification' ? { attachment: attachment.value } : {}),
         }, { headers: { 'Idempotency-Key': broadcastRequestKey.value } });
         const parts = [
             response.notification_delivered ? `${response.notification_delivered} notifications` : '',
             response.email_delivered ? `${response.email_delivered} emails` : '',
         ].filter(Boolean);
-        const sentMessage = `${parts.join(' and ')} sent. Message history refreshed.`;
+        const deviceSummary = response.notification_delivered
+            ? response.device_push_accepted
+                ? ` ${response.device_push_accepted} device alerts accepted.`
+                : ' No device alerts accepted.'
+            : '';
+        const sentMessage = `${parts.join(' and ')} sent.${deviceSummary} Message history refreshed.`;
         banner.value = { tone: 'success', text: sentMessage };
         showFeedback('success', 'Message sent', sentMessage);
         title.value = '';
         message.value = '';
+        attachment.value = null;
         selectedKeys.value = [];
         composeStep.value = 1;
         activeTab.value = 'history';
@@ -502,12 +568,23 @@ onBeforeUnmount(() => {
             <strong>Wallet admin staff</strong><span>{{ audienceTotals.staff }} reachable</span>
           </button>
         </div>
-        <label class="an-field"><span>Stations</span>
-          <select v-model="selectedStationIds" class="bw-input" multiple aria-label="Announcement stations">
-            <option v-for="station in stations" :key="station.stationId" :value="station.stationId">{{ stationDisplayLabel(station.stationName || station.stationId) }}</option>
-          </select>
-          <small>No selection includes every permitted station.</small>
-        </label>
+        <div class="an-field">
+          <span>Stations</span>
+          <button type="button" class="bw-input an-station-toggle" :aria-expanded="stationPickerOpen" aria-controls="announcement-stations" @click="stationPickerOpen = !stationPickerOpen">
+            {{ selectedStationIds.length ? `${selectedStationIds.length} stations selected` : 'All permitted stations' }}
+            <span aria-hidden="true">{{ stationPickerOpen ? '−' : '+' }}</span>
+          </button>
+          <div v-if="stationPickerOpen" id="announcement-stations" class="an-station-picker">
+            <button type="button" class="bw-btn sm" :disabled="!selectedStationIds.length" @click="selectedStationIds = []">All stations</button>
+            <div class="an-station-options">
+              <label v-for="station in stations" :key="station.stationId" class="an-station-option">
+                <input v-model="selectedStationIds" type="checkbox" :value="station.stationId" />
+                <span>{{ stationDisplayLabel(station.stationName || station.stationId) }}</span>
+              </label>
+            </div>
+          </div>
+          <small>Choose stations only when needed.</small>
+        </div>
         <div class="an-scope">
           <label class="an-check">
             <input v-model="sendToAll" type="checkbox" />
@@ -527,7 +604,22 @@ onBeforeUnmount(() => {
       <div v-else-if="composeStep === 2" class="an-step-panel">
         <div class="an-step-copy"><h3>Write announcement</h3><p>Delivered by {{ deliveryLabel.toLowerCase() }}.</p></div>
         <label class="an-field"><span>{{ deliveryMode === 'email' ? 'Email subject' : 'Title' }}</span><input v-model="title" class="bw-input" maxlength="120" placeholder="Service update" /></label>
-        <label class="an-field"><span>Message</span><textarea v-model="message" class="bw-input an-textarea" maxlength="2000" placeholder="Write the message recipients receive..." /></label>
+        <div class="an-field"><span>Formatting</span>
+          <div class="an-editor-toolbar" role="toolbar" aria-label="Message formatting">
+            <button type="button" class="bw-btn sm" @click="formatSelection('heading')">Heading</button>
+            <button type="button" class="bw-btn sm" @click="formatSelection('plain')">Plain text</button>
+            <button type="button" class="bw-btn sm" @click="formatSelection('bold')"><strong>Bold</strong></button>
+            <button type="button" class="bw-btn sm" @click="formatSelection('italic')"><em>Italic</em></button>
+          </div>
+        </div>
+        <label class="an-field"><span>Message</span><textarea ref="messageInput" v-model="message" class="bw-input an-textarea" maxlength="2000" placeholder="Write the message recipients receive..." /></label>
+        <small class="bw-muted">Formatting appears in email and Beverly inboxes. Device alerts use plain text.</small>
+        <label v-if="deliveryMode !== 'notification'" class="an-field an-attachment-field"><span>Email attachment</span>
+          <input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" @change="chooseAttachment" />
+          <small>One PDF or image, under 2 MB. Email recipients receive this file.</small>
+        </label>
+        <p v-if="attachmentError" class="bw-alert danger" role="alert">{{ attachmentError }}</p>
+        <button v-if="attachment" type="button" class="bw-btn sm" @click="attachment = null">Remove {{ attachment.name }}</button>
         <div class="an-character-count">{{ message.length }} / 2000</div>
       </div>
 
@@ -541,18 +633,26 @@ onBeforeUnmount(() => {
             <div><dt>Delivery</dt><dd>{{ deliveryLabel }}</dd></div>
             <div v-if="selectedNotificationCount"><dt>Notifications</dt><dd>{{ selectedNotificationCount }}</dd></div>
             <div v-if="deliveryMode !== 'notification'"><dt>Emails</dt><dd>{{ selectedEmailCount }}</dd></div>
+            <div v-if="attachment"><dt>Attachment</dt><dd>{{ attachment.name }} · email only</dd></div>
           </dl>
           <p class="an-send-warning">Sent announcements cannot be recalled.</p>
         </div>
-        <div class="an-email-preview" :aria-label="deliveryMode === 'notification' ? 'Notification preview' : 'Email preview'">
+        <div v-if="deliveryMode === 'notification'" class="an-email-preview" aria-label="Notification preview">
           <span class="an-preview-logo" aria-label="Beverly">
             <img class="an-preview-logo-light" :src="brandLogoLightUrl" alt="Beverly" />
           </span>
           <span>Announcement</span>
           <strong>{{ title }}</strong>
           <p v-if="deliveryMode !== 'notification'">Hi recipient,</p>
-          <p>{{ previewMessage }}</p>
+          <div class="an-formatted-preview" v-html="formatAnnouncementMarkup(previewMessage).html" />
           <small v-if="deliveryMode !== 'notification'">— The Beverly Team</small>
+        </div>
+        <div v-else class="an-email-preview" aria-label="Email preview">
+          <strong>Recipient email preview</strong>
+          <p v-if="attachment">Attached: {{ attachment.name }}</p>
+          <p v-if="previewLoading">Loading exact email layout...</p>
+          <p v-else-if="emailPreviewError" role="alert">{{ emailPreviewError }}</p>
+          <iframe v-else title="Recipient email preview" sandbox="" :srcdoc="emailPreviewHtml" class="an-preview-frame" />
         </div>
       </div>
 
@@ -632,6 +732,7 @@ onBeforeUnmount(() => {
               </div>
             </template>
           </div>
+          <p v-if="selectedHistory.attachment_name" class="bw-muted">Email attachment: {{ selectedHistory.attachment_name }}</p>
           <dl class="an-detail-counts">
             <div><dt>Recipients</dt><dd>{{ selectedHistory.recipient_count }}</dd></div>
             <div><dt>Emails sent</dt><dd>{{ selectedHistory.email_sent_count ?? 0 }} / {{ selectedHistory.email_recipient_count ?? 0 }}</dd></div>
@@ -806,10 +907,23 @@ onBeforeUnmount(() => {
     letter-spacing: .12em;
     text-transform: uppercase;
 }
+.an-station-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 48px; text-align: left; cursor: pointer; }
+.an-station-toggle span { color: var(--text); font-size: var(--t-lg); letter-spacing: 0; }
+.an-station-picker { display: grid; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); }
+.an-station-picker > button { justify-self: start; }
+.an-station-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s-2); max-height: 240px; overflow: auto; }
+.an-station-option { display: flex; align-items: center; gap: var(--s-2); min-height: 44px; padding: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-md); cursor: pointer; }
+.an-station-option input { accent-color: var(--brand); }
+.an-station-option span { color: var(--text); font-size: var(--t-sm); font-weight: 600; letter-spacing: 0; text-transform: none; }
 .an-textarea {
-    min-height: 112px;
+    min-height: 180px;
     resize: vertical;
 }
+.an-editor-toolbar { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.an-editor-toolbar .bw-btn { min-height: 44px; }
+.an-attachment-field input { color: var(--text); }
+.an-attachment-field small { color: var(--text-muted); }
+.an-preview-frame { width: 100%; min-height: 560px; border: 1px solid var(--border); border-radius: var(--r-md); background: white; }
 .an-scope {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(220px, .6fr);
@@ -1042,6 +1156,7 @@ onBeforeUnmount(() => {
 .an-detail-counts dd { margin: var(--s-1) 0 0; font-weight: 800; }
 .an-detail-retry { width: 100%; margin-top: var(--s-4); }
 @media (max-width: 760px) {
+    :global(.bw-main-col:has(.an-compose) .beverly-ai-widget-wrapper) { bottom: calc(var(--bw-tabbar-height, 0px) + 88px); }
     .an-scope {
         grid-template-columns: 1fr;
     }

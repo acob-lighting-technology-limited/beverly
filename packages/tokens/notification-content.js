@@ -25,3 +25,34 @@ export function formatNotificationBody(value) {
         };
     });
 }
+
+/** A small, escaped formatting subset shared by email and its preview. */
+export function formatAnnouncementMarkup(value) {
+    const source = String(value ?? '').replace(/\r\n?/g, '\n').trim();
+    const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const inline = (text) => escape(text)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    const html = [];
+    const plain = [];
+    let list = [];
+    const flushList = () => {
+        if (!list.length) return;
+        html.push(`<ol style="margin:0 0 18px;padding-left:22px;">${list.map((item) => `<li style="margin:0 0 8px;">${inline(item)}</li>`).join('')}</ol>`);
+        plain.push(...list.map((item, index) => `${index + 1}. ${item}`));
+        list = [];
+    };
+    for (const raw of source.split('\n')) {
+        const line = raw.trim();
+        const numbered = line.match(/^\d+\.\s+(.+)$/);
+        if (numbered) { list.push(numbered[1]); continue; }
+        flushList();
+        if (!line) { plain.push(''); continue; }
+        const heading = line.match(/^#\s+(.+)$/);
+        if (heading) html.push(`<h2 style="font-size:18px;line-height:1.4;margin:0 0 14px">${inline(heading[1])}</h2>`);
+        else html.push(`<p style="margin:0 0 18px;">${inline(line)}</p>`);
+        plain.push(heading?.[1] ?? line);
+    }
+    flushList();
+    return { html: html.join(''), text: plain.join('\n').replace(/\*\*/g, '').replace(/\*/g, '') };
+}
