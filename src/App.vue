@@ -5,14 +5,14 @@
   <BeverlyLoader v-else-if="!isRoleReady" label="Verifying session" />
     <div
       v-else
-      :class="['app-page', deviceClass, sidebarOpen ? 'openSidebar' : '', { hideSidebar: collapsed, 'no-sidebar': showOemHub }]"
+      :class="['app-page', deviceClass, sidebarOpen ? 'openSidebar' : '', { hideSidebar: collapsed, 'no-sidebar': showOemHub }, isBatterySwapWorkspace ? 'battery-swap-app-host' : '']"
       :style="{ '--layout-sidebar-width': `${sidebarWidth}px` }"
     >
 
       <div class="drawer-bg" @click="closeSidebar"></div>
       <aside
         v-if="!showOemHub"
-        class="sidebar-container"
+        :class="['sidebar-container', isBatterySwapWorkspace ? 'sidebar--battery-swap' : '']"
         aria-label="Primary navigation"
         :inert="width <= 1024 && !sidebarOpen ? '' : null"
       >
@@ -204,6 +204,10 @@
                     <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
                     <span>{{ translate('common.switchOem') }}</span>
                   </BaseButton>
+                  <a :href="batterySwapUrl" class="bw-user-menu-item" role="menuitem" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem;">
+                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="1.8" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    <span>Battery Swap Portal</span>
+                  </a>
                   <div class="user-theme-submenu">
                     <BaseButton
                       variant="quiet"
@@ -256,7 +260,7 @@
           </div>
         </div>
       </header>
-        <main :class="['content-page', route.hash === '#/dashboard' ? 'dashboard-editor-container' : '']">
+        <main :class="['content-page', route.hash === '#/dashboard' ? 'dashboard-editor-container' : '', isBatterySwapWorkspace ? 'battery-swap-content-page' : '']">
           <ProfilePage
             v-if="profileOpen"
             :user-name="currentUserName"
@@ -273,6 +277,11 @@
             @theme-change="setTheme"
             @close="settingsOpen = false"
           />
+          <BsvMapPage v-else-if="hash.startsWith('#/battery-swap/operations') || hash === '#/battery-swap/map' || route.customComponent === 'BsvMapPage'" :route="route" />
+          <BsvFleetPage v-else-if="hash === '#/battery-swap/fleet' || route.customComponent === 'BsvFleetPage'" :route="route" />
+          <BsvCrmPage v-else-if="hash === '#/battery-swap/crm' || route.customComponent === 'BsvCrmPage'" :route="route" />
+          <BsvStationsPage v-else-if="hash === '#/battery-swap/stations' || route.customComponent === 'BsvStationsPage'" :route="route" />
+          <BsvDiagnosticsPage v-else-if="hash === '#/battery-swap/diagnostics' || route.customComponent === 'BsvDiagnosticsPage'" :route="route" />
           <OemHubPage v-else-if="showOemHub" @oem-selected="handleOemSelected" />
           <DashboardPage v-else-if="route.hash === '#/dashboard'" />
           <ReportsPage v-else-if="route.customComponent === 'ReportsPage'" />
@@ -295,6 +304,7 @@
           <RemoteRelayPage v-else-if="route.customComponent === 'RemoteRelayPage' || route.hash === '#/grid-control/remote-relay'" />
           <EnergyAuditPage v-else-if="route.customComponent === 'EnergyAuditPage' || route.hash === '#/analytics/energy-audit'" />
           <GatewayHealthPage v-else-if="route.customComponent === 'GatewayHealthPage' || route.hash === '#/mesh/gateways'" />
+
           <GuidePage v-else-if="route.customComponent === 'GuidePage' || route.hash === '#/guide'" :route="route" />
           <TablePage v-else :route="route" />
         </main>
@@ -367,21 +377,7 @@ import ReconciliationPage from "./components/wallet/ReconciliationPage.vue";
 import WalletFundingPage from "./components/wallet/WalletFundingPage.vue";
 import AcobotWidget from "./components/acobot/AcobotWidget.vue";
 
-const sidebarDefaultWidth = 252;
-const sidebarMinWidth = 220;
-const sidebarMaxWidth = 420;
-const sidebarWidthKey = "beverly-sidebar-width";
-const sidebarCollapsedKey = "beverly-sidebar-collapsed";
 
-function savedSidebarWidth() {
-  const value = Number(localStorage.getItem(sidebarWidthKey));
-  return Number.isFinite(value) ? Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, value)) : sidebarDefaultWidth;
-}
-
-function savedSidebarCollapsed() {
-  const value = localStorage.getItem(sidebarCollapsedKey);
-  return value === null ? true : value === "true";
-}
 import VendingMonitorPage from "./components/wallet/VendingMonitorPage.vue";
 import ReportsPage from "./components/ReportsPage.vue";
 import StationAlertsBell from "./components/StationAlertsBell.vue";
@@ -391,6 +387,11 @@ import DemandCurvesPage from "./components/telemetry/DemandCurvesPage.vue";
 import RemoteRelayPage from "./components/grid-control/RemoteRelayPage.vue";
 import EnergyAuditPage from "./components/analytics/EnergyAuditPage.vue";
 import GatewayHealthPage from "./components/mesh/GatewayHealthPage.vue";
+import BsvMapPage from "./components/battery-swap/BsvMapPage.vue";
+import BsvFleetPage from "./components/battery-swap/BsvFleetPage.vue";
+import BsvCrmPage from "./components/battery-swap/BsvCrmPage.vue";
+import BsvStationsPage from "./components/battery-swap/BsvStationsPage.vue";
+import BsvDiagnosticsPage from "./components/battery-swap/BsvDiagnosticsPage.vue";
 import BeverlyLoader from "@beverly/tokens/BeverlyLoader.vue";
 import PwaUpdateToast from "@beverly/tokens/PwaUpdateToast.vue";
 import LanguageSwitcher from "@beverly/tokens/LanguageSwitcher.vue";
@@ -400,20 +401,14 @@ import { warmAllOems } from "./services/oem-prefetch.mjs";
 import { clearSessionCookies, currentUserInfo, getApi, getCookie, isSessionExpired, readSessionState, refreshLiveWriteStatus, refreshSession, runOneTimeStorageCleanup, setCookie, setRuntimeLiveWritesAllowed, touchSession } from "./services/api";
 import { loadProfileState } from "./services/profile-store.mjs";
 import { findRoute, normalizeHash, routeGroups, visibleRoutes } from "./data/route-manifest";
-import { groupIcons, routeIconOverrides, routeIconPaths, sidebarSectionLabels } from "./data/shell-chrome.mjs";
+import { groupIcons, routeIconOverrides, routeIconPaths, sidebarSectionLabels, sidebarMinWidth, sidebarMaxWidth, savedSidebarWidth, savedSidebarCollapsed, normalizeThemeChoice, resolveOemCapabilities } from "./data/shell-chrome.mjs";
 import { playLoginVoice } from "./utils/voice.js";
 
-const supportedThemeChoices = ["system", "light", "executive", "contrast"];
 
-function normalizeThemeChoice(theme) {
-  if (theme === "dark") return "executive";
-  if (theme === "ocean") return "light";
-  return supportedThemeChoices.includes(theme) ? theme : "system";
-}
 
 export default {
   name: "App",
-  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, GuidePage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
+  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, BsvCrmPage, BsvDiagnosticsPage, BsvFleetPage, BsvMapPage, BsvStationsPage, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, GuidePage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
   data() {
     return {
       hash: window.location.hash || "#/login?redirect=%2Fdashboard",
@@ -444,10 +439,15 @@ export default {
     };
   },
   computed: {
+    batterySwapUrl() {
+      const c = String(import.meta.env?.VITE_BATTERY_SWAP_URL || "").trim();
+      return c || (import.meta.env?.DEV ? `${window.location.protocol}//${window.location.hostname}:5177/` : `${window.location.origin}/battery-swap/`);
+    },
     oemStore() {
       return useOemStore();
     },
     showOemHub() {
+      if (this.hash.startsWith("#/battery-swap") || this.hash.startsWith("#/guide")) return false;
       return Boolean(this.isRoleReady && !this.isLogin && !this.oemStore.currentOemId);
     },
     isLogin() {
@@ -457,66 +457,7 @@ export default {
       return !["", "null", "undefined"].includes(String(this.currentRoleId || "").trim().toLowerCase());
     },
     currentOemCapabilities() {
-      // If we are on the multi-tenant OEM Hub listing, we are outside any workspace.
-      // Returning {} guarantees capability-gated routes are hidden from the system sidebar.
-      if (this.showOemHub) return {};
-      
-      const oem = this.oemStore.currentOem;
-      if (!oem) return null;
-
-      const raw = oem.capabilities || {};
-      const hasCaps = Object.values(raw).some(Boolean);
-
-      if (oem.vendingStrategy === "direct_credit" || oem.slug === "sparkmeter") {
-        return {
-          wallet_vending: true,
-          event_notification: true,
-          tariff_management: true,
-          load_profile: true,
-          ...raw,
-          remote_meter_task: false,
-          dlms_protocol: false,
-          dlt645_protocol: false,
-          gprs_support: false,
-          firmware_update: false,
-          smart_grid_telemetry: true,
-          remote_relay_control: true,
-          grid_energy_audit: true,
-          mesh_network_health: true,
-          direct_credit_balance: true
-        };
-      }
-
-      if (oem.slug === "miyaji_ev") {
-        return {
-          gprs_support: true,
-          wallet_vending: true,
-          event_notification: true,
-          tariff_management: true,
-          load_profile: true,
-          firmware_update: true,
-          ...raw,
-          remote_meter_task: false,
-          dlms_protocol: false,
-          dlt645_protocol: false
-        };
-      }
-
-      if (!hasCaps || oem.isSeedDefault || oem.slug === "calinmeter" || oem.vendingStrategy === "sts_token") {
-        return {
-          remote_meter_task: true,
-          tariff_management: true,
-          gprs_support: true,
-          event_notification: true,
-          load_profile: true,
-          firmware_update: true,
-          dlms_protocol: true,
-          dlt645_protocol: true,
-          wallet_vending: true,
-          ...raw
-        };
-      }
-      return raw;
+      return resolveOemCapabilities(this.oemStore?.currentOem, this.showOemHub);
     },
     route() {
       return findRoute(this.hash, this.currentRoleId, this.currentOemCapabilities);
@@ -540,8 +481,26 @@ export default {
               : this.oemStore.currentOemId)
       );
     },
+    isBatterySwapWorkspace() {
+      // True whenever the active URL is inside the battery-swap section.
+      // This is hash-driven so it works with or without a selected OEM workspace.
+      return String(this.hash || "").startsWith("#/battery-swap");
+    },
     groups() {
-      return routeGroups(this.currentRoleId, this.currentOemCapabilities);
+      const allGroups = routeGroups(this.currentRoleId, this.currentOemCapabilities);
+      if (this.isBatterySwapWorkspace) {
+        // Standalone individual pages for Battery Swap Operations (detached from dropdowns)
+        const bsvGroup = allGroups.find((g) => g.name === "Battery Swap");
+        if (bsvGroup && bsvGroup.routes) {
+          // Present each page as a standalone direct navigation link (no dropdown accordion)
+          const distinctRoutes = bsvGroup.routes.filter(r => r.hash !== "#/battery-swap/operations");
+          return distinctRoutes.map(r => ({
+            name: r.title,
+            routes: [r]
+          }));
+        }
+      }
+      return allGroups;
     },
     sidebarGroups() {
       const query = this.sidebarQuery.trim().toLowerCase();
@@ -766,6 +725,7 @@ export default {
     },
     routeExists(hash) {
       const normalizedHash = normalizeHash(hash);
+      if (normalizedHash.startsWith("#/battery-swap") || normalizedHash === "#/guide") return true;
       return visibleRoutes(this.currentRoleId, this.currentOemCapabilities).some((route) => route.hash === normalizedHash);
     },
     async loadUser() {
@@ -773,7 +733,13 @@ export default {
       if (!readSessionState()) {
         this.currentRoleId = null;
         this.currentUserName = null;
-        window.location.hash = "#/login";
+        const currentRoute = window.location.hash && !window.location.hash.startsWith("#/login") ? window.location.hash : "";
+        if (currentRoute) {
+          try { sessionStorage.setItem("beverly_post_login_redirect", currentRoute); } catch {}
+          window.location.hash = `#/login?redirect=${encodeURIComponent(currentRoute)}`;
+        } else {
+          window.location.hash = "#/login";
+        }
         this.syncHash();
         return;
       }
@@ -794,7 +760,13 @@ export default {
           clearSessionCookies();
           this.currentRoleId = null;
           this.currentUserName = null;
-          if (!this.isLogin) window.location.hash = "#/login";
+          const currentRoute = window.location.hash && !window.location.hash.startsWith("#/login") ? window.location.hash : "";
+          if (currentRoute) {
+            try { sessionStorage.setItem("beverly_post_login_redirect", currentRoute); } catch {}
+            if (!this.isLogin) window.location.hash = `#/login?redirect=${encodeURIComponent(currentRoute)}`;
+          } else if (!this.isLogin) {
+            window.location.hash = "#/login";
+          }
           this.syncHash();
           return;
         }
@@ -835,7 +807,13 @@ export default {
           // Explicit 401/403 session rejection — clear cookies and redirect to sign in.
           this.currentRoleId = null;
           clearSessionCookies();
-          if (!this.isLogin) window.location.hash = "#/login";
+          const currentRoute = window.location.hash && !window.location.hash.startsWith("#/login") ? window.location.hash : "";
+          if (currentRoute) {
+            try { sessionStorage.setItem("beverly_post_login_redirect", currentRoute); } catch {}
+            if (!this.isLogin) window.location.hash = `#/login?redirect=${encodeURIComponent(currentRoute)}`;
+          } else if (!this.isLogin) {
+            window.location.hash = "#/login";
+          }
           this.syncHash();
         } else {
           // Transient network error / temporary server issue — preserve session state
@@ -879,6 +857,14 @@ export default {
         window.location.assign(landingUrl);
         return;
       }
+      if (normalized.startsWith("#/battery-swap") || normalized.startsWith("#/swap") || normalized === "#/battery") {
+        const configured = String(import.meta.env?.VITE_BATTERY_SWAP_URL || "").trim();
+        const batterySwapUrl = configured || (import.meta.env?.DEV
+          ? `${window.location.protocol}//${window.location.hostname}:5177/`
+          : `${window.location.origin}/battery-swap/`);
+        window.location.assign(batterySwapUrl);
+        return;
+      }
       if (normalizeHash(nextHash) === "#/prepay-report/site-consumption") {
         window.location.hash = "#/prepay-report/station-consumption";
         return;
@@ -899,23 +885,46 @@ export default {
       if (this.route && this.route.group && this.route.group !== "Dashboard") {
         this.expandedGroups[this.route.group] = true;
       }
+      // Always keep Battery Swap section open when in that workspace
+      if (this.isBatterySwapWorkspace) {
+        this.expandedGroups["Battery Swap"] = true;
+      }
     },
     syncWidth() {
       const wasDesktop = this.width > 1024;
       this.width = window.innerWidth;
       if (wasDesktop && this.width <= 1024) this.sidebarOpen = false;
     },
+    resolvePostLoginRedirect() {
+      let target = "";
+      const hashStr = window.location.hash || this.hash || "";
+      const match = hashStr.match(/[?&]redirect=([^&]+)/);
+      if (match && match[1]) {
+        try { target = decodeURIComponent(match[1]); } catch { target = match[1]; }
+      }
+      if (!target) {
+        try {
+          target = sessionStorage.getItem("beverly_post_login_redirect") || "";
+          sessionStorage.removeItem("beverly_post_login_redirect");
+        } catch {}
+      }
+      if (target && !target.startsWith("#")) target = `#${target.startsWith("/") ? "" : "/"}${target}`;
+      if (!target || target.startsWith("#/login")) target = "#/dashboard";
+      return target;
+    },
     async goDashboard() {
       this.currentRoleId = null;
       this.currentUserName = null;
-      this.hash = "#/dashboard";
-      window.location.hash = "#/dashboard";
+      const target = this.resolvePostLoginRedirect();
+      this.hash = target;
+      window.location.hash = target;
       await this.loadUser();
     },
     async handleOemSelected() {
       playLoginVoice();
-      this.hash = "#/dashboard";
-      window.location.hash = "#/dashboard";
+      const target = this.resolvePostLoginRedirect();
+      this.hash = target;
+      window.location.hash = target;
     },
     switchOem() {
       this.userDropdownOpen = false;
@@ -1107,18 +1116,12 @@ export default {
     goFirstSearchResult() {
       if (this.firstSearchResult) {
         window.location.hash = this.firstSearchResult.targetHash || this.firstSearchResult.hash;
-        this.searchOpen = false;
-        this.searchQuery = '';
+        this.searchOpen = false; this.searchQuery = '';
       }
     },
     toggleFullscreen() {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
-          console.warn('Fullscreen error:', err.message);
-        });
-      } else if (document.exitFullscreen) {
-        document.exitFullscreen();
-      }
+      if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(err => console.warn('Fullscreen error:', err.message)); }
+      else if (document.exitFullscreen) { document.exitFullscreen(); }
     },
     resolveExternalUrl(route) {
       const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
@@ -1185,6 +1188,8 @@ export default {
 .main-container--account-menu-open :deep(.fixed-header) { z-index: 1002; }
 .main-container--account-menu-open :deep(.bw-account-menu) { position: relative; z-index: 1003; }
 .main-container--account-menu-open :deep(.bw-user-dropdown) { z-index: 1004; }
+
+.content-page.battery-swap-content-page { padding: 0 !important; height: calc(100vh - var(--layout-header-height, 60px)) !important; max-height: calc(100vh - var(--layout-header-height, 60px)) !important; min-height: 0 !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; }
 
 @media (min-width: 1025px) {
   .main-container::before, .bw-account-scrim { display: none; }

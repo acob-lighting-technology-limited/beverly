@@ -87,6 +87,12 @@ export const CAPABILITY_DEFINITIONS = [
     label: "Direct credit account balance",
     description: "Direct credit account balance tracking and consumption burn-rate forecasting.",
     previewGroups: ["Management (Customer, Account)"]
+  },
+  {
+    key: "battery_swap_operations",
+    label: "Battery swap & EV fleet tracking",
+    description: "GPS bike tracking via battery IoT, swap station bay inventory, and rider installment CRM.",
+    previewGroups: ["Battery Swap"]
   }
 ];
 

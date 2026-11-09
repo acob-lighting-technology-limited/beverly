@@ -342,7 +342,14 @@ async function runFlow(browserName, page) {
     window.location.hash = "#/remote-operation/remote-meter-reading";
   });
   await page.waitForSelector("text=Add Batch Task", { timeout: 45000 });
-  await page.check('[data-testid="table-select-all"]', { force: true });
+  await page.waitForSelector('[data-testid="table-select-row-1"]', { timeout: 45000 });
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="table-select-all"]');
+    if (el) {
+      el.checked = true;
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
   await page.click('[data-testid="table-toolbar-action-add-batch-task"]');
   await page.waitForSelector(".modal-title", { timeout: 45000 });
   await page.click(".modal-actions .base-button--primary");

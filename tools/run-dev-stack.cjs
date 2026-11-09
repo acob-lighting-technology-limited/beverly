@@ -3,10 +3,10 @@
 /**
  * Beverly dev stack runner.
  *
- *   npm run dev                  → starts everything (CRM + wallet backend + admin + vendor + customer + landing + reference API)
+ *   npm run dev                  → starts everything (CRM + wallet backend + admin + vendor + customer + landing + battery + support + reference API)
  *   SKIP_WALLET=1 npm run dev    → starts only the legacy CRM + reference API
- *   ONLY=admin npm run dev       → starts only the named wallet service
- *                                  (admin | vendor | customer | landing | wallet | crm)
+ *   ONLY=support npm run dev     → starts only the named service
+ *                                  (admin | vendor | customer | landing | battery | support | wallet | crm)
  *
  * Ports:
  *   9310  reference API proxy (mock data for legacy CRM)
@@ -16,6 +16,8 @@
  *   5174  vendor portal      (Vue 3)
  *   5175  wallet admin       (Vue 3)
  *   5176  wallet landing     (Vue 3)
+ *   5177  battery swap       (Vue 3)
+ *   5178  support centre     (Vue 3)
  */
 
 const { spawn } = require("child_process");
@@ -83,6 +85,8 @@ const colors = {
   vendor:   "\x1b[33m",
   customer: "\x1b[34m",
   landing:  "\x1b[95m",
+  battery:  "\x1b[92m",
+  support:  "\x1b[96m",
 };
 const RESET = "\x1b[0m";
 
@@ -161,6 +165,22 @@ const services = [
     args: ["dev"],
     cwd: path.join(root, "apps/wallet-landing"),
     url: "http://localhost:5176",
+    walletGroup: true,
+  },
+  {
+    name: "battery",
+    cmd: isWin ? "npx.cmd" : "npx",
+    args: ["vite", "--port", "5177", "--host", "0.0.0.0"],
+    cwd: path.join(root, "apps/battery-swap"),
+    url: "http://localhost:5177",
+    walletGroup: true,
+  },
+  {
+    name: "support",
+    cmd: isWin ? "npx.cmd" : "npx",
+    args: ["vite", "--port", "5178", "--host", "0.0.0.0"],
+    cwd: path.join(root, "apps/support-centre"),
+    url: "http://localhost:5178",
     walletGroup: true,
   },
 ];

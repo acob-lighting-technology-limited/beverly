@@ -19,6 +19,7 @@ const operationalGroups = new Set([
   "Remote Operation Task",
   "Data Report",
   "Management"
+
 ]);
 const operationalRoles = ["operations-manager", "operations-officer"];
 

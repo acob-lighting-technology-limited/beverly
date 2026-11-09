@@ -4802,26 +4802,15 @@ const route: FastifyPluginAsync = async (fastify) => {
 
     // ── security events viewer ──
     fastify.get('/security-events', async (req, reply) => {
-        const { eventType, severity, actor, since, until, limit } =
-            req.query as Record<string, string | undefined>;
-        let query = adminClient
-            .from('wallet_security_events')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(Math.min(Number(limit ?? 100), 500));
+        const { eventType, severity, actor, since, until, limit } = req.query as Record<string, string | undefined>;
+        let query = adminClient.from('wallet_security_events').select('*').order('created_at', { ascending: false }).limit(Math.min(Number(limit ?? 100), 500));
         if (eventType) query = query.eq('event_type', eventType);
         if (severity)  query = query.eq('severity', severity);
         if (actor)     query = query.eq('actor_user_id', actor);
         if (since)     query = query.gte('created_at', since);
         if (until)     query = query.lte('created_at', until);
         const { data, error } = await query;
-        if (error) {
-            return reply.code(502).send({
-                error: 'security_events_unavailable',
-                message: 'Security events failed to load.',
-                details: error.message,
-            });
-        }
+        if (error) return reply.code(502).send({ error: 'security_events_unavailable', message: 'Security events failed to load.', details: error.message });
         return { events: data ?? [] };
     });
 
@@ -4829,25 +4818,13 @@ const route: FastifyPluginAsync = async (fastify) => {
     fastify.get('/audit/summary', async (req, reply) => {
         const days = Math.min(Math.max(Number((req.query as { days?: string }).days ?? 7), 1), 90);
         const since = new Date(Date.now() - days * 86400_000).toISOString();
-        const { data, error } = await adminClient
-            .from('wallet_audit_log')
-            .select('action, actor_type')
-            .gte('created_at', since)
-            .limit(10_000);
-        if (error) {
-            return reply.code(502).send({
-                error: 'audit_summary_unavailable',
-                message: 'Audit summary failed to load.',
-                details: error.message,
-            });
-        }
-        const byAction: Record<string, number> = {};
-        const byActorType: Record<string, number> = {};
+        const { data, error } = await adminClient.from('wallet_audit_log').select('action, actor_type').gte('created_at', since).limit(10_000);
+        if (error) return reply.code(502).send({ error: 'audit_summary_unavailable', message: 'Audit summary failed to load.', details: error.message });
+        const byAction: Record<string, number> = {}, byActorType: Record<string, number> = {};
         for (const row of data ?? []) {
-            const a = (row as any).action;
-            const t = (row as any).actor_type;
-            byAction[a]     = (byAction[a]     ?? 0) + 1;
-            byActorType[t]  = (byActorType[t]  ?? 0) + 1;
+            const a = (row as any).action, t = (row as any).actor_type;
+            byAction[a] = (byAction[a] ?? 0) + 1;
+            byActorType[t] = (byActorType[t] ?? 0) + 1;
         }
         return { days, total: (data ?? []).length, byAction, byActorType };
     });
@@ -4938,41 +4915,16 @@ const route: FastifyPluginAsync = async (fastify) => {
     }));
 
     fastify.post('/vat-policies', async (req, reply) => {
-        const body = z.object({
-            label: z.string().trim().min(3).max(120),
-            rate_basis_points: z.number().int().min(0).max(10_000),
-            effective_at: z.string().datetime(),
-        }).parse(req.body ?? {});
-        const policy = await submitVatPolicy({
-            label: body.label,
-            rateBasisPoints: body.rate_basis_points,
-            effectiveAt: body.effective_at,
-            actorUserId: req.actor!.userId,
-        });
-        await logAction({
-            actorUserId: req.actor!.userId,
-            actorType: 'staff',
-            actorRole: req.actor!.role,
-            action: 'vat_policy.submitted',
-            targetType: 'vat_policy',
-            targetId: policy.id,
-            after: { ...policy },
-        });
+        const body = z.object({ label: z.string().trim().min(3).max(120), rate_basis_points: z.number().int().min(0).max(10_000), effective_at: z.string().datetime() }).parse(req.body ?? {});
+        const policy = await submitVatPolicy({ label: body.label, rateBasisPoints: body.rate_basis_points, effectiveAt: body.effective_at, actorUserId: req.actor!.userId });
+        await logAction({ actorUserId: req.actor!.userId, actorType: 'staff', actorRole: req.actor!.role, action: 'vat_policy.submitted', targetType: 'vat_policy', targetId: policy.id, after: { ...policy } });
         return reply.code(201).send({ policy });
     });
 
     fastify.post('/vat-policies/:id/approve', async (req, reply) => {
         const id = z.string().uuid().parse((req.params as { id: string }).id);
         const policy = await approveVatPolicy(id, req.actor!.userId);
-        await logAction({
-            actorUserId: req.actor!.userId,
-            actorType: 'staff',
-            actorRole: req.actor!.role,
-            action: 'vat_policy.approved',
-            targetType: 'vat_policy',
-            targetId: policy.id,
-            after: { ...policy },
-        });
+        await logAction({ actorUserId: req.actor!.userId, actorType: 'staff', actorRole: req.actor!.role, action: 'vat_policy.approved', targetType: 'vat_policy', targetId: policy.id, after: { ...policy } });
         return reply.send({ policy });
     });
 

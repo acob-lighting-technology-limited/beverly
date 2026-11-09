@@ -107,4 +107,93 @@ export const adminConsumptionRoutes: FastifyPluginAsync = async (fastify) => {
         }).filter((row: any) => !alarm || row.alarmKey === alarm);
         return { rows, total: rows.length, count: rows.length };
     });
+
+    fastify.get('/consumption/reconcile-audit', async (req) => {
+        const qs = req.query as Record<string, string>;
+        const assignedStations = staffStations(req);
+        const stationId = (assignedStations ? assignedStations[0] : (qs.station_id || qs.stationId || 'TUNGA')).toUpperCase();
+        const from = qs.from || new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+        const to = qs.to || new Date().toISOString().slice(0, 10);
+
+        const { auditStationGaps } = await import('../services/consumption-reconciliation.js');
+        const { data: metersData } = await adminClient
+            .from('customer_meters')
+            .select('meter_serial')
+            .eq('station_id', stationId)
+            .limit(500);
+        const activeMeters = (metersData ?? []).map((m: any) => String(m.meter_serial || '').trim()).filter(Boolean);
+
+        const { data: readingsData } = await adminClient
+            .from('daily_meter_readings')
+            .select('meter_id, reading_date, total1, remain1, usage1')
+            .eq('station_id', stationId)
+            .gte('reading_date', from)
+            .lte('reading_date', to)
+            .limit(2000);
+
+        const audit = auditStationGaps(stationId, activeMeters, readingsData ?? [], from, to);
+        return { ok: true, audit };
+    });
+
+    fastify.post('/consumption/reconcile-audit', async (req) => {
+        const body = (req.body ?? {}) as { stationId?: string; from?: string; to?: string };
+        const assignedStations = staffStations(req);
+        const stationId = (assignedStations ? assignedStations[0] : (body.stationId || 'TUNGA')).toUpperCase();
+        const from = body.from || new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+        const to = body.to || new Date().toISOString().slice(0, 10);
+
+        const { auditStationGaps } = await import('../services/consumption-reconciliation.js');
+        const { data: metersData } = await adminClient
+            .from('customer_meters')
+            .select('meter_serial')
+            .eq('station_id', stationId)
+            .limit(500);
+        const activeMeters = (metersData ?? []).map((m: any) => String(m.meter_serial || '').trim()).filter(Boolean);
+
+        const { data: readingsData } = await adminClient
+            .from('daily_meter_readings')
+            .select('meter_id, reading_date, total1, remain1, usage1')
+            .eq('station_id', stationId)
+            .gte('reading_date', from)
+            .lte('reading_date', to)
+            .limit(2000);
+
+        const audit = auditStationGaps(stationId, activeMeters, readingsData ?? [], from, to);
+        return { ok: true, triggeredAt: new Date().toISOString(), audit };
+    });
+
+    fastify.get('/grid/outages', async () => {
+        const { listActiveGridOutages } = await import('../services/grid-outage.js');
+        const outages = listActiveGridOutages();
+        return { ok: true, outages, count: outages.length };
+    });
+
+    fastify.post('/grid/outages/:id/acknowledge', async (req, reply) => {
+        const params = req.params as { id: string };
+        const body = (req.body ?? {}) as { notes?: string };
+        const actor = (req as any).user?.email || (req as any).user?.userId || 'Operations';
+        const { acknowledgeGridOutage } = await import('../services/grid-outage.js');
+        const acknowledged = acknowledgeGridOutage(params.id, actor, body.notes);
+        if (!acknowledged) {
+            return reply.code(404).send({ error: 'outage_not_found', message: 'No active grid outage matching the ID' });
+        }
+        return { ok: true, incidentId: params.id, acknowledgedBy: actor, acknowledgedAt: new Date().toISOString() };
+    });
+
+    fastify.get('/grid/analytics/technical-loss', async (req) => {
+        const qs = req.query as Record<string, string>;
+        const stationId = (qs.station_id || qs.stationId || 'TUNGA').toUpperCase();
+        const feederKwh = Number(qs.feeder_kwh || qs.feederKwh || 1250);
+        const customerKwh = Number(qs.customer_kwh || qs.customerKwh || 1160);
+        const tariff = Number(qs.tariff || 120);
+
+        const { evaluateTechnicalLoss } = await import('../services/consumption-reconciliation.js');
+        const report = evaluateTechnicalLoss({
+            stationId,
+            feederEnergyKwh: feederKwh,
+            customerEnergyKwh: customerKwh,
+            tariffPerKwh: tariff,
+        });
+        return { ok: true, report };
+    });
 };

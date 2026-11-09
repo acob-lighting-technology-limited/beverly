@@ -1,0 +1,23 @@
+{
+  "name": "@beverly/support-centre-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Beverly Support Centre - Live Telephony Desk, Call & Case Queues, Customer 360 & Operations Portal",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5178 --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --port 5178 --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@beverly/tokens": "workspace:*",
+    "pinia": "^2.2.0 || ^3.0.0",
+    "vue": "^3.5.42",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.5",
+    "typescript": "^5.5.0",
+    "vite": "^5.3.0"
+  }
+}
