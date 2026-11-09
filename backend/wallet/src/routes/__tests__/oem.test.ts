@@ -137,6 +137,22 @@ describe('OEM installation inventory HTTP boundary', () => {
             expect(response.headers['cache-control']).toBe('no-store');
         } finally { await app.close(); }
     });
+    it('classifies credential failures without exposing their details', async () => {
+        vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+            const url = new URL(input instanceof Request ? input.url : String(input));
+            if (url.pathname.endsWith('/rpc/get_authorized_oem_inventory_reconciliation')) return Response.json({ authorized: true, snapshot: null });
+            if (url.pathname.endsWith('/oem_installations')) return Response.json({ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', tenant_id: 'tenant', status: 'active', base_url: 'https://www.sparkmeter.cloud', approved_hostnames: ['www.sparkmeter.cloud'] });
+            return new Response('{}', { status: 404 });
+        });
+        vi.spyOn(installationCredentials, 'loadInstallationCredentials').mockRejectedValue(new installationCredentials.InstallationCredentialError('OEM_CREDENTIALS_INVALID', 'private detail'));
+        const app = await inventoryApp();
+        try {
+            const response = await app.inject({ method: 'POST', url: '/installations/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/test-connection' });
+            expect(response.statusCode).toBe(503);
+            expect(response.json()).toEqual({ error: 'oem_provider_unavailable', message: 'OEM_CREDENTIALS_INVALID' });
+            expect(response.body).not.toContain('private detail');
+        } finally { await app.close(); }
+    });
     it('returns installation-scoped meters without customer PII', async () => {
         vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
             const url = new URL(input instanceof Request ? input.url : String(input));
