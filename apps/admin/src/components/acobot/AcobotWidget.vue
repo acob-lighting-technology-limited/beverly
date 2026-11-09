@@ -309,12 +309,12 @@ const isThinking = ref(false);
 const currentTheme = ref<'dark' | 'light' | 'executive'>('dark');
 const messageContainer = ref<HTMLElement | null>(null);
 const widgetWrapper = ref<HTMLElement | null>(null);
-const widgetPosition = ref<{ x: number; y: number } | null>(null);
+const widgetPosition = ref<{ side: 'left' | 'right'; y: number } | null>(null);
 const isDragging = ref(false);
 const dragStart = { pointerX: 0, pointerY: 0, widgetX: 0, widgetY: 0 };
 let suppressTriggerClick = false;
 const widgetPositionStyle = computed(() => widgetPosition.value
-  ? { left: `${widgetPosition.value.x}px`, top: `${widgetPosition.value.y}px`, right: 'auto', bottom: 'auto' }
+  ? { left: widgetPosition.value.side === 'left' ? '8px' : 'auto', right: widgetPosition.value.side === 'right' ? '8px' : 'auto', top: `${widgetPosition.value.y}px`, bottom: 'auto' }
   : undefined);
 const {
   isListening,
@@ -363,8 +363,9 @@ function clampPosition(x: number, y: number) {
   const width = rect?.width ?? 0;
   const height = rect?.height ?? 0;
   const edge = 8;
+  const right = window.innerWidth - width - edge;
   return {
-    x: Math.min(Math.max(edge, x), Math.max(edge, window.innerWidth - width - edge)),
+    side: x < (edge + right) / 2 ? 'left' as const : 'right' as const,
     y: Math.min(Math.max(edge, y), Math.max(edge, window.innerHeight - height - edge)),
   };
 }
@@ -372,7 +373,9 @@ function clampPosition(x: number, y: number) {
 function restoreWidgetPosition() {
   try {
     const saved = JSON.parse(localStorage.getItem('beverly-admin-ai-position') ?? 'null');
-    if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) {
+    if (Number.isFinite(saved?.y) && (saved?.side === 'left' || saved?.side === 'right')) {
+      widgetPosition.value = { side: saved.side, y: clampPosition(0, saved.y).y };
+    } else if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) {
       widgetPosition.value = clampPosition(saved.x, saved.y);
     }
   } catch {
@@ -382,7 +385,7 @@ function restoreWidgetPosition() {
 
 function clampWidgetPosition() {
   if (!widgetPosition.value) return;
-  widgetPosition.value = clampPosition(widgetPosition.value.x, widgetPosition.value.y);
+  widgetPosition.value = { ...widgetPosition.value, y: clampPosition(0, widgetPosition.value.y).y };
   localStorage.setItem('beverly-admin-ai-position', JSON.stringify(widgetPosition.value));
 }
 
