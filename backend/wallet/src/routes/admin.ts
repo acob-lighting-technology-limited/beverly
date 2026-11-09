@@ -45,6 +45,7 @@ import { revokePortalSession } from '../services/portal-session.js';
 import { pushConfig, removePushSubscription, savePushSubscription } from '../services/push-notifications.js';
 import { notifyVendor } from '../services/vendor-notifications.js';
 import adminVendorAnalyticsRoutes from './admin-vendor-analytics.js';
+import adminVendorDeletionRoutes from './admin-vendor-deletion.js';
 import adminVendorTransferRoutes from './admin-vendor-transfers.js';
 import adminDevRoutes from './admin-dev.js';
 import adminReportsRoutes from './admin-reports.js';
@@ -491,6 +492,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'GET /vendors/summary': 'wallet.vendors.review',
     'GET /vendors/analytics': 'wallet.vendors.review',
     'DELETE /vendors/:id': 'wallet.vendors.manage',
+    'GET /vendors/:id/deletion-check': 'wallet.vendors.manage',
     'PATCH /vendors/:id': 'wallet.vendors.manage',
     'PATCH /vendors/:id/status': 'wallet.vendors.manage',
     'PATCH /vendors/:id/station': 'wallet.vendors.manage',
@@ -1705,67 +1707,6 @@ const route: FastifyPluginAsync = async (fastify) => {
         return { vendors: data ?? [] };
     });
 
-    fastify.delete('/vendors/:id', async (req, reply) => {
-        const id = (req.params as { id: string }).id;
-        const schema = z.object({
-            reason: z.string().trim().min(4).max(500),
-            confirmation: z.string().trim().min(1).max(160),
-        });
-        const body = schema.parse(req.body ?? {});
-        const { data: vendor, error: readError } = await adminClient
-            .from('vendor_organizations')
-            .select('*')
-            .eq('id', id)
-            .maybeSingle();
-
-        if (readError) throw readError;
-        if (!vendor || (vendor as any).deleted_at) {
-            return reply.code(404).send({ error: 'not_found', message: 'Vendor not found.' });
-        }
-        if (body.confirmation !== (vendor as any).legal_name) {
-            return reply.code(400).send({ error: 'confirmation_mismatch', message: 'Type the exact vendor name.' });
-        }
-
-        const assignedStations = staffStations(req);
-        if (assignedStations && !assignedStations.includes(String((vendor as any).station_id ?? '').toUpperCase())) {
-            return reply.code(403).send({ error: 'station_scope_forbidden', message: 'Vendor is outside your station scope.' });
-        }
-
-        const { data: deletion, error } = await adminClient.rpc('admin_soft_delete_vendor', {
-            p_vendor_id: id,
-            p_deleted_by: req.actor!.userId,
-            p_reason: body.reason,
-        });
-        if (error) return reply.code(400).send({ error: 'delete_failed', message: error.message });
-
-        const authUserIds = Array.isArray((deletion as any)?.authUserIds)
-            ? (deletion as any).authUserIds.filter((value: unknown): value is string => typeof value === 'string')
-            : [];
-        const cleanupFailures: string[] = [];
-        for (const authUserId of authUserIds) {
-            const { error: signOutError } = await adminClient.auth.admin.signOut(authUserId, 'global');
-            if (signOutError) req.log.warn({ err: signOutError, authUserId, vendorId: id }, 'Vendor session revocation failed');
-            const { error: deleteError } = await adminClient.auth.admin.deleteUser(authUserId, true);
-            if (deleteError) {
-                cleanupFailures.push(authUserId);
-                req.log.error({ err: deleteError, authUserId, vendorId: id }, 'Vendor auth deletion failed');
-            }
-        }
-
-        await logAction({
-            ...auditFromRequest(req),
-            action: 'vendor.deleted',
-            targetType: 'vendor_organization',
-            targetId: id,
-            before: vendor as Record<string, unknown>,
-            after: { status: 'closed', deleted: true },
-            metadata: { reason: body.reason, authUsersRemoved: authUserIds.length - cleanupFailures.length, cleanupFailures },
-        });
-
-        return { ok: true, id, authUsersRemoved: authUserIds.length - cleanupFailures.length };
-    });
-
-    // ── freeze / unfreeze ──
     fastify.patch('/vendors/:id', async (req, reply) => {
         const id = (req.params as { id: string }).id;
         const schema = z.object({
@@ -4971,6 +4912,7 @@ const route: FastifyPluginAsync = async (fastify) => {
     });
 
     await fastify.register(adminVendorAnalyticsRoutes);
+    await fastify.register(adminVendorDeletionRoutes);
     await fastify.register(adminVendorTransferRoutes);
     await fastify.register(adminDevRoutes);
     await fastify.register(adminReportsRoutes);
