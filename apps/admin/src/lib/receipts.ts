@@ -237,7 +237,7 @@ function legacyReceiptHtml(model: ReceiptModel): string {
     </header>
     ${amount ? `<section class="amount"><span>${escapeHtml(model.subject || 'Amount')}</span><strong>${escapeHtml(amount)}</strong></section>` : ''}
     ${status ? `<div class="status">${escapeHtml(status)}</div>` : ''}
-    ${token && !isDirectCredit ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : isDirectCredit ? `<section class="token direct-credit"><span>Credit Method</span><strong>DIRECT CREDIT (METER BALANCE)</strong></section>` : ''}
+    ${token && !isDirectCredit ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : isDirectCredit ? `<section class="token direct-credit"><span>Credit Method</span><strong>DIRECT CREDIT (ACCOUNT TOP-UP)</strong></section>` : ''}
     <section class="grid">
       ${details.map((item) => `<div class="item ${item.wide ? 'wide' : ''}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join('')}
     </section>
@@ -536,13 +536,13 @@ export function purchaseReceipt(row: any): ReceiptModel {
         title: 'Purchase Receipt',
         receiptId: id(row.receipt_id || row.receipt?.id || row.id),
         amount: money(row.amount_minor),
-        status: clean(row.status || row.delivery_state),
+        status: row.delivery_state === 'payment_processed_delivery_unconfirmed' ? 'Payment processed; meter delivery unconfirmed' : clean(row.status || row.delivery_state),
         issuedAt: date(row.created_at),
         subject: 'Amount Purchased',
         isDirectCredit,
         fields: [
             isDirectCredit
-                ? field('Credit Method', 'DIRECT CREDIT (METER BALANCE)')
+                ? field('Credit Method', 'DIRECT CREDIT (ACCOUNT TOP-UP)')
                 : field('Token', row.token, { token: true }),
             field('Customer', row.customer_name || row.customer_id),
             field('Vended By', vendedBy, { wide: true }),
@@ -550,13 +550,13 @@ export function purchaseReceipt(row: any): ReceiptModel {
             field('Meter Type', row.meter_type || 'Prepaid Single Phase'),
             field('Station', row.station_id || row.station_name),
             field('Tariff', tariffName),
-            field('Tariff Price', tariffPrice),
+            field('Tariff Price', isDirectCredit ? '' : tariffPrice),
             field('Payment', row.payment_method || (row.purchase_mode === 'remote_send' ? 'Wallet & Wireless Remote' : 'Wallet Balance')),
             field('Purchase Way', row.purchase_way || (row.purchase_mode === 'remote_send'
                 ? row.actor_type === 'vendor' ? 'Vendor Portal Remote Send' : 'Customer Portal Remote Send'
                 : row.actor_type === 'vendor' ? 'Vendor Portal Vending' : 'Customer Portal Self-Vend')),
-            field('Energy Value', row.energy_amount_minor != null ? money(row.energy_amount_minor) : ''),
-            field(`VAT (${Number(row.vat_rate_basis_points ?? 0) / 100}%)`, row.vat_amount_minor != null ? money(row.vat_amount_minor) : ''),
+            field('Energy Value', !isDirectCredit && row.energy_amount_minor != null ? money(row.energy_amount_minor) : ''),
+            field(`VAT (${Number(row.vat_rate_basis_points ?? 0) / 100}%)`, !isDirectCredit && row.vat_amount_minor != null ? money(row.vat_amount_minor) : ''),
             field('Units', row.units_kwh != null ? `${Number(row.units_kwh).toFixed(4)} kWh` : ''),
             field('Wallet', row.wallet_name || row.vendor_business_name || row.customer_name),
             field('Failure Reason', row.failure_reason, { wide: true }),

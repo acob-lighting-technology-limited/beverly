@@ -3,12 +3,17 @@ import { adminClient } from '../../db/supabase.js';
 import {
     recordDurableOemCommand,
     claimCommandDispatch,
+    recordCommandSubmitted,
     completeCommandOutcome,
     isHoldProtectedByOemCommand,
     type OemCommandRecord,
 } from '../oem-command-service.js';
 
 describe('durable OEM command service', () => {
+    it('stops dispatch when submission state cannot be saved', async () => {
+        const client = { from: () => ({ update: () => ({ eq: async () => ({ error: { message: 'storage unavailable' } }) }) }) };
+        await expect(recordCommandSubmitted('command', 1, client)).rejects.toThrow('storage unavailable');
+    });
     let mockCommands: Map<string, OemCommandRecord>;
     let mockAttempts: Array<Record<string, unknown>>;
 

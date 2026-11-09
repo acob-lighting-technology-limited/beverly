@@ -67,6 +67,10 @@ const selectedInstallation = computed(() => installations.value.find((item) => i
 const meterSerial = (externalId: string): string | undefined => inventoryMeters.value.find((meter) => meter.externalId === externalId)?.serial;
 const testingConnection = ref(false);
 const testConnectionResult = ref<TestConnectionResult | null>(null);
+const probeSite = ref('');
+const probeLoading = ref(false);
+const probeError = ref('');
+const probeResult = ref<{ readings: number; quarantined: number; hasMore: boolean } | null>(null);
 
 onMounted(async (): Promise<void> => {
   await Promise.all([loadCatalog(), loadInstallations()]);
@@ -94,6 +98,10 @@ async function loadInstallation(installationId: string): Promise<void> {
   const generation = ++selectionGeneration;
   selectedInstallationId.value = installationId;
   testConnectionResult.value = null;
+  probeSite.value = '';
+  probeError.value = '';
+  probeResult.value = null;
+  probeLoading.value = false;
   inventoryError.value = '';
   inventoryLoading.value = true;
   inventoryMeters.value = [];
@@ -137,6 +145,26 @@ async function loadTelemetry(installationId: string, generation: number): Promis
     if (selectionGeneration === generation) telemetryError.value = 'Scoped telemetry is unavailable.';
   } finally {
     if (selectionGeneration === generation) telemetryLoading.value = false;
+  }
+}
+
+async function probeTelemetry(): Promise<void> {
+  const installationId = selectedInstallationId.value;
+  const site = probeSite.value.trim();
+  const generation = selectionGeneration;
+  if (!site || !installationId || probeLoading.value) return;
+  probeLoading.value = true;
+  probeError.value = '';
+  probeResult.value = null;
+  try {
+    const result = await api.get<{ readings: number; quarantined: number; hasMore: boolean }>(
+      `/api/v1/oem/installations/${installationId}/telemetry/probe?site=${encodeURIComponent(site)}`,
+    );
+    if (selectionGeneration === generation && probeSite.value.trim() === site) probeResult.value = result;
+  } catch {
+    if (selectionGeneration === generation && probeSite.value.trim() === site) probeError.value = 'Live telemetry probe unavailable. Check site access and provider connection.';
+  } finally {
+    if (selectionGeneration === generation) probeLoading.value = false;
   }
 }
 
@@ -188,21 +216,11 @@ const filteredOems = computed(() => {
 });
 
 function getAdapterClass(installation: OemInstallation): string {
-  if (installation.adapterClass) return installation.adapterClass;
-  const name = (installation.displayName || '').toLowerCase();
-  if (name.includes('spark') || name.includes('koios')) return 'SparkMeterAdapter';
-  return 'CalinmeterAdapter';
+  return installation.adapterClass || 'Not provided';
 }
 
 function getBaseUrl(installation: OemInstallation): string {
-  if (installation.baseUrl) return installation.baseUrl;
-  const name = (installation.displayName || '').toLowerCase();
-  if (name.includes('spark') || name.includes('koios')) {
-    return installation.environment === 'production'
-      ? 'https://www.sparkmeter.cloud'
-      : 'https://api.sandbox.sparkmeter.cloud';
-  }
-  return 'http://8.208.16.168:9310';
+  return installation.baseUrl || 'Not provided';
 }
 
 async function testInstallationConnection(installationId: string): Promise<void> {
@@ -216,42 +234,16 @@ async function testInstallationConnection(installationId: string): Promise<void>
     );
     const latency = Math.round(result.latencyMs ?? (performance.now() - start));
     testConnectionResult.value = {
-      ok: result.ok ?? true,
+      ok: result.ok === true,
       status: result.status ?? 200,
       latencyMs: latency,
-      message: result.message || 'Connection probe healthy',
+      message: result.message || (result.ok === true ? 'Provider responded' : 'Provider did not confirm connectivity'),
       testedAt: new Date().toISOString(),
     };
   } catch (err: unknown) {
     const latency = Math.round(performance.now() - start);
     const maybeStatus = (err as { status?: number; response?: { status?: number } })?.status ??
       (err as { status?: number; response?: { status?: number } })?.response?.status;
-    if (maybeStatus === 404 || maybeStatus === 501) {
-      const probeStart = performance.now();
-      try {
-        await api.get(`/api/v1/oem/installations/${installationId}/reconciliation`);
-        const probeLatency = Math.round(performance.now() - probeStart);
-        testConnectionResult.value = {
-          ok: true,
-          status: 200,
-          latencyMs: probeLatency,
-          message: 'Health probe active (reconciliation reachable)',
-          testedAt: new Date().toISOString(),
-        };
-        return;
-      } catch (probeErr: unknown) {
-        const probeStatus = (probeErr as { status?: number; response?: { status?: number } })?.status ??
-          (probeErr as { status?: number; response?: { status?: number } })?.response?.status ?? 503;
-        testConnectionResult.value = {
-          ok: false,
-          status: probeStatus,
-          latencyMs: Math.round(performance.now() - probeStart),
-          message: (probeErr as { message?: string })?.message || 'Connection probe unreachable',
-          testedAt: new Date().toISOString(),
-        };
-        return;
-      }
-    }
     testConnectionResult.value = {
       ok: false,
       status: maybeStatus || 500,
@@ -429,6 +421,16 @@ function getCapabilityBadges(oem: OemManufacturer): Array<{ label: string; class
             </button>
           </template>
           <h4>Telemetry readings</h4>
+          <div class="bw-card" aria-label="Live telemetry probe">
+            <label for="telemetry-probe-site">Site ID</label>
+            <input id="telemetry-probe-site" v-model="probeSite" class="bw-input" placeholder="Enter an inventory site ID" @input="probeResult = null; probeError = ''" />
+            <button type="button" class="bw-btn bw-btn-outline bw-btn-sm" :disabled="probeLoading || !probeSite.trim()" @click="probeTelemetry">
+              {{ probeLoading ? 'Checking…' : 'Check live telemetry' }}
+            </button>
+            <p class="bw-text-muted bw-text-sm">Checks one provider page. Does not save readings.</p>
+            <p v-if="probeError" role="alert" class="bw-error-banner">{{ probeError }}</p>
+            <p v-if="probeResult" role="status">{{ probeResult.readings }} normalized, {{ probeResult.quarantined }} invalid. {{ probeResult.hasMore ? 'More pages available.' : 'No more pages.' }} {{ !probeResult.readings && !probeResult.quarantined ? 'No readings returned; data freshness is unverified.' : 'Ownership and storage are not verified.' }}</p>
+          </div>
           <p v-if="telemetryLoading" role="status">Loading scoped telemetry…</p>
           <p v-else-if="telemetryError" role="alert" class="bw-error-banner">{{ telemetryError }}</p>
           <div v-else-if="telemetryReadings.length" class="bw-table-wrap">

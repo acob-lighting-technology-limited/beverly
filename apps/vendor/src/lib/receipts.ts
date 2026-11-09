@@ -77,7 +77,7 @@ function legacyReceiptHtml(model: ReceiptModel): string {
     body{background:#eef7f0;color:#183126}.receipt{background:#fff;border-color:rgba(22,163,74,.24);box-shadow:0 24px 70px rgba(22,70,40,.14),0 0 0 6px rgba(22,163,74,.04)}.receipt:before{background:linear-gradient(90deg,#15803d,#22c55e,#86efac)}
     .mark{background:linear-gradient(135deg,#16a34a,#86efac);color:#071d0f}.brand-name,h1{color:#10281a}.sub,.meta,.item span{color:#64756b}.meta{border-color:rgba(22,163,74,.24);background:#f4faf6}.meta strong,.time span,.amount span,.amount strong,.status,.token span,.token strong{color:#16a34a}.time,.amount,.status,.token{border-color:rgba(22,163,74,.24)}.time{background:rgba(22,163,74,.08);color:#183126}.amount{background:linear-gradient(135deg,rgba(22,163,74,.12),rgba(22,163,74,.04))}.token{background:#f2fbf5}.item{border-color:rgba(22,163,74,.14);background:#f8fcf9}.item strong{color:#183126}
     @media print{body{width:210mm;min-height:297mm;padding:0;background:#fff}.receipt{width:148mm;box-shadow:none;border-radius:18px}}@media(max-width:720px){body{padding:0}.receipt{width:100%;min-height:100vh;border-radius:0;padding:20px}header,.grid{grid-template-columns:1fr}.meta{text-align:left}}
-  </style></head><body><main class="receipt"><header><div><div class="brand"><div class="mark">B</div><div class="brand-name">Beverly</div></div><h1>${escapeHtml(model.title)}</h1><p class="sub">${escapeHtml(model.subtitle || 'Wallet operations receipt')}</p><div class="time"><span>Time</span>${escapeHtml(model.issuedAt || date(new Date().toISOString()))}</div></div><div class="meta"><strong>#${escapeHtml(model.receiptId)}</strong><span>Receipt ID</span></div></header>${model.amount ? `<section class="amount"><span>${escapeHtml(model.subject || 'Amount')}</span><strong>${escapeHtml(model.amount)}</strong></section>` : ''}${model.status ? `<div class="status">${escapeHtml(model.status)}</div>` : ''}${token && !isDirectCredit ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : isDirectCredit ? `<section class="token direct-credit"><span>Credit Method</span><strong>DIRECT CREDIT (METER BALANCE)</strong></section>` : ''}<section class="grid">${fields.map((item) => `<div class="item ${item.wide ? 'wide' : ''}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join('')}</section><footer><strong>ACOB Lighting Technology Limited</strong>support@acoblighting.com &bull; +234 800 BEVERLY<br>www.acoblighting.com</footer></main></body></html>`;
+  </style></head><body><main class="receipt"><header><div><div class="brand"><div class="mark">B</div><div class="brand-name">Beverly</div></div><h1>${escapeHtml(model.title)}</h1><p class="sub">${escapeHtml(model.subtitle || 'Wallet operations receipt')}</p><div class="time"><span>Time</span>${escapeHtml(model.issuedAt || date(new Date().toISOString()))}</div></div><div class="meta"><strong>#${escapeHtml(model.receiptId)}</strong><span>Receipt ID</span></div></header>${model.amount ? `<section class="amount"><span>${escapeHtml(model.subject || 'Amount')}</span><strong>${escapeHtml(model.amount)}</strong></section>` : ''}${model.status ? `<div class="status">${escapeHtml(model.status)}</div>` : ''}${token && !isDirectCredit ? `<section class="token"><span>${escapeHtml(token.label)}</span><strong>${escapeHtml(token.value)}</strong></section>` : isDirectCredit ? `<section class="token direct-credit"><span>Credit Method</span><strong>DIRECT CREDIT (ACCOUNT TOP-UP)</strong></section>` : ''}<section class="grid">${fields.map((item) => `<div class="item ${item.wide ? 'wide' : ''}"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join('')}</section><footer><strong>ACOB Lighting Technology Limited</strong>support@acoblighting.com &bull; +234 800 BEVERLY<br>www.acoblighting.com</footer></main></body></html>`;
 }
 
 function canonicalReceipt(model: ReceiptModel) {
@@ -348,7 +348,7 @@ export function purchaseReceipt(row: any): ReceiptModel {
     isDirectCredit,
     fields: [
       isDirectCredit
-        ? field('Credit Method', 'DIRECT CREDIT (METER BALANCE)')
+        ? field('Credit Method', 'DIRECT CREDIT (ACCOUNT TOP-UP)')
         : field('Token', row.token, { token: true }),
       field('Customer', row.customer_name || row.customer_phone),
       field('Customer Phone', row.customer_phone),
@@ -357,11 +357,11 @@ export function purchaseReceipt(row: any): ReceiptModel {
       field('Meter Type', row.meter_type || 'Prepaid Single Phase'),
       field('Station', row.station_id || row.station_name),
       field('Tariff', tariffName),
-      field('Tariff Price', tariffPrice),
+      field('Tariff Price', isDirectCredit ? '' : tariffPrice),
       field('Payment', row.payment_method || (row.mode === 'remote_send' ? 'Wallet & Wireless Remote' : 'Wallet Balance')),
       field('Purchase Way', row.purchase_way || (row.mode === 'remote_send' ? 'Wireless Remote Send' : 'Vendor Portal Vending')),
-      field('Energy Value', row.energy_amount_minor != null ? money(row.energy_amount_minor) : ''),
-      field(`VAT (${Number(row.vat_rate_basis_points ?? 0) / 100}%)`, row.vat_amount_minor != null ? money(row.vat_amount_minor) : ''),
+      field('Energy Value', !isDirectCredit && row.energy_amount_minor != null ? money(row.energy_amount_minor) : ''),
+      field(`VAT (${Number(row.vat_rate_basis_points ?? 0) / 100}%)`, !isDirectCredit && row.vat_amount_minor != null ? money(row.vat_amount_minor) : ''),
       field('Units', row.units_kwh != null ? `${Number(row.units_kwh).toFixed(4)} kWh` : ''),
     ],
   };

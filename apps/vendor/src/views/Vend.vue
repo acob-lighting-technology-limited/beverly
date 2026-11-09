@@ -11,7 +11,7 @@ import { downloadReceipt, purchaseReceipt, viewReceipt } from '../lib/receipts';
 import { presentVendorVendFailure } from '../lib/vend-errors';
 import { stationDisplayLabel } from '@beverly/tokens/station-identity';
 
-type Step = 'meter' | 'amount' | 'preview' | 'success' | 'failed';
+type Step = 'meter' | 'amount' | 'preview' | 'success' | 'failed' | 'pending';
 
 const step = ref<Step>('meter');
 const meterId = ref('');
@@ -192,6 +192,8 @@ interface MeterInfo {
     tariffId: string;
     isThreePhase?: boolean | null;
     liveVerified?: boolean;
+    providerCreditBalance?: { value: string; currency: string } | null;
+    latestReading?: { heartbeat_end?: string; voltage_avg?: number | null; current_avg?: number | null; state?: string | null } | null;
     resolutionSource?: string;
     vendingStrategy?: string;
     vending_strategy?: string;
@@ -235,7 +237,7 @@ const isDirectCredit = computed(() => {
 });
 const remoteState = computed(() => String(result.value?.purchaseOrder?.delivery_state ?? 'token_generated'));
 const tokenGroups = computed(() => String(result.value?.token ?? '').trim().split(/\s+/).filter(Boolean));
-const showReceiptNotice = computed(() => Boolean(notice.value && notice.value.title !== 'Token generated successfully' && notice.value.title !== 'Credit Applied Successfully'));
+const showReceiptNotice = computed(() => Boolean(notice.value && notice.value.title !== 'Token generated successfully' && notice.value.title !== 'Payment processed'));
 const canRemoteSendToken = computed(() => {
     if (!hasValidToken.value || !result.value?.purchaseOrder?.id || remoteSending.value) return false;
     return remoteState.value !== 'remote_send_delivered';
@@ -252,11 +254,11 @@ const flowSteps = computed(() => [
     { label: 'Amount', icon: ['M3 6h18v12H3z', 'M7 9.5h4.5a2.5 2.5 0 0 1 0 5H7', 'M9 8v8'], active: step.value === 'amount', done: ['preview', 'success', 'failed'].includes(step.value) },
     { label: 'Confirm', icon: ['M12 3 4.5 6v5.5c0 4.7 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.8 7.5-9.5V6L12 3Z', 'm8.5 12 2.2 2.2 4.8-5'], active: step.value === 'preview', done: ['success', 'failed'].includes(step.value) },
     {
-        label: step.value === 'failed' ? 'Failed' : 'Receipt',
+        label: step.value === 'failed' ? 'Failed' : step.value === 'pending' ? 'Review' : 'Receipt',
         icon: step.value === 'failed'
             ? ['M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z']
             : ['M6 3h12v18l-3-2-3 2-3-2-3 2V3Z', 'M9 8h6', 'M9 12h6', 'M9 16h4'],
-        active: ['success', 'failed'].includes(step.value),
+        active: ['success', 'failed', 'pending'].includes(step.value),
         done: step.value === 'success',
         error: step.value === 'failed'
     },
@@ -539,6 +541,13 @@ async function submitAuthorization() {
         authorization.value = '';
         authOpen.value = false;
 
+        if (r?.purchaseOrder?.delivery_state === 'payment_unconfirmed_needs_review') {
+            result.value = { ...r, token: null };
+            notice.value = null;
+            step.value = 'pending';
+            return;
+        }
+
         const rawToken = String(r?.token || r?.purchaseOrder?.token || '').trim();
         const isPoFailed = r?.purchaseOrder?.status === 'failed'
             || r?.purchaseOrder?.delivery_state === 'vend_failed'
@@ -550,7 +559,7 @@ async function submitAuthorization() {
             || (r as any)?.vendingStrategy === 'direct_credit'
             || (r as any)?.mode === 'direct_credit'
             || r?.purchaseOrder?.mode === 'direct_credit'
-            || r?.purchaseOrder?.delivery_state === 'delivered';
+            || r?.purchaseOrder?.delivery_state === 'payment_processed_delivery_unconfirmed';
 
         // CRITICAL: Strict validation - if no token was generated (and not direct credit) or order failed, DO NOT show success screen!
         if (isPoFailed || (!rawToken && !isDirectCreditOrder)) {
@@ -596,25 +605,25 @@ async function submitAuthorization() {
         notice.value = needsReconciliation
             ? {
                 tone: 'info',
-                title: isDirectCreditOrder ? 'Direct credit applied; reconciliation pending' : 'Token generated; reconciliation pending',
+                title: isDirectCreditOrder ? 'Payment processed; reconciliation pending' : 'Token generated; reconciliation pending',
                 message: isDirectCreditOrder
-                    ? 'Credit applied to meter. Beverly operations will reconcile the wallet automatically.'
+                    ? 'Payment processed. Wallet reconciliation is pending.'
                     : 'The token is valid and remains available. Beverly operations will reconcile the wallet automatically.',
                 code: 'token_generated_needs_reconciliation',
             }
             : {
                 tone: 'success',
-                title: isDirectCreditOrder ? 'Credit Applied Successfully' : 'Token generated successfully',
+                title: isDirectCreditOrder ? 'Payment processed' : 'Token generated successfully',
                 message: isDirectCreditOrder
-                    ? 'Your meter balance has been credited directly over-the-air. No 20-digit keypad token is required.'
+                    ? 'SparkMeter processed the payment. Meter delivery awaits confirmation.'
                     : 'Receipt is ready. Copy, download, view, or remote send now.',
             };
         step.value = 'success';
         showResultPopup(
             'success',
-            isDirectCreditOrder ? 'Credit Applied Successfully' : 'Token generated successfully',
+            isDirectCreditOrder ? 'Payment processed' : 'Token generated successfully',
             isDirectCreditOrder
-                ? `Direct credit applied to meter ${meter.value?.meterId || ''}.`
+                ? `Payment processed for meter ${meter.value?.meterId || ''}. Delivery awaits confirmation.`
                 : `Credit token is ready for meter ${meter.value?.meterId || ''}. Remote send dispatching...`,
         );
         if (!isDirectCreditOrder) {
@@ -862,11 +871,14 @@ async function remoteSendGeneratedToken() {
           <div><span>Tariff</span><strong>{{ meter?.tariffId }}</strong></div>
           <div><span>Station</span><strong>{{ stationDisplayLabel(meter?.stationId) }}</strong></div>
           <div><span>Phase</span><strong>{{ meterTypeLabel(meter?.isThreePhase) }}</strong></div>
+          <div v-if="isDirectCredit && meter?.providerCreditBalance"><span>Account credit</span><strong>{{ meter.providerCreditBalance.currency }} {{ meter.providerCreditBalance.value }}</strong></div>
+          <div v-if="isDirectCredit && meter?.latestReading?.heartbeat_end"><span>Last meter reading</span><strong>{{ meter.latestReading.heartbeat_end }}</strong></div>
+          <div v-if="isDirectCredit && meter?.latestReading?.voltage_avg != null"><span>Reported voltage</span><strong>{{ meter.latestReading.voltage_avg }} V</strong></div>
         </section>
 
         <div v-if="!meterLiveVerified" class="bw-alert" style="margin-top: var(--s-3); display: grid; gap: 6px">
           <strong>Preview-only meter metadata</strong>
-          <span>This meter was resolved from archived read-only records, not the live account catalog. Bind or confirm it live before taking payment.</span>
+          <span>We could not verify this meter with its provider. Check the connection before taking payment.</span>
           <small v-if="meter?.resolutionSource" class="bw-mono">Source: {{ meter.resolutionSource }}</small>
         </div>
 
@@ -900,7 +912,7 @@ async function remoteSendGeneratedToken() {
           <span class="bw-badge success" style="font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em">Direct Meter Credit</span>
         </div>
         <h2 class="bw-h2 bw-mono" style="font-size: var(--t-3xl); margin: 0">{{ naira(preview?.amountMinor) }}</h2>
-        <p class="bw-muted bw-mono">{{ kwh(preview?.units) }} @ ₦{{ preview?.effectivePricePerKwh.toFixed(2) }}/kWh</p>
+        <p v-if="!isDirectCredit" class="bw-muted bw-mono">{{ kwh(preview?.units) }} @ ₦{{ preview?.effectivePricePerKwh.toFixed(2) }}/kWh</p>
 
         <div v-if="meter?.vendingStrategy === 'direct_credit' || (meter as any)?.vending_strategy === 'direct_credit'" class="bw-alert info" style="margin-top: var(--s-3); display: grid; gap: 4px">
           <strong>Direct Meter Credit</strong>
@@ -909,8 +921,8 @@ async function remoteSendGeneratedToken() {
 
         <div style="border-top: 1px solid var(--border); margin-top: var(--s-4); padding-top: var(--s-4); display: grid; gap: var(--s-2)">
           <div class="bw-row"><span class="bw-muted">Amount paid</span><span class="bw-spacer"></span><strong>{{ naira(preview?.amountMinor) }}</strong></div>
-          <div class="bw-row"><span class="bw-muted">Energy value</span><span class="bw-spacer"></span><strong>{{ naira(preview?.energyAmountMinor) }}</strong></div>
-          <div class="bw-row"><span class="bw-muted">VAT ({{ Number(preview?.vatRateBasisPoints ?? 0) / 100 }}%)</span><span class="bw-spacer"></span><strong>{{ naira(preview?.taxAmountMinor) }}</strong></div>
+          <div v-if="!isDirectCredit" class="bw-row"><span class="bw-muted">Energy value</span><span class="bw-spacer"></span><strong>{{ naira(preview?.energyAmountMinor) }}</strong></div>
+          <div v-if="!isDirectCredit" class="bw-row"><span class="bw-muted">VAT ({{ Number(preview?.vatRateBasisPoints ?? 0) / 100 }}%)</span><span class="bw-spacer"></span><strong>{{ naira(preview?.taxAmountMinor) }}</strong></div>
           <div class="bw-row"><span class="bw-muted">Customer</span><span class="bw-spacer"></span><strong>{{ meter?.customerName }}</strong></div>
           <div class="bw-row"><span class="bw-muted">Meter</span><span class="bw-spacer"></span><span class="bw-mono">{{ meter?.meterId }}</span></div>
           <div class="bw-row"><span class="bw-muted">Phase</span><span class="bw-spacer"></span><span>{{ meterTypeLabel(meter?.isThreePhase) }}</span></div>
@@ -997,14 +1009,14 @@ async function remoteSendGeneratedToken() {
             <div class="token-ready-row">
               <div>
                 <p class="token-eyebrow">Direct Credit</p>
-                <h1 id="vend-direct-title">Credit Applied Successfully</h1>
+                <h1 id="vend-direct-title">Payment processed</h1>
               </div>
-              <span class="token-ready-badge direct-credit-badge"><span aria-hidden="true"></span>Direct Credit Applied</span>
+              <span class="token-ready-badge direct-credit-badge"><span aria-hidden="true"></span>Payment processed</span>
             </div>
 
             <div class="direct-credit-hero">
               <div class="direct-credit-amount">{{ naira(preview?.amountMinor) }}</div>
-              <div class="direct-credit-units">{{ kwh(result?.units) }}</div>
+              <div v-if="result?.units != null" class="direct-credit-units">{{ kwh(result?.units) }}</div>
             </div>
 
             <div class="direct-credit-notice">
@@ -1012,7 +1024,7 @@ async function remoteSendGeneratedToken() {
                 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
                 <polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
-              <span>Your meter balance has been credited directly over-the-air. No 20-digit keypad token is required.</span>
+              <span>SparkMeter processed the payment. Meter delivery awaits confirmation.</span>
             </div>
 
             <dl class="receipt-facts" style="margin-top: var(--s-4); border-top: 1px solid var(--border); padding-top: var(--s-3)">
@@ -1020,15 +1032,14 @@ async function remoteSendGeneratedToken() {
               <div><dt>Meter ID</dt><dd class="bw-mono">{{ meter?.meterId }}</dd></div>
               <div><dt>Site / Station</dt><dd>{{ stationDisplayLabel(meter?.stationId) }}</dd></div>
               <div><dt>Tariff</dt><dd>{{ meter?.tariffId }}</dd></div>
-              <div><dt>Energy Value</dt><dd>{{ naira(result?.purchaseOrder?.energy_amount_minor ?? preview?.energyAmountMinor) }}</dd></div>
-              <div><dt>Delivery</dt><dd><span class="bw-badge success">Directly Credited (Over-the-Air)</span></dd></div>
+              <div><dt>Delivery</dt><dd><span class="bw-badge success">Awaiting meter confirmation</span></dd></div>
             </dl>
             <p class="receipt-order bw-mono">Order #{{ String(result?.purchaseOrder?.id).slice(0, 8) }}</p>
           </section>
 
           <div class="vend-action-grid">
             <div class="direct-credit-status-banner">
-              <span class="bw-badge success lg">Directly Credited (Over-the-Air)</span>
+              <span class="bw-badge success lg">Awaiting meter confirmation</span>
             </div>
             <button class="bw-btn" @click="downloadResultReceipt">Download receipt</button>
             <button class="bw-btn" @click="viewResultReceipt">View receipt</button>
@@ -1036,6 +1047,13 @@ async function remoteSendGeneratedToken() {
           </div>
         </template>
       </div>
+
+      <section v-else-if="step === 'pending'" class="bw-card" role="status">
+        <h1 class="bw-page-title">Payment under review</h1>
+        <p>We could not confirm this payment. Your funds remain on hold.</p>
+        <p>Please contact support before trying again.</p>
+        <p v-if="result?.purchaseOrder?.id">Order: {{ result.purchaseOrder.id }}</p>
+      </section>
 
       <!-- Step: failed (Explicit Vending Failure Screen) -->
       <div v-else-if="step === 'failed'" key="failed" class="bw-stack vend-failed-screen">

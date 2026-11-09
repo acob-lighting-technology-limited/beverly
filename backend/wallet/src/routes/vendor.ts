@@ -1,3 +1,5 @@
+import { buildSparkMeterPaymentRequest } from '../adapters/sparkmeter-v1.js';
+import { isDirectCreditMeter } from '../services/vending-strategy.js';
 /**
  * Vendor routes — /api/v1/vendor/*
  *
@@ -1331,8 +1333,8 @@ const route: FastifyPluginAsync = async (fastify) => {
         const body = schema.parse(req.body);
         let meter;
         try {
-            assertEnergyVendReady();
             meter = await lookupMeter(body.meterId);
+            if (!isDirectCreditMeter(meter)) assertEnergyVendReady();
         } catch (e: any) {
             if (e instanceof TokenEngineError) return sendTokenEngineError(reply, e);
             return sendVendPreviewUnavailable(req, reply, 'meter_lookup', e);
@@ -1364,6 +1366,10 @@ const route: FastifyPluginAsync = async (fastify) => {
         }
         try {
             const preview = await previewPurchaseWithPolicy(body.amountMinor, meter.tariffId);
+            if (isDirectCreditMeter(meter)) {
+                return { meter, preview: { ...preview, units: null, effectivePricePerKwh: null,
+                    energyAmountMinor: null, taxAmountMinor: null, vatRateBasisPoints: null } };
+            }
             return { meter, preview };
         } catch (e: any) {
             if (e instanceof TokenEngineError) return sendTokenEngineError(reply, e);
@@ -1385,6 +1391,15 @@ const route: FastifyPluginAsync = async (fastify) => {
             assertStationVendAllowed(req.actor!.stationId, meter.stationId);
             const preview = await previewPurchaseWithPolicy(body.amountMinor, meter.tariffId);
             const reference = `DRY-RUN-${Date.now()}`;
+            if (isDirectCreditMeter(meter)) {
+                return {
+                    liveWrite: false, vendingStrategy: 'direct_credit', meter,
+                    preview: { amountMinor: preview.grossAmountMinor, currency: 'NGN', units: null },
+                    payment: buildSparkMeterPaymentRequest({ commandId: reference, amountMinor: preview.grossAmountMinor,
+                        currency: 'NGN', settlementCurrency: 'NGN', externalCustomerId: meter.customerId }),
+                    tokenGeneration: null, remoteSend: null,
+                };
+            }
             const tokenInput = {
                 meterId: meter.meterId,
                 customerId: meter.customerId,
@@ -1448,12 +1463,6 @@ const route: FastifyPluginAsync = async (fastify) => {
         const body = schema.parse(req.body);
         const clientKey = requireIdempotencyKey(req, reply);
         if (!clientKey) return reply;
-        try {
-            assertEnergyVendReady();
-        } catch (error) {
-            if (error instanceof TokenEngineError) return sendTokenEngineError(reply, error);
-            throw error;
-        }
         try {
             await verifyVendorVendCredential({
                 vendorUserId: req.actor!.actorId,

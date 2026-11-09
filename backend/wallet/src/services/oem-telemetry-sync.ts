@@ -14,15 +14,16 @@ export interface SparkMeterTelemetryTarget {
     readonly sites: readonly string[];
 }
 interface SyncDependencies {
-    fetchPage(input: SparkMeterTelemetryTarget & { dateFrom: string; dateTo: string; cursor?: string }): Promise<TelemetryPage>;
-    persistPage(installationId: string, mode: 'historical', scopeKey: string, page: TelemetryPage): Promise<{ readings: number; quarantine: number }>;
+    fetchPage(input: SparkMeterTelemetryTarget & { mode: 'live' | 'historical'; age?: string; dateFrom?: string; dateTo?: string; cursor?: string }): Promise<TelemetryPage>;
+    persistPage(installationId: string, mode: 'live' | 'historical', scopeKey: string, page: TelemetryPage): Promise<{ readings: number; quarantine: number }>;
+    loadCursor?(installationId: string, scopeKey: string): Promise<string | undefined>;
     wait?: (milliseconds: number) => Promise<void>;
 }
 export interface TelemetryReplayOptions {
     readonly date?: string;
     readonly site?: string;
     readonly allowHistoricalBackfill?: boolean;
-    readonly mode?: 'replay' | 'backfill';
+    readonly mode?: 'replay' | 'backfill' | 'live';
 }
 export interface TelemetrySyncSummary {
     installations: number;
@@ -33,8 +34,20 @@ export interface TelemetrySyncSummary {
 }
 
 const dependencies: SyncDependencies = {
-    fetchPage: (input) => fetchSparkMeterTelemetryPage({ ...input, mode: 'historical' }),
+    fetchPage: (input) => fetchSparkMeterTelemetryPage(input),
     persistPage: (installationId, mode, scopeKey, page) => persistTelemetryPage(installationId, mode, scopeKey, page),
+    loadCursor: async (installationId, scopeKey) => {
+        const { data, error } = await adminClient.from('oem_sync_cursors').select('cursor')
+            .eq('oem_installation_id', installationId).eq('operation_key', 'telemetry_historical')
+            .eq('scope_key', scopeKey).maybeSingle();
+        if (error) throw new Error('telemetry_checkpoint_unavailable');
+        if (!data) return undefined;
+        const checkpoint = z.object({ has_more: z.boolean(), cursor: z.string().min(1).nullable() }).safeParse(data.cursor);
+        if (!checkpoint.success || (checkpoint.data.has_more && !checkpoint.data.cursor)) {
+            throw new Error('telemetry_checkpoint_invalid');
+        }
+        return checkpoint.data.has_more ? checkpoint.data.cursor ?? undefined : undefined;
+    },
     wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 };
 
@@ -46,6 +59,8 @@ export async function runSparkMeterTelemetrySync(
 ): Promise<TelemetrySyncSummary> {
     const today = new Date().toISOString().slice(0, 10);
     const date = options.date ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const live = options.mode === 'live';
+    if (live && (options.date || options.allowHistoricalBackfill)) throw new Error('Live telemetry cannot use historical options');
     const isBackfill = options.allowHistoricalBackfill === true || options.mode === 'backfill';
     const minDate = isBackfill ? '2020-01-01' : new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
     if (!z.string().date().safeParse(date).success
@@ -62,24 +77,32 @@ export async function runSparkMeterTelemetrySync(
         let cursor: string | undefined;
         let stage: 'fetch' | 'persist' = 'fetch';
         try {
-            const sites = options.site ? [options.site] : target.sites;
+            const sites = options.site ? [options.site] : [...target.sites].sort();
             if (sites.length === 0 || sites.length > 90) {
                 throw new Error('telemetry_site_day_budget_exceeded');
             }
-            const scopeKey = `${date}:${date}:${sites.join(',')}`;
+            const scopeKey = live ? `live:1h:${sites.join(',')}` : `${date}:${date}:${sites.join(',')}`;
+            if (!live && deps.loadCursor) {
+                cursor = await deps.loadCursor(target.installationId, scopeKey);
+                if (cursor) seen.add(cursor);
+            }
             for (let pageNumber = 0; pageNumber < 20; pageNumber += 1) {
                 stage = 'fetch';
-                const page = await deps.fetchPage({ ...target, sites, dateFrom: date, dateTo: date, cursor });
+                const page = await deps.fetchPage(live
+                    ? { ...target, sites, mode: 'live', age: '1h', cursor }
+                    : { ...target, sites, mode: 'historical', dateFrom: date, dateTo: date, cursor });
+                if (page.hasMore && (!page.nextCursor || seen.has(page.nextCursor))) {
+                    throw new Error('telemetry_cursor_repeated');
+                }
                 stage = 'persist';
-                const stored = await deps.persistPage(target.installationId, 'historical', scopeKey, page);
+                const stored = await deps.persistPage(target.installationId, live ? 'live' : 'historical', scopeKey, page);
                 stage = 'fetch';
                 summary.pages += 1;
                 summary.readings += stored.readings;
                 summary.quarantine += stored.quarantine;
                 if (!page.hasMore) break;
-                if (!page.nextCursor || seen.has(page.nextCursor)) throw new Error('telemetry_cursor_repeated');
-                seen.add(page.nextCursor);
-                cursor = page.nextCursor;
+                seen.add(page.nextCursor!);
+                cursor = page.nextCursor!;
                 if (pageNumber === 19) throw new Error('telemetry_page_budget_exhausted');
                 await deps.wait?.(1700);
             }

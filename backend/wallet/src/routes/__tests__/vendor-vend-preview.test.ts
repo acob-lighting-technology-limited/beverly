@@ -40,6 +40,11 @@ vi.mock('../../services/vendor-vend-credential.js', () => ({
     VendorVendCredentialError: class VendorVendCredentialError extends Error {},
 }));
 
+vi.mock('../../services/oem-quota-circuit.js', () => ({
+    assertOemVendAvailable: vi.fn(async () => {}),
+    OemQuotaCircuitError: class OemQuotaCircuitError extends Error {},
+}));
+
 import vendorRoutes from '../vendor.js';
 
 async function appForPreview() {
@@ -95,6 +100,33 @@ describe('Vendor vending preview HTTP seam', () => {
             details: { noVendAttempted: true, stage: 'meter_lookup' },
         });
         expect(response.json().details.correlationId).toEqual(expect.any(String));
+    });
+
+    it('does not require Calinmeter credentials for SparkMeter preview', async () => {
+        mocks.lookupMeter.mockResolvedValue({ meterId: 'SM-1', stationId: 'TUNGA', tariffId: 'TARIFF',
+            oemId: 'sparkmeter', vendingStrategy: 'direct_credit' });
+        mocks.previewPurchaseWithPolicy.mockResolvedValue({ grossAmountMinor: 10600 });
+        const app = await appForPreview();
+        const response = await app.inject({ method: 'POST', url: '/vend/preview',
+            payload: { meterId: 'SM-1', amountMinor: 10600 } });
+        await app.close();
+        expect(response.statusCode).toBe(200);
+        expect(mocks.assertEnergyVendReady).not.toHaveBeenCalled();
+        expect(response.json().preview).toMatchObject({ units: null, effectivePricePerKwh: null });
+    });
+
+    it('describes a direct-credit payment instead of an STS token plan', async () => {
+        mocks.lookupMeter.mockResolvedValue({ meterId: 'SM-1', customerId: 'customer-1', stationId: 'TUNGA',
+            tariffId: 'TARIFF', oemId: 'sparkmeter', vendingStrategy: 'direct_credit' });
+        mocks.previewPurchaseWithPolicy.mockResolvedValue({ grossAmountMinor: 10600 });
+        const app = await appForPreview();
+        const response = await app.inject({ method: 'POST', url: '/vend/live-plan',
+            payload: { meterId: 'SM-1', amountMinor: 10600, mode: 'wallet' } });
+        await app.close();
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({ liveWrite: false, vendingStrategy: 'direct_credit',
+            payment: { method: 'POST', path: '/api/v1/customers/customer-1/payments', body: { amount: '106.00' } },
+            tokenGeneration: null, remoteSend: null });
     });
 
     it('keeps an existing token recoverable when remote delivery fails unexpectedly', async () => {

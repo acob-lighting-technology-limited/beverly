@@ -98,6 +98,22 @@ describe('OEM telemetry synchronization', () => {
             .rejects.toThrow('OEM telemetry site outside installation');
     });
 
+    it('fetches and persists a bounded live telemetry page', async () => {
+        const fetchPage = vi.fn().mockResolvedValue({ readings: [], quarantine: [], nextCursor: null, hasMore: false });
+        const persistPage = vi.fn().mockResolvedValue({ readings: 1, quarantine: 0 });
+        const summary = await runSparkMeterTelemetrySync([target], { fetchPage, persistPage }, { mode: 'live' });
+        expect(fetchPage).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live', age: '1h', sites: target.sites }));
+        expect(persistPage).toHaveBeenCalledWith(target.installationId, 'live', expect.any(String), expect.any(Object));
+        expect(summary.readings).toBe(1);
+    });
+
+    it('rejects historical options during live synchronization', async () => {
+        const fetchPage = vi.fn();
+        await expect(runSparkMeterTelemetrySync([target], { fetchPage, persistPage: vi.fn() },
+            { mode: 'live', date: '2026-10-01' })).rejects.toThrow('Live telemetry cannot use historical options');
+        expect(fetchPage).not.toHaveBeenCalled();
+    });
+
     it('queries the previous UTC date by default', async () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date('2026-10-07T04:00:00.000Z'));
@@ -159,6 +175,39 @@ describe('OEM telemetry synchronization', () => {
         expect(wait).toHaveBeenCalledWith(1700);
     });
 
+    it('resumes an incomplete historical checkpoint', async () => {
+        const fetchPage = vi.fn().mockResolvedValue({ readings: [], quarantine: [], nextCursor: null, hasMore: false });
+        const loadCursor = vi.fn().mockResolvedValue('saved-page');
+        await runSparkMeterTelemetrySync([target], { fetchPage, loadCursor,
+            persistPage: vi.fn().mockResolvedValue({ readings: 1, quarantine: 0 }) });
+        expect(fetchPage).toHaveBeenCalledWith(expect.objectContaining({ mode: 'historical', cursor: 'saved-page' }));
+    });
+
+    it('continues after exhausting the page budget', async () => {
+        let checkpoint: string | undefined;
+        const fetchPage = vi.fn(async (input: { cursor?: string }) => {
+            const page = input.cursor ? Number(input.cursor) : 0;
+            return { readings: [], quarantine: [], nextCursor: page < 20 ? String(page + 1) : null, hasMore: page < 20 };
+        });
+        const deps = { fetchPage, loadCursor: vi.fn(async () => checkpoint), wait: vi.fn(),
+            persistPage: vi.fn(async (_id: string, _mode: string, _scope: string, page: { nextCursor: string | null }) => {
+                checkpoint = page.nextCursor ?? undefined;
+                return { readings: 0, quarantine: 0 };
+            }) };
+        await expect(runSparkMeterTelemetrySync([target], deps)).rejects.toThrow('telemetry_page_budget_exhausted');
+        await expect(runSparkMeterTelemetrySync([target], deps)).resolves.toMatchObject({ pages: 1 });
+        expect(fetchPage).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: '20' }));
+    });
+
+    it('does not reuse historical cursors for live reads', async () => {
+        const fetchPage = vi.fn().mockResolvedValue({ readings: [], quarantine: [], nextCursor: null, hasMore: false });
+        const loadCursor = vi.fn().mockResolvedValue('saved-page');
+        await runSparkMeterTelemetrySync([target], { fetchPage, loadCursor,
+            persistPage: vi.fn().mockResolvedValue({ readings: 0, quarantine: 0 }) }, { mode: 'live' });
+        expect(loadCursor).not.toHaveBeenCalled();
+        expect(fetchPage).toHaveBeenCalledWith(expect.objectContaining({ mode: 'live', cursor: undefined }));
+    });
+
     it('fails the scheduled run when provider reads fail', async () => {
         await expect(runSparkMeterTelemetrySync([target], {
             fetchPage: vi.fn().mockRejectedValue(new Error('transport unavailable')),
@@ -196,9 +245,11 @@ describe('OEM telemetry synchronization', () => {
 
     it('rejects repeated cursors', async () => {
         const fetchPage = vi.fn().mockResolvedValue({ readings: [], quarantine: [], nextCursor: 'same', hasMore: true });
+        const persistPage = vi.fn().mockResolvedValue({ readings: 0, quarantine: 0 });
         await expect(runSparkMeterTelemetrySync([target], {
-            fetchPage, persistPage: vi.fn().mockResolvedValue({ readings: 0, quarantine: 0 }),
+            fetchPage, persistPage,
         })).rejects.toMatchObject({ failures: [{ installationId: target.installationId, reason: 'telemetry_cursor_repeated' }] });
+        expect(persistPage).toHaveBeenCalledTimes(1);
     });
 
     it('rejects historical requests exceeding the provider site-day limit', async () => {
