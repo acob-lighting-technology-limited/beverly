@@ -5,11 +5,11 @@
       <header class="swap-modal-head">
         <div>
           <div class="modal-pill-tag">
-            <span class="pulse-dot" /> 60-Second Express Swap
+            <span class="pulse-dot" /> Express Swap
           </div>
-          <h2 class="modal-title">Swap EV Battery</h2>
+          <h2 class="modal-title">Record Battery Swap</h2>
           <p class="modal-subtitle">
-            Exchange your low battery for a tested, fully charged pack. Paid seamlessly from your Beverly Wallet.
+            Instant pack exchange &bull; ₦800 via Beverly Wallet
           </p>
         </div>
         <button class="close-btn" aria-label="Close modal" @click="$emit('close')">✕</button>
@@ -21,24 +21,22 @@
         <div class="selection-grid">
           <div class="input-block">
             <label class="field-label">
-              <span>1. Choose Station Hub</span>
-              <span class="field-hint">Where you are parked</span>
+              <span>Station Hub</span>
             </label>
             <select v-model="selectedStationId" class="select-field" @change="onStationChanged">
               <option v-for="s in effectiveStations" :key="s.id" :value="s.id">
-                {{ s.name }} ({{ getAvailableBatteriesCount(s) }} ready to take)
+                {{ s.name }} ({{ getAvailableBatteriesCount(s) }} ready)
               </option>
             </select>
           </div>
 
           <div class="input-block">
             <label class="field-label">
-              <span>2. Select Your EV Bike</span>
-              <span class="field-hint">Your bike and rider account</span>
+              <span>EV Bike &amp; Rider</span>
             </label>
             <select v-model="selectedBikeId" class="select-field" @change="onBikeChanged">
               <option v-for="b in effectiveBikes" :key="b.id" :value="b.id">
-                {{ b.id }} &bull; {{ b.riderName }} ({{ b.telemetry.soc }}% Charge)
+                {{ b.id }} &bull; {{ b.riderName }} ({{ b.telemetry.soc }}%)
               </option>
             </select>
           </div>
@@ -50,70 +48,62 @@
           <div class="pack-bay in-bay">
             <div class="bay-header">
               <span class="bay-step-badge">STEP 1</span>
-              <span class="bay-label">Battery You Are Returning</span>
+              <span class="bay-label">Depleted Pack</span>
             </div>
             
             <div v-if="targetBike" class="pack-details">
               <div class="pack-id-row">
-                <span class="pack-name">Deposit Low Battery</span>
+                <span class="pack-name">Check-In</span>
                 <span class="pack-sn">#{{ targetBike.batterySn.slice(-6) }}</span>
               </div>
               <div class="soc-pill low">
-                <span>Current Charge:</span>
+                <span>Charge:</span>
                 <strong>{{ targetBike.telemetry.soc }}% Low</strong>
               </div>
               <div class="pack-meta-row">
-                <span>Power: {{ targetBike.telemetry.voltage }}V</span>
+                <span>{{ targetBike.telemetry.voltage }}V</span>
                 <span>&bull;</span>
                 <span>Bike: {{ targetBike.id }}</span>
               </div>
-              <p class="pack-instruction">
-                📥 Will be placed into cabinet locker for recharging.
-              </p>
             </div>
           </div>
 
           <!-- Direct 1-to-1 Arrow -->
           <div class="exchange-arrow" aria-hidden="true">
             <span class="arrow-symbol">⇄</span>
-            <span class="arrow-label">Direct Swap</span>
+            <span class="arrow-label">Swap</span>
           </div>
 
           <!-- Fully Charged Battery (Take Out) -->
           <div class="pack-bay out-bay">
             <div class="bay-header">
               <span class="bay-step-badge bay-step-badge--green">STEP 2</span>
-              <span class="bay-label">Fresh Battery You Will Receive</span>
+              <span class="bay-label">Fresh Pack</span>
             </div>
 
             <div v-if="selectedStation && readyBatteries.length > 0" class="pack-details">
-              <label class="select-pack-label">Select ready battery from locker:</label>
               <select v-model="selectedReplacementSn" class="select-field select-field--highlight">
                 <option v-for="(bat, idx) in readyBatteries" :key="bat.sn" :value="bat.sn">
-                  Door {{ idx + 1 }} &bull; #{{ bat.sn.slice(-6) }} ({{ bat.soc }}% Full &bull; {{ bat.v }}V)
+                  Door {{ idx + 1 }} &bull; #{{ bat.sn.slice(-6) }} ({{ bat.soc }}% &bull; {{ bat.v }}V)
                 </option>
               </select>
 
               <div v-if="chosenReplacement" class="soc-pill good">
-                <span>Charge Level:</span>
-                <strong>{{ chosenReplacement.soc }}% Full (Ready to Ride)</strong>
+                <span>Charge:</span>
+                <strong>{{ chosenReplacement.soc }}% Full</strong>
               </div>
 
               <div v-if="chosenReplacement" class="pack-meta-row">
-                <span>Power: {{ chosenReplacement.v }}V</span>
+                <span>{{ chosenReplacement.v }}V</span>
                 <span>&bull;</span>
-                <span>Temp: {{ chosenReplacement.temp }}°C (Normal)</span>
+                <span>{{ chosenReplacement.temp }}°C</span>
               </div>
-
-              <p class="pack-instruction pack-instruction--green">
-                🔓 Locker door unlocks immediately upon confirmation.
-              </p>
             </div>
 
             <div v-else class="empty-rack-warning">
               <span class="empty-icon">⚠️</span>
-              <strong>No charged packs available at this hub</strong>
-              <p>All batteries are currently recharging. Please try a nearby hub.</p>
+              <strong>No charged packs ready</strong>
+              <p>Batteries are currently recharging.</p>
             </div>
           </div>
         </div>
@@ -121,16 +111,16 @@
         <!-- Transparent Pricing & Account Details -->
         <div class="details-strip">
           <div class="detail-col">
-            <span class="detail-label">Station Attendant</span>
-            <strong class="detail-value">{{ operatorName }} (On Duty)</strong>
+            <span class="detail-label">Attendant</span>
+            <strong class="detail-value">{{ operatorName }}</strong>
           </div>
           <div class="detail-col">
-            <span class="detail-label">Fixed Swap Fee</span>
+            <span class="detail-label">Swap Fee</span>
             <strong class="detail-value detail-value--brand">₦800.00</strong>
           </div>
           <div class="detail-col">
-            <span class="detail-label">Payment Method</span>
-            <strong class="detail-value">Rider Beverly Wallet</strong>
+            <span class="detail-label">Billing</span>
+            <strong class="detail-value">Rider Wallet</strong>
           </div>
         </div>
 
@@ -144,25 +134,32 @@
           <span class="banner-icon">✅</span>
           <div>
             <strong>{{ successText }}</strong>
-            <p>Please take your new 100% battery and place your old battery in the open locker.</p>
+            <p>New pack assigned. Depleted pack secured in charging locker.</p>
           </div>
         </div>
       </div>
 
       <!-- ── Footer Actions ────────────────────────────────────── -->
       <footer class="swap-modal-foot">
-        <button type="button" class="btn-cancel" @click="$emit('close')">
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn-confirm"
-          :disabled="!canExecute || isProcessing"
-          @click="submitSwap"
-        >
-          <span v-if="isProcessing">Processing Swap…</span>
-          <span v-else>⚡ Confirm Swap &amp; Unlock Locker (₦800.00)</span>
-        </button>
+        <template v-if="successText">
+          <button type="button" class="btn-confirm" @click="$emit('close')">
+            ✓ Done &amp; Close
+          </button>
+        </template>
+        <template v-else>
+          <button type="button" class="btn-cancel" @click="$emit('close')">
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-confirm"
+            :disabled="!canExecute || isProcessing"
+            @click="submitSwap"
+          >
+            <span v-if="isProcessing">Processing Swap…</span>
+            <span v-else>⚡ Confirm Swap &amp; Unlock Locker (₦800.00)</span>
+          </button>
+        </template>
       </footer>
     </div>
   </div>
@@ -217,7 +214,9 @@ export default {
     },
     readyBatteries() {
       if (!this.selectedStation || !Array.isArray(this.selectedStation.activeBatteries)) return [];
-      return this.selectedStation.activeBatteries.filter((b) => b.status === "ready" && b.soc >= 80);
+      const ready = this.selectedStation.activeBatteries.filter((b) => b.status === "ready" && b.soc >= 75);
+      if (ready.length > 0) return ready;
+      return this.selectedStation.activeBatteries.filter((b) => b.soc >= 70);
     },
     chosenReplacement() {
       return this.readyBatteries.find((b) => b.sn === this.selectedReplacementSn) || this.readyBatteries[0] || null;
