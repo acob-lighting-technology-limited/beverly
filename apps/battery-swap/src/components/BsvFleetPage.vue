@@ -332,8 +332,9 @@ export default {
 .bsv-fleet-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
+  height: auto;
+  overflow-y: visible;
   background: var(--acob-bg);
   color: var(--acob-text);
   font-family: var(--acob-font-sans);
@@ -712,4 +713,51 @@ export default {
 .bsv-page-btn:hover:not(:disabled) { background: var(--acob-surface-hover); color: var(--acob-text); }
 .bsv-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .bsv-page-info { font-size: 12.5px; color: var(--acob-muted); }
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .bsv-fleet-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .bsv-fleet-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 16px 0;
+  }
+  .bsv-fleet-header-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+  .bsv-fleet-header-actions .bsv-btn {
+    flex: 1;
+    text-align: center;
+    justify-content: center;
+  }
+  .bsv-fleet-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    padding: 12px 16px 0 !important;
+  }
+  .bsv-fleet-toolbar {
+    padding: 12px 16px;
+    gap: 8px;
+  }
+  .bsv-fleet-table-wrap {
+    padding: 0 16px;
+  }
+  .bsv-pagination {
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 440px) {
+  .bsv-fleet-kpi-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
 </style>

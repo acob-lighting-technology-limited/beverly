@@ -9,6 +9,15 @@
       <div class="header-actions">
         <button
           type="button"
+          class="btn-register-rider"
+          title="Register a new customer and issue EV Bike"
+          @click="showRegisterModal = true"
+        >
+          <span class="btn-icon">+</span>
+          <span>Register Customer</span>
+        </button>
+        <button
+          type="button"
           class="refresh-btn"
           :disabled="fleetStore.loading"
           title="Sync live fleet telemetry and records"
@@ -19,6 +28,13 @@
         </button>
       </div>
     </header>
+
+    <!-- Registration / Payment Success Toast -->
+    <div v-if="successToast" class="crm-success-toast" role="status" aria-live="polite">
+      <span class="toast-ic">✓</span>
+      <span class="toast-msg">{{ successToast }}</span>
+      <button class="toast-close" aria-label="Dismiss toast" @click="successToast = ''">✕</button>
+    </div>
 
     <!-- 2. Beverly Wallet KPI Tiles Row (5 tiles) -->
     <section class="bw-kpi-grid bsv-crm-kpi-grid" aria-label="CRM Summary KPIs">
@@ -393,17 +409,26 @@
       @close="closeCrmModal"
       @record-payment="handleRecordPayment"
     />
+
+    <!-- Customer Registration Modal -->
+    <RegisterCustomerModal
+      v-if="showRegisterModal"
+      @close="showRegisterModal = false"
+      @registered="handleCustomerRegistered"
+    />
   </div>
 </template>
 
 <script>
 import { useBatteryFleetStore } from "../stores/battery-fleet-store.js";
 import BikeCustomerCrmModal from "./BikeCustomerCrmModal.vue";
+import RegisterCustomerModal from "./RegisterCustomerModal.vue";
 
 export default {
   name: "BsvCrmPage",
   components: {
-    BikeCustomerCrmModal
+    BikeCustomerCrmModal,
+    RegisterCustomerModal
   },
   props: {
     route: {
@@ -416,7 +441,9 @@ export default {
       searchQuery: "",
       statusFilter: "all",
       selectedBikeForCrm: "",
-      showCrmModal: false
+      showCrmModal: false,
+      showRegisterModal: false,
+      successToast: ""
     };
   },
   computed: {
@@ -522,6 +549,15 @@ export default {
       this.searchQuery = "";
       this.statusFilter = "all";
     },
+    handleCustomerRegistered(newCustomer) {
+      if (newCustomer) {
+        this.successToast = `Customer ${newCustomer.name} (${newCustomer.id}) registered successfully! Bike ${newCustomer.bikeId} assigned.`;
+        setTimeout(() => {
+          this.successToast = "";
+        }, 7000);
+        this.openCustomerProfile(newCustomer);
+      }
+    },
     refreshData() {
       if (this.fleetStore && typeof this.fleetStore.syncLiveYunheTelemetry === "function") {
         this.fleetStore.syncLiveYunheTelemetry();
@@ -618,6 +654,80 @@ export default {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.btn-register-rider {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 18px;
+  border-radius: 8px;
+  background: var(--acob-brand, #008000);
+  border: 1px solid var(--acob-brand-mint, #7dfc9a);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 10px rgba(0, 128, 0, 0.25);
+}
+
+.btn-register-rider:hover {
+  background: #009900;
+  box-shadow: 0 4px 16px rgba(125, 252, 154, 0.35);
+  transform: translateY(-1px);
+}
+
+.crm-success-toast {
+  padding: 12px 18px;
+  border-radius: var(--acob-radius-md, 8px);
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: var(--acob-brand-mint, #7dfc9a);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  animation: slideDown 0.2s ease;
+}
+
+.toast-ic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--acob-brand-mint, #7dfc9a);
+  color: #05140b;
+  font-weight: 800;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.toast-msg {
+  flex: 1;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  opacity: 0.75;
+  padding: 0 4px;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .refresh-btn {
@@ -1484,5 +1594,50 @@ export default {
 .activity-timestamp {
   color: var(--acob-muted);
   font-size: 10px;
+}
+
+@media (max-width: 900px) {
+  .bsv-crm-page {
+    padding: 18px 20px 48px;
+    gap: 18px;
+  }
+  .bsv-crm-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .bsv-crm-page {
+    padding: 16px 14px 40px;
+    gap: 16px;
+  }
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .header-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+  .header-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+  .bsv-crm-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .filter-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 440px) {
+  .bsv-crm-kpi-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
 }
 </style>
