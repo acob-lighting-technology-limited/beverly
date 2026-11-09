@@ -12,45 +12,66 @@
       </div>
     </header>
 
-    <!-- Stat tiles -->
-    <div class="bsv-stat-tiles">
-      <div class="bsv-tile">
-        <div class="bsv-tile-icon bsv-tile-icon--blue">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 0 1 8 0v2"/></svg>
-        </div>
-        <div class="bsv-tile-body">
-          <span class="bsv-tile-value">{{ fleetStore.totalBikes }}</span>
-          <span class="bsv-tile-label">Total Bikes</span>
-        </div>
-      </div>
-      <div class="bsv-tile">
-        <div class="bsv-tile-icon bsv-tile-icon--green">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
-        </div>
-        <div class="bsv-tile-body">
-          <span class="bsv-tile-value bsv-tile-value--green">{{ onlineCount }}</span>
-          <span class="bsv-tile-label">Active on Road</span>
-        </div>
-      </div>
-      <div class="bsv-tile">
-        <div class="bsv-tile-icon bsv-tile-icon--amber">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        </div>
-        <div class="bsv-tile-body">
-          <span class="bsv-tile-value bsv-tile-value--amber">{{ idleCount }}</span>
-          <span class="bsv-tile-label">Idle / Parked</span>
-        </div>
-      </div>
-      <div class="bsv-tile">
-        <div class="bsv-tile-icon bsv-tile-icon--red">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.3L2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0z"/></svg>
-        </div>
-        <div class="bsv-tile-body">
-          <span class="bsv-tile-value bsv-tile-value--red">{{ impoundedCount }}</span>
-          <span class="bsv-tile-label">Impounded</span>
-        </div>
-      </div>
+    <!-- Swap Notification Toast -->
+    <div v-if="swapToast" class="bsv-swap-toast" role="status" aria-live="polite">
+      <span class="bsv-toast-text">{{ swapToast }}</span>
+      <button class="bsv-toast-close" aria-label="Dismiss message" @click="swapToast = null">✕</button>
     </div>
+
+    <!-- ── Beverly Wallet Standard Fleet KPIs ────────────────── -->
+    <section class="bw-kpi-grid bsv-fleet-kpi-grid" aria-label="Fleet Summary KPIs">
+      <article class="bw-kpi featured">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">TOTAL FLEET</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5L9 9l3-4h3l2 4"/><path d="M19 17.5V14l-4-4"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value">{{ fleetStore.totalBikes }}</strong>
+        <span class="bw-kpi-note">Active EV Fleet in Registry</span>
+      </article>
+
+      <article class="bw-kpi info-tone">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">ON THE ROAD</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value text-success">{{ onlineCount }}</strong>
+        <span class="bw-kpi-note">Transmitting Live Telemetry</span>
+      </article>
+
+      <article class="bw-kpi warn-tone">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">IDLE / PARKED</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value text-warning">{{ idleCount }}</strong>
+        <span class="bw-kpi-note">Stationary or Off-Shift</span>
+      </article>
+
+      <article class="bw-kpi danger-tone">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">IMPOUNDED</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M12 9v4M12 17h.01"/><path d="M10.3 3.3L2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.3a2 2 0 0 0-3.4 0z"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value text-danger">{{ impoundedCount }}</strong>
+        <span class="bw-kpi-note">Security Hold / Arrears</span>
+      </article>
+    </section>
 
     <!-- Filters toolbar -->
     <div class="bsv-fleet-toolbar">
@@ -213,7 +234,8 @@ export default {
       filterSoc: "all",
       page: 1,
       crmBikeId: null,
-      swapBikeId: undefined
+      swapBikeId: undefined,
+      swapToast: null
     };
   },
   computed: {
@@ -269,7 +291,24 @@ export default {
       this.crmBikeId = bike.id;
     },
     openSwap(bike) {
-      this.swapBikeId = bike ? bike.id : (this.fleetStore.bikes[0]?.id);
+      this.swapBikeId = bike ? bike.id : (this.fleetStore.selectedBikeId || this.fleetStore.bikes[0]?.id || "");
+    },
+    handleExecuteSwap(swap) {
+      const bikeId = swap?.bikeId || this.swapBikeId || "Bike";
+      const packSn = swap?.batteryOutSn ? `#${swap.batteryOutSn.slice(-6)}` : "Fresh pack";
+      this.swapToast = `⚡ Swap recorded successfully for ${bikeId}! Battery ${packSn} (100% full) is active.`;
+      setTimeout(() => {
+        if (this.swapToast?.includes(bikeId)) {
+          this.swapToast = null;
+        }
+      }, 5000);
+    },
+    handleRecordPayment(payment) {
+      const amt = payment?.amountMinor ? (payment.amountMinor / 100).toLocaleString() : "0";
+      this.swapToast = `✅ Payment of ₦${amt} recorded successfully.`;
+      setTimeout(() => {
+        this.swapToast = null;
+      }, 4000);
     },
     exportCsv() {
       const headers = ["Bike ID", "Model", "Plate", "Rider", "Battery SN", "SOC%", "Voltage", "Speed", "Mileage", "City", "Motor", "Status"];
@@ -320,6 +359,37 @@ export default {
   margin: 0;
 }
 .bsv-fleet-header-actions { display: flex; gap: 8px; }
+
+.bsv-swap-toast {
+  margin: 12px 24px 0;
+  padding: 10px 16px;
+  border-radius: var(--acob-radius-md, 8px);
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: var(--acob-brand-mint, #7dfc9a);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 600;
+  animation: slide-in 0.25s ease;
+}
+
+.bsv-toast-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.75;
+}
+.bsv-toast-close:hover { opacity: 1; }
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .bsv-btn {
   padding: 8px 16px;
   border-radius: 8px;
@@ -341,13 +411,100 @@ export default {
 }
 .bsv-btn--primary:hover { background: rgba(0,128,0,0.18); }
 
-/* Stat tiles */
-.bsv-stat-tiles {
+/* Fleet KPI Grid */
+.bsv-fleet-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   padding: 16px 24px 0;
   flex-shrink: 0;
+}
+
+.bsv-fleet-kpi-grid .bw-kpi {
+  background: var(--acob-surface, rgba(10, 22, 15, 0.96));
+  border: 1px solid var(--acob-line, rgba(255, 255, 255, 0.12));
+  border-radius: var(--acob-radius-lg, 12px);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 108px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bsv-fleet-kpi-grid .bw-kpi:hover {
+  border-color: var(--acob-line-strong, rgba(125, 252, 154, 0.28));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.bsv-fleet-kpi-grid .bw-kpi.featured {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: radial-gradient(120% 80% at 0% 0%, rgba(34, 197, 94, 0.10), transparent 50%), var(--acob-surface, rgba(10, 22, 15, 0.96));
+}
+
+.bsv-fleet-kpi-grid .bw-kpi-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.bsv-fleet-kpi-grid .bw-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
+}
+
+.bsv-fleet-kpi-grid .bw-kpi-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
+}
+
+.bsv-fleet-kpi-grid .bw-kpi.featured .bw-kpi-icon {
+  background: rgba(34, 197, 94, 0.16);
+  color: var(--acob-brand-mint, #7dfc9a);
+}
+
+.bsv-fleet-kpi-grid .bw-kpi.info-tone .bw-kpi-icon {
+  background: rgba(34, 197, 94, 0.16);
+  color: #22c55e;
+}
+
+.bsv-fleet-kpi-grid .bw-kpi.warn-tone .bw-kpi-icon {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+}
+
+.bsv-fleet-kpi-grid .bw-kpi.danger-tone .bw-kpi-icon {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ef4444;
+}
+
+.bsv-fleet-kpi-grid .bw-kpi-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  font-family: var(--acob-font-mono, monospace);
+  line-height: 1.1;
+  color: var(--acob-text, #f2f7f3);
+}
+
+.bsv-fleet-kpi-grid .text-success { color: var(--color-success, #22c55e) !important; }
+.bsv-fleet-kpi-grid .text-warning { color: var(--color-warning, #f59e0b) !important; }
+.bsv-fleet-kpi-grid .text-danger { color: var(--color-danger, #ef4444) !important; }
+
+.bsv-fleet-kpi-grid .bw-kpi-note {
+  font-size: 0.72rem;
+  color: var(--acob-subtle, rgba(242, 247, 243, 0.45));
 }
 .bsv-tile {
   display: flex;

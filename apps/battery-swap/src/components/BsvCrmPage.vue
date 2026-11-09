@@ -3,12 +3,8 @@
     <!-- 1. Page Header -->
     <header class="page-header">
       <div class="header-content">
-        <div class="header-badge">
-          <span class="badge-dot"></span>
-          <span>Beverly EV Fleet Operations &bull; Lease Management System</span>
-        </div>
         <h1 class="header-title">Rider Lease CRM</h1>
-        <p class="header-subtitle">Installment tracking, payment records &amp; lease management</p>
+        <p class="header-subtitle">200 Active Rider Accounts &bull; Weekly Lease Management</p>
       </div>
       <div class="header-actions">
         <button
@@ -24,45 +20,72 @@
       </div>
     </header>
 
-    <!-- 2. KPI Tiles Row (5 tiles) -->
-    <section class="kpi-row" aria-label="Key Performance Indicators">
-      <!-- Tile 1: Total Riders -->
-      <div class="kpi-tile">
-        <div class="kpi-label">Total Riders</div>
-        <div class="kpi-value">{{ totalRiders }}</div>
-        <div class="kpi-sub">Registered rider accounts</div>
-      </div>
-
-      <!-- Tile 2: Paid Off -->
-      <div class="kpi-tile">
-        <div class="kpi-label">Paid Off</div>
-        <div class="kpi-value value-green">
-          <span class="check-icon">&#x2713;</span>
-          {{ paidOffCount }}
+    <!-- 2. Beverly Wallet KPI Tiles Row (5 tiles) -->
+    <section class="bw-kpi-grid bsv-crm-kpi-grid" aria-label="CRM Summary KPIs">
+      <article class="bw-kpi featured">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">TOTAL RIDERS</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            </svg>
+          </span>
         </div>
-        <div class="kpi-sub">Complete asset ownership</div>
-      </div>
+        <strong class="bw-kpi-value">{{ totalRiders }}</strong>
+        <span class="bw-kpi-note">Registered Accounts</span>
+      </article>
 
-      <!-- Tile 3: Current -->
-      <div class="kpi-tile">
-        <div class="kpi-label">Current</div>
-        <div class="kpi-value">{{ currentCount }}</div>
-        <div class="kpi-sub">Up-to-date weekly leases</div>
-      </div>
+      <article class="bw-kpi info-tone">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">PAID OFF</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value text-success">{{ paidOffCount }}</strong>
+        <span class="bw-kpi-note">Full Asset Ownership</span>
+      </article>
 
-      <!-- Tile 4: Overdue (Red accent color) -->
-      <div class="kpi-tile kpi-tile-overdue">
-        <div class="kpi-label label-red">Overdue</div>
-        <div class="kpi-value value-red">{{ overdueCount }}</div>
-        <div class="kpi-sub sub-red">Requires immediate action</div>
-      </div>
+      <article class="bw-kpi">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">CURRENT</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value">{{ currentCount }}</strong>
+        <span class="bw-kpi-note">Up to Date</span>
+      </article>
 
-      <!-- Tile 5: Revenue This Month (₦ formatted amount) -->
-      <div class="kpi-tile">
-        <div class="kpi-label">Revenue This Month</div>
-        <div class="kpi-value value-currency">{{ formattedTotalRevenue }}</div>
-        <div class="kpi-sub">Total capital collected</div>
-      </div>
+      <article class="bw-kpi danger-tone">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">OVERDUE</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value text-danger">{{ overdueCount }}</strong>
+        <span class="bw-kpi-note">Payment Follow-Up</span>
+      </article>
+
+      <article class="bw-kpi warn-tone">
+        <div class="bw-kpi-row">
+          <span class="bw-kpi-label">COLLECTED</span>
+          <span class="bw-kpi-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </span>
+        </div>
+        <strong class="bw-kpi-value text-warning">{{ formattedTotalRevenue }}</strong>
+        <span class="bw-kpi-note">Lease Capital Inflow</span>
+      </article>
     </section>
 
     <!-- 3. Overdue Alert Banner (shown only if overdueCustomers.length > 0) -->
@@ -638,17 +661,110 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-/* 2. KPI Tiles Row (5 tiles) */
-.kpi-row {
+/* 2. Beverly Wallet KPI Grid (5 tiles) */
+.bsv-crm-kpi-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+  gap: 12px;
 }
 
 @media (max-width: 1200px) {
-  .kpi-row {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  .bsv-crm-kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
+}
+
+@media (max-width: 768px) {
+  .bsv-crm-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.bsv-crm-kpi-grid .bw-kpi {
+  background: var(--acob-surface, rgba(10, 22, 15, 0.96));
+  border: 1px solid var(--acob-line, rgba(255, 255, 255, 0.12));
+  border-radius: var(--acob-radius-lg, 12px);
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 108px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bsv-crm-kpi-grid .bw-kpi:hover {
+  border-color: var(--acob-line-strong, rgba(125, 252, 154, 0.28));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.bsv-crm-kpi-grid .bw-kpi.featured {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: radial-gradient(120% 80% at 0% 0%, rgba(34, 197, 94, 0.10), transparent 50%), var(--acob-surface, rgba(10, 22, 15, 0.96));
+}
+
+.bsv-crm-kpi-grid .bw-kpi-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.bsv-crm-kpi-grid .bw-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
+}
+
+.bsv-crm-kpi-grid .bw-kpi-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
+}
+
+.bsv-crm-kpi-grid .bw-kpi.featured .bw-kpi-icon {
+  background: rgba(34, 197, 94, 0.16);
+  color: var(--acob-brand-mint, #7dfc9a);
+}
+
+.bsv-crm-kpi-grid .bw-kpi.info-tone .bw-kpi-icon {
+  background: rgba(34, 197, 94, 0.16);
+  color: #22c55e;
+}
+
+.bsv-crm-kpi-grid .bw-kpi.warn-tone .bw-kpi-icon {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+}
+
+.bsv-crm-kpi-grid .bw-kpi.danger-tone .bw-kpi-icon {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ef4444;
+}
+
+.bsv-crm-kpi-grid .bw-kpi-value {
+  font-size: 1.55rem;
+  font-weight: 800;
+  font-family: var(--acob-font-mono, monospace);
+  line-height: 1.1;
+  color: var(--acob-text, #f2f7f3);
+}
+
+.bsv-crm-kpi-grid .text-success { color: var(--color-success, #22c55e) !important; }
+.bsv-crm-kpi-grid .text-warning { color: var(--color-warning, #f59e0b) !important; }
+.bsv-crm-kpi-grid .text-danger { color: var(--color-danger, #ef4444) !important; }
+
+.bsv-crm-kpi-grid .bw-kpi-note {
+  font-size: 0.72rem;
+  color: var(--acob-subtle, rgba(242, 247, 243, 0.45));
 }
 
 .kpi-tile {

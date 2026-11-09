@@ -62,7 +62,7 @@
             <input v-model="rememberEmail" type="checkbox" />
             <span>Remember email</span>
           </label>
-          <a :href="forgotPasswordUrl" class="login-link">Forgot password?</a>
+          <router-link to="/forgot-password" class="login-link">Forgot password?</router-link>
         </div>
 
         <div v-if="error" class="bw-alert danger" role="alert">
@@ -124,11 +124,6 @@
         <p class="bw-muted">
           Secured access for authorized Beverly Swap attendants & fleet operators.
         </p>
-        <div class="login-ecosystem-links">
-          <a :href="portalUrls.admin" class="login-foot-link">Wallet Admin</a>
-          <span class="foot-sep">·</span>
-          <a :href="portalUrls.landing" class="login-foot-link">Beverly Ecosystem</a>
-        </div>
       </div>
     </div>
   </main>

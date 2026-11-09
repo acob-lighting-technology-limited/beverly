@@ -3,25 +3,19 @@
     <!-- ── Top Header ────────────────────────────────────────── -->
     <header class="bsv-stations-header">
       <div class="bsv-header-title-block">
-        <div class="bsv-badge-row">
-          <span class="bsv-pill bsv-pill--live">
-            <span class="bsv-pulse-dot" /> Live Network
-          </span>
-          <span class="bsv-pill bsv-pill--info">Operating Hours: 6:00 AM – 10:00 PM</span>
-        </div>
-        <h1 class="bsv-stations-title">Battery Swap Stations</h1>
+        <h1 class="bsv-stations-title">Swap Stations &amp; Racks</h1>
         <p class="bsv-stations-subtitle">
-          Find a nearby Beverly hub, check fully charged batteries in real time, and swap your EV battery in under 60 seconds.
+          12 Network Hubs &bull; Lagos, Abuja, Ibadan &amp; Akure
         </p>
       </div>
 
       <div class="bsv-stations-header-actions">
         <button class="bsv-btn bsv-btn--ghost" :disabled="fleetStore.loading" @click="refresh">
           <span :class="{ 'bsv-spin': fleetStore.loading }">↻</span>
-          <span>{{ fleetStore.loading ? 'Updating…' : 'Refresh Hubs' }}</span>
+          <span>{{ fleetStore.loading ? 'Updating…' : 'Sync Hubs' }}</span>
         </button>
         <button class="bsv-btn bsv-btn--primary" @click="openSwapModal(null)">
-          <span>⚡ Swap Battery Now</span>
+          <span>⚡ Record Swap</span>
         </button>
       </div>
     </header>

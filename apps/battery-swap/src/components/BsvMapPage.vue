@@ -1,47 +1,61 @@
 <template>
   <section class="bsv-map-page" aria-label="Live GPS Tracker">
 
-    <!-- ── Top bar ──────────────────────────────────────────── -->
-    <header class="bsv-topbar">
-      <div class="bsv-topbar-left">
-        <span class="bsv-topbar-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"/>
-            <circle cx="12" cy="10" r="3"/>
-          </svg>
-        </span>
-        <div>
-          <h1 class="bsv-topbar-title">Live GPS Tracker</h1>
-          <p class="bsv-topbar-sub">
-            {{ fleetStore.totalBikes }} EV Bikes
-            &bull; Yunhe IoT
-            &bull; Last synced: {{ fleetStore.lastSyncTime }}
-          </p>
-        </div>
-      </div>
+    <!-- ── Fleet KPI Cards Header ────────────────────────── -->
+    <header class="bsv-topbar" aria-label="Fleet KPI Summary">
+      <div class="bsv-kpi-grid">
+        <article class="bw-kpi bsv-kpi featured">
+          <div class="bw-kpi-row">
+            <span class="bw-kpi-label">TOTAL BIKES</span>
+            <span class="bw-kpi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5L9 9l3-4h3l2 4"/><path d="M19 17.5V14l-4-4"/>
+              </svg>
+            </span>
+          </div>
+          <strong class="bw-kpi-value">{{ fleetStore.totalBikes }}</strong>
+          <span class="bw-kpi-note">Active EV Fleet</span>
+        </article>
 
-      <div class="bsv-topbar-stats">
-        <div class="bsv-kpi">
-          <span class="bsv-kpi-label">TOTAL</span>
-          <span class="bsv-kpi-val">{{ fleetStore.totalBikes }}</span>
-        </div>
-        <div class="bsv-kpi bsv-kpi--green">
-          <span class="bsv-kpi-label">GPS ONLINE</span>
-          <span class="bsv-kpi-val">{{ fleetStore.onlineBikesCount }}</span>
-        </div>
-        <div class="bsv-kpi bsv-kpi--red">
-          <span class="bsv-kpi-label">NEEDS SWAP</span>
-          <span class="bsv-kpi-val">{{ fleetStore.lowBatteryCount }}</span>
-        </div>
-        <div class="bsv-kpi bsv-kpi--amber">
-          <span class="bsv-kpi-label">AVG CHARGE</span>
-          <span class="bsv-kpi-val">{{ fleetStore.averageSoc }}%</span>
-        </div>
-        <button class="bsv-refresh-btn" :disabled="fleetStore.loading" @click="syncTelemetry">
-          <span :class="{ 'bsv-spin': fleetStore.loading }">&#8635;</span>
-          {{ fleetStore.loading ? 'Checking...' : 'Refresh GPS' }}
-        </button>
+        <article class="bw-kpi bsv-kpi info-tone">
+          <div class="bw-kpi-row">
+            <span class="bw-kpi-label">GPS ONLINE</span>
+            <span class="bw-kpi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+              </svg>
+            </span>
+          </div>
+          <strong class="bw-kpi-value text-success">{{ fleetStore.onlineBikesCount }}</strong>
+          <span class="bw-kpi-note">Live Telemetry Transmitting</span>
+        </article>
+
+        <article class="bw-kpi bsv-kpi danger-tone">
+          <div class="bw-kpi-row">
+            <span class="bw-kpi-label">NEEDS SWAP</span>
+            <span class="bw-kpi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/><line x1="22" y1="11" x2="22" y2="13"/>
+                <line x1="7" y1="12" x2="13" y2="12"/>
+              </svg>
+            </span>
+          </div>
+          <strong class="bw-kpi-value text-danger">{{ fleetStore.lowBatteryCount }}</strong>
+          <span class="bw-kpi-note">&lt;20% Charge Remaining</span>
+        </article>
+
+        <article class="bw-kpi bsv-kpi warn-tone">
+          <div class="bw-kpi-row">
+            <span class="bw-kpi-label">AVG CHARGE</span>
+            <span class="bw-kpi-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </span>
+          </div>
+          <strong class="bw-kpi-value text-warning">{{ fleetStore.averageSoc }}%</strong>
+          <span class="bw-kpi-note">Network Fleet Average</span>
+        </article>
       </div>
     </header>
 
@@ -283,109 +297,114 @@ export default {
 }
 
 /* ────────────────────────────────────────────────────
-   TOP BAR
+   TOP BAR - FLEET KPI CARDS
    ──────────────────────────────────────────────────── */
 .bsv-topbar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 20px;
-  height: 60px;
+  padding: 10px 16px;
   background: var(--acob-surface);
   border-bottom: 1px solid var(--acob-line);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 10;
 }
 
-.bsv-topbar-left {
-  display: flex;
-  align-items: center;
+.bsv-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+  width: 100%;
 }
 
-.bsv-topbar-icon {
+.bw-kpi.bsv-kpi {
+  background: var(--acob-surface, rgba(10, 22, 15, 0.96));
+  border: 1px solid var(--acob-line, rgba(255, 255, 255, 0.12));
+  border-radius: var(--acob-radius-md, 10px);
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.15s ease;
+}
+
+.bw-kpi.bsv-kpi:hover {
+  border-color: var(--acob-line-strong, rgba(125, 252, 154, 0.28));
+  transform: translateY(-1px);
+}
+
+.bw-kpi-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bw-kpi-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
+}
+
+.bw-kpi-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--bev-radius-sm, 8px);
-  background: rgba(0,128,0,0.10);
-  color: var(--acob-brand);
-  flex-shrink: 0;
-}
-.bsv-topbar-icon svg { width: 18px; height: 18px; }
-
-.bsv-topbar-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--acob-text);
-  line-height: 1.2;
-}
-.bsv-topbar-sub {
-  margin: 0;
-  font-size: 11px;
+  background: rgba(255, 255, 255, 0.06);
   color: var(--acob-muted);
 }
 
-.bsv-topbar-stats {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+.bw-kpi.featured .bw-kpi-icon {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--acob-brand-mint);
 }
 
-/* KPI chips */
-.bsv-kpi {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 4px 12px;
-  background: var(--acob-chip);
-  border: 1px solid var(--acob-line);
-  border-radius: var(--bev-radius-sm, 8px);
-  min-width: 62px;
+.bw-kpi.info-tone .bw-kpi-icon {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
 }
-.bsv-kpi-label {
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--acob-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+
+.bw-kpi.danger-tone .bw-kpi-icon {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
 }
-.bsv-kpi-val {
-  font-size: 17px;
+
+.bw-kpi.warn-tone .bw-kpi-icon {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.bw-kpi-value {
+  font-size: 1.35rem;
   font-weight: 800;
-  color: var(--acob-text);
-  line-height: 1.25;
+  font-family: var(--acob-font-mono, monospace);
+  line-height: 1.1;
+  color: var(--acob-text, #f2f7f3);
 }
-.bsv-kpi--green .bsv-kpi-val { color: var(--acob-brand-bright); }
-.bsv-kpi--red   .bsv-kpi-val { color: var(--color-danger); }
-.bsv-kpi--amber .bsv-kpi-val { color: var(--acob-gold); }
 
-/* Refresh button */
-.bsv-refresh-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  background: transparent;
-  border: 1px solid rgba(0,128,0,0.35);
-  border-radius: var(--bev-radius-sm, 8px);
-  color: var(--acob-brand);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--bev-motion-fast, 0.12s ease);
-  white-space: nowrap;
+.text-success { color: var(--color-success, #22c55e) !important; }
+.text-danger { color: var(--color-danger, #ef4444) !important; }
+.text-warning { color: var(--color-warning, #f59e0b) !important; }
+
+.bw-kpi-note {
+  font-size: 0.65rem;
+  color: var(--acob-subtle, rgba(242, 247, 243, 0.45));
 }
-.bsv-refresh-btn:hover { background: rgba(0,128,0,0.09); }
-.bsv-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.bsv-spin { display: inline-block; animation: bsv-spin 0.75s linear infinite; }
-@keyframes bsv-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+  .bsv-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+}
 
 /* ────────────────────────────────────────────────────
    BODY

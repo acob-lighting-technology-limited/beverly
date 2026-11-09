@@ -63,6 +63,14 @@
   --color-warning-soft:    rgba(184, 134, 46, 0.12);
   --color-danger:          #ef4444;
   --color-danger-soft:     rgba(239, 68, 68, 0.10);
+
+  /* Sidebar Tokens (Light) */
+  --acob-sidebar-bg:       linear-gradient(180deg, #ffffff 0%, #f4f8f5 100%);
+  --acob-sidebar-border:   #c9d6cd;
+  --acob-sidebar-text:     #0b1a10;
+  --acob-sidebar-muted:    rgba(11, 26, 16, 0.65);
+  --acob-sidebar-hover:    rgba(0, 128, 0, 0.06);
+  --acob-sidebar-active:   rgba(0, 128, 0, 0.12);
 }
 
 /* ── 2. DARK MODE (Default & Explicit Dark Palette) ────── */
@@ -127,12 +135,21 @@
   --color-warning-soft:    rgba(245, 158, 11, 0.16);
   --color-danger:          #ef4444;
   --color-danger-soft:     rgba(239, 68, 68, 0.16);
+
+  /* Sidebar Tokens (Dark) */
+  --acob-sidebar-bg:       linear-gradient(180deg, #0a1710 0%, #06110a 55%, #03090a 100%);
+  --acob-sidebar-border:   rgba(125, 252, 154, 0.14);
+  --acob-sidebar-text:     #f2f7f3;
+  --acob-sidebar-muted:    rgba(242, 247, 243, 0.65);
+  --acob-sidebar-hover:    rgba(125, 252, 154, 0.08);
+  --acob-sidebar-active:   rgba(34, 197, 94, 0.16);
 }
 
 /* ════════════════════════════════════════════════════════════════════
    3. DETACHED BATTERY SWAP SIDEBAR (Built strictly with ACOB Tokens)
    ════════════════════════════════════════════════════════════════════ */
-.battery-swap-app-host .sidebar-container {
+.battery-swap-app-host .sidebar-container,
+.battery-swap-app-host .sidebar--battery-swap {
   width: var(--layout-sidebar-width, 240px);
   font-family: var(--acob-font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
   display: flex !important;
@@ -143,7 +160,8 @@
 }
 
 /* ── Light Mode Sidebar ── */
-[data-theme="light"] .battery-swap-app-host .sidebar-container {
+[data-theme="light"] .battery-swap-app-host .sidebar-container,
+[data-theme="light"] .battery-swap-app-host .sidebar--battery-swap {
   background: linear-gradient(180deg, #ffffff 0%, #f4f8f5 100%) !important;
   border-right: 1px solid var(--acob-line, #c9d6cd) !important;
   box-shadow: 1px 0 0 #c9d6cd, 12px 0 32px rgba(11, 26, 16, 0.05) !important;
@@ -152,7 +170,9 @@
 
 /* ── Dark Mode Sidebar ── */
 [data-theme="executive"] .battery-swap-app-host .sidebar-container,
-[data-theme="dark"] .battery-swap-app-host .sidebar-container {
+[data-theme="executive"] .battery-swap-app-host .sidebar--battery-swap,
+[data-theme="dark"] .battery-swap-app-host .sidebar-container,
+[data-theme="dark"] .battery-swap-app-host .sidebar--battery-swap {
   background:
     radial-gradient(circle at 18% -10%, rgba(34, 197, 94, 0.12), transparent 38%),
     linear-gradient(180deg, #0a1710 0%, #06110a 55%, #03090a 100%) !important;
