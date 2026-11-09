@@ -436,14 +436,16 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
     /**
      * Swap a depleted battery with a fully charged battery at a station
      */
-    executeSwap({ bikeId, stationId, batteryOutSn, operatorName = "Station Operator" }) {
+    executeSwap({ bikeId, stationId, batteryOutSn, newBatterySn, operatorName = "Station Operator", feeMinor = 80000 }) {
+      const targetSn = newBatterySn || batteryOutSn;
       const bike = this.bikes.find((b) => b.id === bikeId);
       const station = this.stations.find((s) => s.id === stationId);
       if (!bike || !station) {
         throw new Error("Invalid bike or station selected for swap");
       }
 
-      const freshBattery = station.activeBatteries.find((b) => b.sn === batteryOutSn);
+      const freshBattery = station.activeBatteries.find((b) => b.sn === targetSn)
+        || station.activeBatteries.find((b) => b.status === "ready" && b.soc >= 80);
       if (!freshBattery) {
         throw new Error("Selected replacement battery is not available in station inventory");
       }
@@ -453,9 +455,9 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
 
       // Swap out the battery in the bike
       bike.batterySn = freshBattery.sn;
-      bike.batteryId = freshBattery.id;
+      bike.batteryId = freshBattery.id || `BAT-${freshBattery.sn}`;
       bike.telemetry.soc = freshBattery.soc;
-      bike.telemetry.voltage = freshBattery.v;
+      bike.telemetry.voltage = freshBattery.v || 76.8;
       bike.telemetry.lastHeartbeat = new Date().toISOString();
 
       // Place depleted battery into station charging bay
@@ -475,6 +477,7 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
         timestamp: new Date().toLocaleString("en-GB", { timeZone: "Africa/Lagos" }),
         bikeId: bike.id,
         riderName: bike.riderName,
+        plateNumber: bike.plateNumber,
         stationId: station.id,
         stationName: station.name,
         batteryInSn: depletedBatterySn,
@@ -482,7 +485,7 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
         batteryOutSn: freshBattery.sn,
         batteryOutSoc: freshBattery.soc,
         operatorName,
-        feeMinor: 80000,
+        feeMinor: Number(feeMinor) || 80000,
         paymentMethod: "Beverly Wallet"
       };
 
@@ -492,6 +495,7 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       const customer = this.customers.find((c) => c.id === bike.assignedCustomerId);
       if (customer) {
         customer.batterySn = freshBattery.sn;
+        if (!Array.isArray(customer.swaps)) customer.swaps = [];
         customer.swaps.unshift({
           id: swapRecord.id,
           date: swapRecord.timestamp,
@@ -505,7 +509,114 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       }
 
       this.saveToStorage();
-      return swapRecord;
+      return { success: true, swap: swapRecord, ...swapRecord };
+    },
+
+    /**
+     * Register a new customer / rider and issue EV Bike
+     */
+    registerCustomer(payload) {
+      const nextIndex = this.customers.length + 1;
+      const customerId = `CUST-${String(nextIndex).padStart(3, "0")}`;
+
+      const {
+        name,
+        phone,
+        email,
+        nin,
+        city = "Lagos",
+        address = "",
+        guarantorName = "",
+        guarantorPhone = "",
+        guarantorRelationship = "Guarantor",
+        bikeId,
+        purchaseType = "installment",
+        totalCostMinor = 145000000,
+        downPaymentMinor = 30000000,
+        weeklyInstallmentMinor = 2500000,
+        preferredMethod = "Beverly Wallet"
+      } = payload;
+
+      // Determine assigned bike
+      let bike = null;
+      if (bikeId) {
+        bike = this.bikes.find((b) => b.id === bikeId);
+      }
+      if (!bike) {
+        // Auto-assign first idle or unassigned bike
+        bike = this.bikes.find((b) => !b.assignedCustomerId || b.status === "idle");
+      }
+
+      const assignedBikeId = bike ? bike.id : `EVB-${String(nextIndex).padStart(3, "0")}`;
+      const batterySn = bike ? bike.batterySn : `B100112510${270200 + nextIndex}`;
+
+      const isInstallment = purchaseType === "installment";
+      const totalMinor = Number(totalCostMinor) || 145000000;
+      const downMinor = isInstallment ? (Number(downPaymentMinor) || 0) : totalMinor;
+      const paidMinor = downMinor;
+      const balanceMinor = Math.max(0, totalMinor - paidMinor);
+      const isPaidOff = balanceMinor === 0;
+
+      const nextDueDate = new Date();
+      nextDueDate.setDate(nextDueDate.getDate() + 7);
+
+      const initialPayments = [];
+      if (paidMinor > 0) {
+        initialPayments.push({
+          id: `PAY-${Date.now().toString(36).toUpperCase()}`,
+          date: new Date().toISOString().split("T")[0],
+          amountMinor: paidMinor,
+          channel: preferredMethod,
+          reference: `reg_${Date.now().toString(36)}_${nextIndex}`,
+          notes: isInstallment ? "Initial Lease Down Payment & Registration" : "Full Outright Purchase Payment",
+          status: "confirmed"
+        });
+      }
+
+      const newCustomer = {
+        id: customerId,
+        name: (name || "").trim(),
+        phone: (phone || "").trim(),
+        email: email ? email.trim() : `${(name || "rider").toLowerCase().replace(/\s+/g, ".")}@gmail.com`,
+        nin: nin ? nin.trim() : `59203819${String(100 + nextIndex)}`,
+        city: city || "Lagos",
+        address: address ? address.trim() : "",
+        guarantorName: guarantorName ? guarantorName.trim() : "None Provided",
+        guarantorPhone: guarantorPhone ? guarantorPhone.trim() : "N/A",
+        guarantorRelationship,
+        bikeId: assignedBikeId,
+        batterySn,
+        purchaseType,
+        totalCostMinor: totalMinor,
+        downPaymentMinor: downMinor,
+        paidMinor,
+        balanceMinor,
+        weeklyInstallmentMinor: isInstallment ? (Number(weeklyInstallmentMinor) || 2500000) : 0,
+        frequency: "weekly",
+        nextDueDate: isPaidOff ? "" : nextDueDate.toISOString().split("T")[0],
+        daysOverdue: 0,
+        status: isPaidOff ? "paid_off" : "current",
+        preferredMethod,
+        payments: initialPayments,
+        swaps: [],
+        createdAt: new Date().toISOString()
+      };
+
+      this.customers.unshift(newCustomer);
+
+      if (bike) {
+        bike.assignedCustomerId = customerId;
+        bike.riderName = newCustomer.name;
+        bike.riderPhone = newCustomer.phone;
+        bike.status = "active";
+        if (bike.telemetry) {
+          bike.telemetry.d_fet = 1;
+          if (city) bike.telemetry.city = city;
+        }
+      }
+
+      this.saveToStorage();
+      return newCustomer;
     },
 
     /**

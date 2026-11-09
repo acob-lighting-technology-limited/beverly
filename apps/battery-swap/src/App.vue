@@ -150,69 +150,8 @@
         </div>
       </nav>
 
-      <!-- Portal Switcher & Footer -->
+      <!-- Sidebar Footer -->
       <div class="bsv-sidebar-footer">
-        <div class="bsv-portal-switcher">
-          <button
-            class="bsv-portal-btn"
-            :title="collapsed ? 'Switch Beverly Portal' : undefined"
-            @click="portalMenuOpen = !portalMenuOpen"
-          >
-            <span class="bsv-portal-ic">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="3" width="7" height="7" rx="1"/>
-                <rect x="14" y="14" width="7" height="7" rx="1"/>
-                <rect x="3" y="14" width="7" height="7" rx="1"/>
-              </svg>
-            </span>
-            <span v-if="!collapsed" class="bsv-portal-title">Beverly Portals</span>
-            <span v-if="!collapsed" class="bsv-portal-chevron">
-              {{ portalMenuOpen ? '▲' : '▼' }}
-            </span>
-          </button>
-
-          <!-- Dropdown of Beverly Portals -->
-          <div v-if="portalMenuOpen" class="bsv-portal-dropdown">
-            <div class="bsv-portal-dropdown-header">ECOSYSTEM PORTALS</div>
-            <a :href="portalUrls.crm" class="bsv-portal-link">
-              <span class="bsv-portal-dot bsv-portal-dot--crm" />
-              <div>
-                <strong>Beverly Main CRM</strong>
-                <small>Grid meters, tariffs & tokens</small>
-              </div>
-            </a>
-            <a :href="portalUrls.admin" class="bsv-portal-link">
-              <span class="bsv-portal-dot bsv-portal-dot--admin" />
-              <div>
-                <strong>Wallet Admin</strong>
-                <small>Staff, ledger & finance</small>
-              </div>
-            </a>
-            <a :href="portalUrls.vendor" class="bsv-portal-link">
-              <span class="bsv-portal-dot bsv-portal-dot--vendor" />
-              <div>
-                <strong>Vendor Portal</strong>
-                <small>POS, vend authorization</small>
-              </div>
-            </a>
-            <a :href="portalUrls.customer" class="bsv-portal-link">
-              <span class="bsv-portal-dot bsv-portal-dot--customer" />
-              <div>
-                <strong>Customer App</strong>
-                <small>Token vend & wallet</small>
-              </div>
-            </a>
-            <a :href="portalUrls.landing" class="bsv-portal-link">
-              <span class="bsv-portal-dot bsv-portal-dot--landing" />
-              <div>
-                <strong>Beverly Landing</strong>
-                <small>Public homepage</small>
-              </div>
-            </a>
-          </div>
-        </div>
-
         <button
           class="bsv-collapse-btn"
           :title="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -324,23 +263,11 @@ const brandMarkLight = `${base}brand/beverly-mark.png`;
 
 const collapsed = ref(false);
 const mobileSidebarOpen = ref(false);
-const portalMenuOpen = ref(false);
 const theme = ref<'dark' | 'light'>('dark');
 
 const currentPath = computed(() => route.path);
 const currentRouteTitle = computed(() => String(route.meta?.title || 'Battery Swap Operations'));
 const liveBikesCount = computed(() => fleetStore.onlineBikesCount || 0);
-
-const portalUrls = computed(() => {
-  const isDev = import.meta.env.DEV;
-  return {
-    crm: isDev ? 'http://localhost:9311/#/dashboard' : '/#/dashboard',
-    admin: isDev ? 'http://localhost:5175/' : '/wallet-admin/',
-    vendor: isDev ? 'http://localhost:5174/' : '/wallet-vendor/',
-    customer: isDev ? 'http://localhost:5173/' : '/wallet-customer/',
-    landing: isDev ? 'http://localhost:5176/' : '/wallet/'
-  };
-});
 
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
@@ -570,7 +497,7 @@ html, body, #app {
   color: var(--acob-gold);
 }
 
-/* Sidebar Footer & Portal Switcher */
+/* Sidebar Footer */
 .bsv-sidebar-footer {
   padding: 0.75rem;
   border-top: 1px solid var(--acob-sidebar-border);
@@ -579,103 +506,6 @@ html, body, #app {
   gap: 0.5rem;
   position: relative;
 }
-
-.bsv-portal-switcher {
-  position: relative;
-}
-
-.bsv-portal-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.65rem;
-  background: rgba(125, 252, 154, 0.06);
-  border: 1px solid rgba(125, 252, 154, 0.2);
-  border-radius: var(--acob-radius-md);
-  color: var(--acob-brand-mint);
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.bsv-portal-btn:hover {
-  background: rgba(125, 252, 154, 0.12);
-  border-color: var(--acob-brand-mint);
-}
-
-.bsv-portal-title {
-  flex: 1;
-  text-align: left;
-}
-
-.bsv-portal-chevron {
-  font-size: 0.6rem;
-  opacity: 0.7;
-}
-
-.bsv-portal-dropdown {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  width: 250px;
-  background: var(--acob-card-bg);
-  border: 1px solid var(--acob-border);
-  border-radius: var(--acob-radius-lg);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  z-index: 1000;
-}
-
-.bsv-portal-dropdown-header {
-  font-size: 0.625rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: var(--acob-text-muted);
-  padding: 0.35rem 0.5rem;
-}
-
-.bsv-portal-link {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: var(--acob-radius-sm);
-  text-decoration: none;
-  color: var(--acob-text);
-  font-size: 0.8rem;
-  transition: background 0.15s;
-}
-
-.bsv-portal-link:hover {
-  background: var(--acob-hover);
-}
-
-.bsv-portal-link strong {
-  display: block;
-  font-size: 0.78rem;
-}
-
-.bsv-portal-link small {
-  display: block;
-  font-size: 0.68rem;
-  color: var(--acob-text-muted);
-}
-
-.bsv-portal-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-.bsv-portal-dot--crm { background: #22c55e; }
-.bsv-portal-dot--admin { background: #3b82f6; }
-.bsv-portal-dot--vendor { background: #f59e0b; }
-.bsv-portal-dot--customer { background: #ec4899; }
-.bsv-portal-dot--landing { background: #8b5cf6; }
 
 .bsv-collapse-btn {
   display: flex;
@@ -915,7 +745,9 @@ html, body, #app {
 .bsv-content-host {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
 }

@@ -293,8 +293,9 @@ export default {
 .bsv-fleet-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
+  height: auto;
+  overflow-y: visible;
   background: var(--acob-bg);
   color: var(--acob-text);
   font-family: var(--acob-font-sans);
