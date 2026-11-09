@@ -249,32 +249,7 @@
           </div>
         </div>
 
-        <div class="bsv-header-center">
-          <div class="bsv-telemetry-chip">
-            <span class="bsv-chip-pulse" />
-            <span class="bsv-chip-label">GPRS IoT:</span>
-            <strong class="bsv-chip-status">CONNECTED</strong>
-            <span class="bsv-chip-latency">(34ms)</span>
-          </div>
-        </div>
-
         <div class="bsv-header-right">
-          <!-- KPI Summary Badges -->
-          <div class="bsv-header-kpis">
-            <div class="bsv-hkpi" title="Total active EV bikes">
-              <span class="bsv-hkpi-val">{{ fleetStore.totalBikes || 200 }}</span>
-              <span class="bsv-hkpi-lbl">Bikes</span>
-            </div>
-            <div class="bsv-hkpi bsv-hkpi--green" title="Charged batteries ready for swap">
-              <span class="bsv-hkpi-val">{{ fleetStore.chargedBatteriesCount || 176 }}</span>
-              <span class="bsv-hkpi-lbl">Charged</span>
-            </div>
-            <div class="bsv-hkpi bsv-hkpi--amber" title="Operational swap station racks">
-              <span class="bsv-hkpi-val">12</span>
-              <span class="bsv-hkpi-lbl">Stations</span>
-            </div>
-          </div>
-
           <!-- Theme Toggle Button -->
           <button
             class="bsv-icon-btn"
@@ -297,13 +272,24 @@
             </svg>
           </button>
 
-          <!-- User Profile Chip -->
-          <div class="bsv-user-chip">
-            <div class="bsv-avatar">BS</div>
+          <!-- User Profile Chip with Logout -->
+          <div class="bsv-user-chip" :title="`Signed in as ${auth.displayName}`">
+            <div class="bsv-avatar">{{ auth.userInitials }}</div>
             <div class="bsv-user-info">
-              <span class="bsv-user-name">Operations Officer</span>
-              <span class="bsv-user-role">Beverly Fleet Ops</span>
+              <span class="bsv-user-name">{{ auth.displayName }}</span>
+              <span class="bsv-user-role">{{ auth.roleLabel }}</span>
             </div>
+            <button
+              class="bsv-logout-btn"
+              title="Sign Out of Battery Swap"
+              @click="handleLogout"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
           </div>
         </div>
       </header>
@@ -313,22 +299,29 @@
         <router-view />
       </main>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useBatteryFleetStore } from './stores/battery-fleet-store.js';
-
-// Assets
-const brandLockupDark = '/brand/beverly-lockup.png';
-const brandLockupLight = '/brand/beverly-lockup-light.png';
-const brandMarkDark = '/brand/beverly-mark.png';
-const brandMarkLight = '/brand/beverly-mark-light.png';
+import { useBatterySwapAuthStore } from './stores/auth';
 
 const route = useRoute();
+const router = useRouter();
 const fleetStore = useBatteryFleetStore();
+const auth = useBatterySwapAuthStore();
+
+const isLoginRoute = computed(() => route.path === '/login');
+
+// Assets with base path
+const base = import.meta.env.BASE_URL || '/';
+const brandLockupDark = `${base}brand/beverly-lockup-white.png`;
+const brandLockupLight = `${base}brand/beverly-lockup.png`;
+const brandMarkDark = `${base}brand/beverly-mark-light.png`;
+const brandMarkLight = `${base}brand/beverly-mark.png`;
 
 const collapsed = ref(false);
 const mobileSidebarOpen = ref(false);
@@ -358,12 +351,18 @@ function toggleTheme() {
   } catch {}
 }
 
+function handleLogout() {
+  auth.logout();
+  router.push('/login');
+}
+
 function onImgError(e: Event) {
   const target = e.target as HTMLImageElement;
   if (target) target.style.display = 'none';
 }
 
 onMounted(() => {
+  auth.hydrate();
   try {
     const saved = localStorage.getItem('beverly.batterySwap.theme');
     if (saved === 'light' || saved === 'dark') {
@@ -890,6 +889,25 @@ html, body, #app {
 .bsv-user-role {
   font-size: 0.62rem;
   color: var(--acob-text-muted);
+}
+
+.bsv-logout-btn {
+  background: none;
+  border: none;
+  color: var(--acob-muted, rgba(242, 247, 243, 0.6));
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  margin-left: 2px;
+}
+
+.bsv-logout-btn:hover {
+  color: var(--color-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.12);
 }
 
 /* Content Viewport */
