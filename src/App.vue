@@ -401,6 +401,7 @@ import { playLoginVoice } from "./utils/voice.js";
 
 export default {
   name: "App",
+  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, BsvCrmPage, BsvDiagnosticsPage, BsvFleetPage, BsvMapPage, BsvStationsPage, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
   data() {
     return {
       hash: window.location.hash || "#/login?redirect=%2Fdashboard",
