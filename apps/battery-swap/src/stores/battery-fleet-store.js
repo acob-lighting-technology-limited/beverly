@@ -436,14 +436,16 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
     /**
      * Swap a depleted battery with a fully charged battery at a station
      */
-    executeSwap({ bikeId, stationId, batteryOutSn, operatorName = "Station Operator" }) {
+    executeSwap({ bikeId, stationId, batteryOutSn, newBatterySn, operatorName = "Station Operator", feeMinor = 80000 }) {
+      const targetSn = newBatterySn || batteryOutSn;
       const bike = this.bikes.find((b) => b.id === bikeId);
       const station = this.stations.find((s) => s.id === stationId);
       if (!bike || !station) {
         throw new Error("Invalid bike or station selected for swap");
       }
 
-      const freshBattery = station.activeBatteries.find((b) => b.sn === batteryOutSn);
+      const freshBattery = station.activeBatteries.find((b) => b.sn === targetSn)
+        || station.activeBatteries.find((b) => b.status === "ready" && b.soc >= 80);
       if (!freshBattery) {
         throw new Error("Selected replacement battery is not available in station inventory");
       }
@@ -453,9 +455,9 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
 
       // Swap out the battery in the bike
       bike.batterySn = freshBattery.sn;
-      bike.batteryId = freshBattery.id;
+      bike.batteryId = freshBattery.id || `BAT-${freshBattery.sn}`;
       bike.telemetry.soc = freshBattery.soc;
-      bike.telemetry.voltage = freshBattery.v;
+      bike.telemetry.voltage = freshBattery.v || 76.8;
       bike.telemetry.lastHeartbeat = new Date().toISOString();
 
       // Place depleted battery into station charging bay
@@ -475,6 +477,7 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
         timestamp: new Date().toLocaleString("en-GB", { timeZone: "Africa/Lagos" }),
         bikeId: bike.id,
         riderName: bike.riderName,
+        plateNumber: bike.plateNumber,
         stationId: station.id,
         stationName: station.name,
         batteryInSn: depletedBatterySn,
@@ -482,7 +485,7 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
         batteryOutSn: freshBattery.sn,
         batteryOutSoc: freshBattery.soc,
         operatorName,
-        feeMinor: 80000,
+        feeMinor: Number(feeMinor) || 80000,
         paymentMethod: "Beverly Wallet"
       };
 
@@ -492,6 +495,7 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       const customer = this.customers.find((c) => c.id === bike.assignedCustomerId);
       if (customer) {
         customer.batterySn = freshBattery.sn;
+        if (!Array.isArray(customer.swaps)) customer.swaps = [];
         customer.swaps.unshift({
           id: swapRecord.id,
           date: swapRecord.timestamp,
@@ -505,7 +509,7 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       }
 
       this.saveToStorage();
-      return swapRecord;
+      return { success: true, swap: swapRecord, ...swapRecord };
     },
 
     /**

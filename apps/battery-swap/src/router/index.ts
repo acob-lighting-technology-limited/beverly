@@ -5,6 +5,8 @@ import BsvCrmPage from '../components/BsvCrmPage.vue';
 import BsvStationsPage from '../components/BsvStationsPage.vue';
 import BsvDiagnosticsPage from '../components/BsvDiagnosticsPage.vue';
 import LoginView from '../views/LoginView.vue';
+import ForgotPasswordView from '../views/ForgotPasswordView.vue';
+import ResetPasswordView from '../views/ResetPasswordView.vue';
 import { useBatterySwapAuthStore } from '../stores/auth';
 
 const routes: RouteRecordRaw[] = [
@@ -14,6 +16,18 @@ const routes: RouteRecordRaw[] = [
     name: 'login',
     component: LoginView,
     meta: { title: 'Sign In', public: true }
+  },
+  {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    component: ForgotPasswordView,
+    meta: { title: 'Forgot Password', public: true }
+  },
+  {
+    path: '/reset-password',
+    name: 'reset-password',
+    component: ResetPasswordView,
+    meta: { title: 'Reset Password', public: true }
   },
   {
     path: '/stations',

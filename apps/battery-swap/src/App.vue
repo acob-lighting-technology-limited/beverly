@@ -244,7 +244,6 @@
             </svg>
           </button>
           <div class="bsv-header-title-wrap">
-            <span class="bsv-portal-badge">STANDALONE PORTAL</span>
             <h2 class="bsv-header-page-title">{{ currentRouteTitle }}</h2>
           </div>
         </div>
@@ -314,7 +313,7 @@ const router = useRouter();
 const fleetStore = useBatteryFleetStore();
 const auth = useBatterySwapAuthStore();
 
-const isLoginRoute = computed(() => route.path === '/login');
+const isLoginRoute = computed(() => Boolean(route.meta?.public) || route.path === '/login' || route.path === '/forgot-password' || route.path === '/reset-password');
 
 // Assets with base path
 const base = import.meta.env.BASE_URL || '/';
@@ -407,11 +406,13 @@ html, body, #app {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--acob-sidebar-bg);
-  border-right: 1px solid var(--acob-sidebar-border);
+  background: var(--acob-sidebar-bg, #07130c) !important;
+  border-right: 1px solid var(--acob-sidebar-border, rgba(125, 252, 154, 0.14)) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.05), 12px 0 32px rgba(0, 0, 0, 0.35);
   transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s ease;
   z-index: 100;
   position: relative;
+  flex-shrink: 0;
 }
 
 .sidebar--battery-swap.sidebar--collapsed {
@@ -928,6 +929,9 @@ html, body, #app {
     top: 0;
     bottom: 0;
     left: 0;
+    z-index: 1000 !important;
+    background: var(--acob-sidebar-bg, #07130c) !important;
+    box-shadow: 12px 0 40px rgba(0, 0, 0, 0.85);
     transform: translateX(-100%);
   }
   .sidebar--battery-swap.sidebar--mobile-open {
@@ -936,8 +940,10 @@ html, body, #app {
   .bsv-mobile-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 99;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 999;
   }
 }
 </style>
