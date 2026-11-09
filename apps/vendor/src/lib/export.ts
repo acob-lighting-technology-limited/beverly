@@ -14,9 +14,9 @@ export type ExportOptions = {
 
 function csvEscape(value: unknown): string {
     if (value === null || value === undefined) return '';
-    const text = String(value);
-    const s = /^[\t\r ]*[=+\-@]/.test(text) ? `'${text}` : text;
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const raw = typeof value === 'string' ? value : String(value);
+    const text = /^[\t\r ]*[=+\-@]/.test(raw) ? `'${raw}` : raw;
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 export function rowsToCsv<T>(rows: T[], columns: Column<T>[], options?: ExportOptions | boolean): string {
