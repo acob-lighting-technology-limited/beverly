@@ -1,46 +1,53 @@
 <template>
   <div class="battery-swap-app-host" :data-theme="theme">
-    <!-- ── Mobile Overlay ────────────────────────────────────── -->
-    <div
-      v-if="mobileSidebarOpen"
-      class="bsv-mobile-backdrop"
-      @click="mobileSidebarOpen = false"
-    />
+    <!-- Standalone Login Route View -->
+    <template v-if="isLoginRoute">
+      <router-view />
+    </template>
 
-    <!-- ── Detached Standalone Sidebar ────────────────────────── -->
-    <aside
-      class="sidebar--battery-swap"
-      :class="{
-        'sidebar--collapsed': collapsed,
-        'sidebar--mobile-open': mobileSidebarOpen
-      }"
-      aria-label="Battery Swap Navigation"
-    >
-      <!-- Sidebar Brand Lockup -->
-      <div class="bsv-sidebar-brand">
-        <a :href="portalUrls.landing" class="bsv-brand-link" title="Beverly Power Ecosystem">
-          <img
-            v-if="!collapsed"
-            :src="theme === 'dark' ? brandLockupDark : brandLockupLight"
-            alt="Beverly"
-            class="bsv-brand-img bsv-brand-lockup"
-            @error="onImgError"
-          />
-          <img
-            v-else
-            :src="theme === 'dark' ? brandMarkDark : brandMarkLight"
-            alt="Beverly"
-            class="bsv-brand-img bsv-brand-mark"
-            @error="onImgError"
-          />
-        </a>
-        <div v-if="!collapsed" class="bsv-brand-meta">
-          <span class="bsv-brand-tag">BATTERY SWAP PORTAL</span>
-          <span class="bsv-brand-pill">
-            <span class="bsv-live-dot" /> LIVE GPRS
-          </span>
+    <!-- Standalone Portal Layout -->
+    <template v-else>
+      <!-- ── Mobile Overlay ────────────────────────────────────── -->
+      <div
+        v-if="mobileSidebarOpen"
+        class="bsv-mobile-backdrop"
+        @click="mobileSidebarOpen = false"
+      />
+
+      <!-- ── Detached Standalone Sidebar ────────────────────────── -->
+      <aside
+        class="sidebar--battery-swap"
+        :class="{
+          'sidebar--collapsed': collapsed,
+          'sidebar--mobile-open': mobileSidebarOpen
+        }"
+        aria-label="Battery Swap Navigation"
+      >
+        <!-- Sidebar Brand Lockup -->
+        <div class="bsv-sidebar-brand">
+          <a :href="portalUrls.landing" class="bsv-brand-link" title="Beverly Power Ecosystem">
+            <img
+              v-if="!collapsed"
+              :src="theme === 'dark' ? brandLockupDark : brandLockupLight"
+              alt="Beverly"
+              class="bsv-brand-img bsv-brand-lockup"
+              @error="onImgError"
+            />
+            <img
+              v-else
+              :src="theme === 'dark' ? brandMarkDark : brandMarkLight"
+              alt="Beverly"
+              class="bsv-brand-img bsv-brand-mark"
+              @error="onImgError"
+            />
+          </a>
+          <div v-if="!collapsed" class="bsv-brand-meta">
+            <span class="bsv-brand-tag">BATTERY SWAP PORTAL</span>
+            <span class="bsv-brand-pill">
+              <span class="bsv-live-dot" /> LIVE GPRS
+            </span>
+          </div>
         </div>
-      </div>
 
       <!-- Navigation Links -->
       <nav class="bsv-nav-scroller">

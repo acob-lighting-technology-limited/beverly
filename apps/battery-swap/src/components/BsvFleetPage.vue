@@ -175,11 +175,16 @@
       v-if="crmBikeId"
       :bike-id="crmBikeId"
       @close="crmBikeId = null"
+      @record-payment="handleRecordPayment"
     />
     <BatterySwapStationModal
       v-if="swapBikeId !== undefined"
+      :initial-bike-id="swapBikeId"
       :bike-id="swapBikeId"
+      :stations="fleetStore.stations"
+      :bikes="fleetStore.bikes"
       @close="swapBikeId = undefined"
+      @execute-swap="handleExecuteSwap"
     />
   </section>
 </template>

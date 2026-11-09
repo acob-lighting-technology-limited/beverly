@@ -125,6 +125,7 @@
       <div class="bsv-map-canvas">
         <BatteryGprsMap
           :bikes="panelBikes"
+          :stations="fleetStore.stations"
           :selected-bike-id="fleetStore.selectedBikeId"
           class="bsv-gprs-map"
           @select-bike="selectBike"
@@ -138,8 +139,12 @@
     <!-- Swap modal -->
     <BatterySwapStationModal
       v-if="swapModalOpen"
-      :bike-id="fleetStore.selectedBikeId"
-      @close="swapModalOpen = false"
+      :initial-bike-id="targetSwapBikeId || fleetStore.selectedBikeId"
+      :initial-station-id="targetSwapStationId"
+      :stations="fleetStore.stations"
+      :bikes="fleetStore.bikes"
+      @close="closeSwapModal"
+      @execute-swap="handleExecuteSwap"
     />
   </section>
 </template>
@@ -164,6 +169,8 @@ export default {
       activeFilter: "all",
       bikeSearch:   "",
       swapModalOpen: false,
+      targetSwapBikeId: "",
+      targetSwapStationId: "",
       filters: [
         { key: "all",     label: "All"        },
         { key: "moving",  label: "Moving"     },
@@ -226,19 +233,35 @@ export default {
       if (soc >= 20) return "var(--color-warning, #f59e0b)";
       return "var(--color-danger, #ef4444)";
     },
-    openSwap() {
+    openSwap(bikeId) {
+      this.targetSwapBikeId = bikeId || this.fleetStore.selectedBikeId || (this.fleetStore.bikes[0]?.id);
+      this.targetSwapStationId = this.fleetStore.stations[0]?.id || "";
       this.swapModalOpen = true;
+    },
+    closeSwapModal() {
+      this.swapModalOpen = false;
+      this.targetSwapBikeId = "";
+      this.targetSwapStationId = "";
+    },
+    handleExecuteSwap(payload) {
+      if (payload && this.fleetStore) {
+        this.fleetStore.executeSwap(payload);
+      }
     },
     async syncTelemetry() {
       await this.fleetStore.syncLiveYunheTelemetry();
     },
-    handleTogglePower(bikeId, newState) {
-      const bike = this.fleetStore.bikes.find(b => b.id === bikeId);
-      if (bike) bike.telemetry.d_fet = newState;
+    async handleTogglePower(bikeId, newState) {
+      if (this.fleetStore && typeof this.fleetStore.toggleBikeMotorPower === "function") {
+        await this.fleetStore.toggleBikeMotorPower(bikeId, newState);
+      }
     },
     handleOpenCrm(customerId) {
-      // Navigate to CRM page — beverly hash router
-      window.location.hash = "#/battery-swap/crm";
+      if (this.$router && this.$route && this.$route.path) {
+        this.$router.push("/crm");
+      } else {
+        window.location.hash = "#/battery-swap/crm";
+      }
     }
   }
 };

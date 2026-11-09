@@ -22,6 +22,14 @@
         <span class="map-status-label">{{ mapLoaded ? 'Live GPS · Yunhe IoT' : 'Connecting…' }}</span>
         <span class="map-status-count">{{ bikes.length }} bikes tracked</span>
       </div>
+      <button
+        class="map-action-pill map-station-toggle"
+        :class="{ 'map-action-pill--active': showStations }"
+        title="Toggle charging station rack locations"
+        @click="toggleStationMarkers"
+      >
+        ⚡ Stations {{ showStations ? 'ON' : 'OFF' }}
+      </button>
       <button class="map-action-pill" title="Fit all bikes into view" @click="fitBikes">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
@@ -131,6 +139,10 @@ import "leaflet/dist/leaflet.css";
 export default {
   name: "BatteryGprsMap",
   props: {
+    stations: {
+      type: Array,
+      default: () => []
+    },
     bikes: {
       type: Array,
       required: true
@@ -144,6 +156,7 @@ export default {
   data() {
     return {
       mapLoaded: false,
+      showStations: true,
       leafletMap: null,
       leafletMarkers: {}
     };
@@ -167,6 +180,7 @@ export default {
       handler() {
         if (this.mapLoaded) {
           this.renderMarkers();
+            this.renderStationMarkers();
         }
       },
       deep: false
@@ -244,6 +258,68 @@ export default {
         const bounds = L.latLngBounds(validCoords);
         this.leafletMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
       }
+    },
+
+    
+    toggleStationMarkers() {
+      this.showStations = !this.showStations;
+      this.renderStationMarkers();
+    },
+
+    renderStationMarkers() {
+      if (!this.leafletMap) return;
+      if (!this.leafletStationMarkers) this.leafletStationMarkers = [];
+
+      this.leafletStationMarkers.forEach(m => m.remove());
+      this.leafletStationMarkers = [];
+
+      if (!this.showStations || !Array.isArray(this.stations)) return;
+
+      this.stations.forEach(s => {
+        if (!s || typeof s.lat !== "number" || typeof s.lng !== "number") return;
+        const readyCount = (s.activeBatteries || []).filter(b => b.status === "ready").length;
+
+        const stationIcon = L.divIcon({
+          className: "custom-station-pin",
+          html: `
+            <div style="
+              background: #008000;
+              color: #ffffff;
+              border-radius: 8px;
+              padding: 2px 7px;
+              font-weight: 700;
+              font-size: 11px;
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              border: 2px solid #ffffff;
+              box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+              cursor: pointer;
+              font-family: inherit;
+            ">
+              <span>⚡</span>
+              <span>${readyCount} ready</span>
+            </div>
+          `,
+          iconSize: [80, 24],
+          iconAnchor: [40, 12]
+        });
+
+        const marker = L.marker([s.lat, s.lng], { icon: stationIcon });
+        marker.bindPopup(`
+          <div style="font-family: inherit; font-size: 12.5px; min-width: 200px; color: #0f172a; padding: 2px;">
+            <div style="font-weight: 700; font-size: 13.5px; color: #008000; margin-bottom: 2px;">${s.name}</div>
+            <div style="color: #64748b; font-size: 11px; margin-bottom: 6px;">${s.address}</div>
+            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+              <span style="background: #ecfdf5; color: #047857; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${readyCount} Ready</span>
+              <span style="background: #fef3c7; color: #b45309; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${(s.activeBatteries || []).length - readyCount} Charging</span>
+            </div>
+            <div style="font-size: 11px; color: #64748b;">Operator: <strong>${s.operatorName}</strong> (${s.operatorPhone})</div>
+          </div>
+        `);
+        marker.addTo(this.leafletMap);
+        this.leafletStationMarkers.push(marker);
+      });
     },
 
     renderMarkers() {

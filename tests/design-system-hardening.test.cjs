@@ -89,6 +89,23 @@ const rawControlAllowlist = new Set([
   "src/components/analytics/EnergyAuditPage.vue",
   "src/components/mesh/GatewayHealthPage.vue",
   "src/components/grid-control/RemoteRelayPage.vue",
+  // Battery Swap components use detached ACOB design tokens and .bsv-* controls
+  "src/components/battery-swap/BatteryGprsMap.vue",
+  "src/components/battery-swap/BatterySwapOperationsPage.vue",
+  "src/components/battery-swap/BatterySwapStationModal.vue",
+  "src/components/bikeCustomModal.vue",
+  "src/components/battery-swap/BikeCustomerCrmModal.vue",
+  "src/components/battery-swap/BsvCrmPage.vue",
+  "src/components/battery-swap/BsvDiagnosticsPage.vue",
+  "src/components/battery-swap/BsvFleetPage.vue",
+  "src/components/battery-swap/BsvMapPage.vue",
+  "src/components/battery-swap/BsvStationsPage.vue",
+  "src/components/battery-swap/station/StationBatteryTable.vue",
+  "src/components/battery-swap/station/StationCard.vue",
+  "src/components/battery-swap/station/StationGuideBanner.vue",
+  "src/components/battery-swap/station/StationKpiStrip.vue",
+  "src/components/battery-swap/station/StationLockerCabinet.vue",
+  "src/components/battery-swap/station/StationSwapHistory.vue",
 ]);
 for (const filePath of walkVueFiles(path.join(root, "src", "components"))) {
   const relativePath = path.relative(root, filePath).replace(/\\/g, "/");

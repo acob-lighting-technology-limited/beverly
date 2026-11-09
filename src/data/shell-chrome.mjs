@@ -140,3 +140,90 @@ export const routeIconOverrides = {
   "Battery Swap": "M6 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM21 11v2M8 10v4M12 10v4M16 10v4",
   "#/guide": "M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
 };
+
+
+export const sidebarDefaultWidth = 252;
+export const sidebarMinWidth = 220;
+export const sidebarMaxWidth = 420;
+export const sidebarWidthKey = "beverly-sidebar-width";
+export const sidebarCollapsedKey = "beverly-sidebar-collapsed";
+
+export function savedSidebarWidth() {
+  const value = Number(localStorage.getItem(sidebarWidthKey));
+  return Number.isFinite(value) ? Math.min(sidebarMaxWidth, Math.max(sidebarMinWidth, value)) : sidebarDefaultWidth;
+}
+
+export function savedSidebarCollapsed() {
+  const value = localStorage.getItem(sidebarCollapsedKey);
+  return value === null ? true : value === "true";
+}
+
+export const supportedThemeChoices = ["system", "light", "executive", "contrast"];
+
+export function normalizeThemeChoice(theme) {
+  if (theme === "dark") return "executive";
+  if (theme === "ocean") return "light";
+  return supportedThemeChoices.includes(theme) ? theme : "system";
+}
+
+export function resolveOemCapabilities(oem, showOemHub) {
+  if (showOemHub) return {};
+  if (!oem) return null;
+
+  const raw = oem.capabilities || {};
+  const hasCaps = Object.values(raw).some(Boolean);
+
+  if (oem.vendingStrategy === "direct_credit" || oem.slug === "sparkmeter") {
+    return {
+      wallet_vending: true,
+      event_notification: true,
+      tariff_management: true,
+      load_profile: true,
+      ...raw,
+      remote_meter_task: false,
+      dlms_protocol: false,
+      dlt645_protocol: false,
+      gprs_support: false,
+      firmware_update: false,
+      smart_grid_telemetry: true,
+      remote_relay_control: true,
+      grid_energy_audit: true,
+      mesh_network_health: true,
+      direct_credit_balance: true,
+      battery_swap_operations: true
+    };
+  }
+
+  if (oem.slug === "miyaji_ev") {
+    return {
+      gprs_support: true,
+      wallet_vending: true,
+      event_notification: true,
+      tariff_management: true,
+      load_profile: true,
+      firmware_update: true,
+      battery_swap_operations: true,
+      ...raw,
+      remote_meter_task: false,
+      dlms_protocol: false,
+      dlt645_protocol: false
+    };
+  }
+
+  if (!hasCaps || oem.isSeedDefault || oem.slug === "calinmeter" || oem.vendingStrategy === "sts_token") {
+    return {
+      remote_meter_task: true,
+      tariff_management: true,
+      gprs_support: true,
+      event_notification: true,
+      load_profile: true,
+      firmware_update: true,
+      dlms_protocol: true,
+      dlt645_protocol: true,
+      wallet_vending: true,
+      battery_swap_operations: true,
+      ...raw
+    };
+  }
+  return raw;
+}

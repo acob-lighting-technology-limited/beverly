@@ -1,41 +1,41 @@
 <template>
   <div class="crm-modal-backdrop" @click.self="$emit('close')">
-    <div class="crm-modal" role="dialog" aria-modal="true" :aria-label="'Rider Account: ' + customer.name">
-      <header class="crm-header">
+    <div class="crm-modal" role="dialog" aria-modal="true" :aria-label="'Rider Account: ' + (activeCustomer ? activeCustomer.name : 'Rider')">
+      <header class="crm-header" v-if="activeCustomer">
         <div class="crm-title-group">
-          <h2>{{ customer.name }}</h2>
-          <span class="status-badge" :class="customer.status">
-            {{ formatStatus(customer.status) }}
+          <h2>{{ activeCustomer.name }}</h2>
+          <span class="status-badge" :class="activeCustomer.status">
+            {{ formatStatus(activeCustomer.status) }}
           </span>
-          <span v-if="customer.daysOverdue > 0" class="overdue-tag">
-            {{ customer.daysOverdue }} days late
+          <span v-if="activeCustomer.daysOverdue > 0" class="overdue-tag">
+            {{ activeCustomer.daysOverdue }} days late
           </span>
         </div>
         <button class="close-btn" aria-label="Close" @click="$emit('close')">✕</button>
       </header>
 
-      <div class="crm-body">
+      <div class="crm-body" v-if="activeCustomer">
         <!-- Identity & Vehicle Bar -->
         <div class="info-strip">
           <div class="info-cell">
             <span class="label">Phone Number</span>
-            <span class="val">{{ customer.phone }}</span>
+            <span class="val">{{ activeCustomer.phone }}</span>
           </div>
           <div class="info-cell">
             <span class="label">NIN</span>
-            <span class="val font-mono">{{ customer.nin }}</span>
+            <span class="val font-mono">{{ activeCustomer.nin }}</span>
           </div>
           <div class="info-cell">
             <span class="label">Guarantor</span>
-            <span class="val">{{ customer.guarantorName }} ({{ customer.guarantorPhone }})</span>
+            <span class="val">{{ activeCustomer.guarantorName }} ({{ activeCustomer.guarantorPhone }})</span>
           </div>
           <div class="info-cell">
             <span class="label">Assigned Bike</span>
-            <span class="val font-mono">{{ customer.bikeId }}</span>
+            <span class="val font-mono">{{ activeCustomer.bikeId }}</span>
           </div>
           <div class="info-cell">
             <span class="label">Current Battery</span>
-            <span class="val font-mono">{{ customer.batterySn }}</span>
+            <span class="val font-mono">{{ activeCustomer.batterySn }}</span>
           </div>
         </div>
 
@@ -43,102 +43,93 @@
         <div class="lease-card">
           <div class="lease-top">
             <div>
-              <span class="lease-type-tag">{{ customer.purchaseType === 'installment' ? 'Weekly Installment Lease' : 'Outright Purchase' }}</span>
+              <span class="lease-type-tag">{{ activeCustomer.purchaseType === 'installment' ? 'Weekly Installment Lease' : 'Outright Purchase' }}</span>
               <h3>Payment Progress</h3>
             </div>
             <div class="amount-summary">
               <span class="balance-label">Balance Remaining:</span>
-              <strong class="balance-num">₦{{ formatNaira(customer.balanceMinor) }}</strong>
+              <span class="balance-val">₦{{ formatNaira(activeCustomer.balanceMinor) }}</span>
             </div>
           </div>
 
-          <!-- Progress Bar -->
           <div class="progress-wrap">
             <div class="progress-bar">
               <div class="progress-fill" :style="{ width: paymentPercentage + '%' }"></div>
             </div>
-            <div class="progress-labels">
-              <span>Paid: ₦{{ formatNaira(customer.paidMinor) }}</span>
-              <span>Total: ₦{{ formatNaira(customer.totalCostMinor) }} ({{ paymentPercentage }}%)</span>
+            <div class="progress-meta">
+              <span>₦{{ formatNaira(activeCustomer.paidMinor) }} paid ({{ paymentPercentage }}%)</span>
+              <span>Total: ₦{{ formatNaira(activeCustomer.totalCostMinor) }}</span>
             </div>
           </div>
 
-          <div v-if="customer.purchaseType === 'installment'" class="installment-metrics">
-            <div class="metric-box">
-              <span class="sub">Weekly Due</span>
-              <strong>₦{{ formatNaira(customer.weeklyInstallmentMinor) }}</strong>
+          <!-- Weekly Schedule Info -->
+          <div class="installment-metrics" v-if="activeCustomer.purchaseType === 'installment'">
+            <div class="metric-item">
+              <span class="sub-lbl">Weekly Rate</span>
+              <strong>₦{{ formatNaira(activeCustomer.weeklyInstallmentMinor) }}</strong>
             </div>
-            <div class="metric-box">
-              <span class="sub">Next Payment Date</span>
-              <strong :class="{ 'text-danger': customer.daysOverdue > 0 }">{{ customer.nextDueDate }}</strong>
+            <div class="metric-item">
+              <span class="sub-lbl">Next Due Date</span>
+              <strong :class="{ 'text-danger': activeCustomer.daysOverdue > 0 }">{{ activeCustomer.nextDueDate }}</strong>
             </div>
-            <div class="metric-box">
-              <span class="sub">Preferred Channel</span>
-              <strong>{{ customer.preferredMethod }}</strong>
+            <div class="metric-item">
+              <span class="sub-lbl">Payment Channel</span>
+              <strong>{{ activeCustomer.preferredMethod }}</strong>
             </div>
           </div>
         </div>
 
-        <!-- Payment Input / Logging Form -->
-        <div class="payment-action-box">
-          <h4>Record Rider Payment</h4>
-          <div class="action-grid">
-            <div class="field-group">
-              <label>Amount (₦)</label>
-              <input
-                v-model.number="paymentAmount"
-                type="number"
-                placeholder="25,000"
-                min="1000"
-                step="500"
-              />
+        <!-- Action Box: Record Payment -->
+        <div class="payment-action-box" v-if="activeCustomer.balanceMinor > 0">
+          <h4>Record Lease Payment</h4>
+          <div class="payment-form">
+            <div class="form-group">
+              <label>Amount (NGN)</label>
+              <input type="number" v-model.number="paymentAmount" min="1000" step="1000" />
             </div>
-            <div class="field-group">
-              <label>Payment Method</label>
+            <div class="form-group">
+              <label>Payment Channel</label>
               <select v-model="paymentChannel">
-                <option value="Paystack">Paystack (Card / USSD / Virtual Account)</option>
-                <option value="Bank Transfer">Direct Bank Transfer</option>
+                <option value="Paystack">Paystack Direct</option>
+                <option value="Bank Transfer">Bank Transfer (Zenith/GTB)</option>
+                <option value="Cash / POS">Cash / Agent POS</option>
               </select>
             </div>
-            <div class="field-group">
-              <label>Bank or Paystack Reference</label>
-              <input
-                v-model="paymentReference"
-                type="text"
-                placeholder="e.g. pstk_tr_938174 or GTB/REF/20261028"
-              />
+            <div class="form-group">
+              <label>Reference (Optional)</label>
+              <input type="text" v-model="paymentReference" placeholder="e.g. pstk_tr_990182" />
             </div>
-            <div class="field-btn">
+            <div class="form-group form-action">
               <button
                 type="button"
-                class="record-btn"
-                :disabled="!paymentAmount || isSubmitting"
+                class="btn-submit-pay"
+                :disabled="isSubmitting || paymentAmount <= 0"
                 @click="submitPayment"
               >
-                {{ isSubmitting ? "Recording..." : "Confirm Payment" }}
+                {{ isSubmitting ? "Recording..." : "Log ₦" + (paymentAmount || 0).toLocaleString() }}
               </button>
             </div>
           </div>
-          <p v-if="submitMessage" class="feedback-msg" :class="submitSuccess ? 'good' : 'bad'">
+          <div v-if="submitMessage" class="feedback-msg" :class="{ success: submitSuccess, error: !submitSuccess }">
             {{ submitMessage }}
-          </p>
+          </div>
         </div>
 
-        <!-- History Tabs: Payments vs Battery Swaps -->
-        <div class="sub-tabs">
+        <!-- Ledger Tabs: Payments vs Battery Swaps -->
+        <div class="ledger-tabs">
           <button
             class="tab-btn"
             :class="{ active: activeSubTab === 'payments' }"
             @click="activeSubTab = 'payments'"
           >
-            Payment History ({{ customer.payments ? customer.payments.length : 0 }})
+            Payment Ledger ({{ activeCustomer.payments ? activeCustomer.payments.length : 0 }})
           </button>
           <button
             class="tab-btn"
             :class="{ active: activeSubTab === 'swaps' }"
             @click="activeSubTab = 'swaps'"
           >
-            Battery Swaps ({{ customer.swaps ? customer.swaps.length : 0 }})
+            Battery Swaps ({{ activeCustomer.swaps ? activeCustomer.swaps.length : 0 }})
           </button>
         </div>
 
@@ -155,7 +146,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="p in customer.payments" :key="p.id">
+              <tr v-for="p in activeCustomer.payments" :key="p.id">
                 <td>
                   <strong>{{ p.id }}</strong>
                   <div class="sub-date">{{ p.date }}</div>
@@ -169,7 +160,7 @@
                 <td><code class="font-mono">{{ p.reference }}</code></td>
                 <td><span class="status-pill good">Confirmed</span></td>
               </tr>
-              <tr v-if="!customer.payments || !customer.payments.length">
+              <tr v-if="!activeCustomer.payments || !activeCustomer.payments.length">
                 <td colspan="5" class="empty-state">No payment records logged yet.</td>
               </tr>
             </tbody>
@@ -181,46 +172,66 @@
           <table class="crm-table">
             <thead>
               <tr>
-                <th>Date / Time</th>
-                <th>Swap Station</th>
-                <th>Returned Battery</th>
-                <th>Received Battery</th>
-                <th>Swap Fee</th>
+                <th>Swap ID / Date</th>
+                <th>Station</th>
+                <th>Depleted In</th>
+                <th>Fresh Out</th>
+                <th>Fee</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="s in customer.swaps" :key="s.id">
-                <td>{{ s.date }}</td>
+              <tr v-for="s in activeCustomer.swaps" :key="s.id">
+                <td>
+                  <strong>{{ s.id }}</strong>
+                  <div class="sub-date">{{ s.date }}</div>
+                </td>
                 <td>{{ s.stationName }}</td>
                 <td>
-                  <span class="sn-tag returned">{{ s.batteryInSn }} ({{ s.batteryInSoc }}%)</span>
+                  <span class="font-mono">{{ s.batteryInSn }}</span>
+                  <div class="sub-soc">Charge: {{ s.batteryInSoc }}%</div>
                 </td>
                 <td>
-                  <span class="sn-tag fresh">{{ s.batteryOutSn }} ({{ s.batteryOutSoc }}%)</span>
+                  <span class="font-mono">{{ s.batteryOutSn }}</span>
+                  <div class="sub-soc good">Charge: {{ s.batteryOutSoc }}%</div>
                 </td>
                 <td>₦{{ formatNaira(s.feeMinor) }}</td>
               </tr>
-              <tr v-if="!customer.swaps || !customer.swaps.length">
-                <td colspan="5" class="empty-state">No battery swaps recorded for this bike yet.</td>
+              <tr v-if="!activeCustomer.swaps || !activeCustomer.swaps.length">
+                <td colspan="5" class="empty-state">No battery swap history found for this rider.</td>
               </tr>
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div v-else class="crm-body empty-state-box">
+        <p>No customer found for this bike record.</p>
+        <button class="btn-cancel" @click="$emit('close')">Close</button>
       </div>
     </div>
   </div>
 </template>
 
 <script>
+import { useBatteryFleetStore } from "../stores/battery-fleet-store.js";
+
 export default {
   name: "BikeCustomerCrmModal",
   props: {
     customer: {
       type: Object,
-      required: true
+      default: null
+    },
+    bikeId: {
+      type: String,
+      default: ""
     }
   },
   emits: ["close", "record-payment"],
+  setup() {
+    const fleetStore = useBatteryFleetStore();
+    return { fleetStore };
+  },
   data() {
     return {
       activeSubTab: "payments",
@@ -233,9 +244,16 @@ export default {
     };
   },
   computed: {
+    activeCustomer() {
+      if (this.customer) return this.customer;
+      if (this.bikeId && this.fleetStore) {
+        return this.fleetStore.customers.find((c) => c.bikeId === this.bikeId) || null;
+      }
+      return null;
+    },
     paymentPercentage() {
-      if (!this.customer || !this.customer.totalCostMinor) return 0;
-      const pct = (this.customer.paidMinor / this.customer.totalCostMinor) * 100;
+      if (!this.activeCustomer || !this.activeCustomer.totalCostMinor) return 0;
+      const pct = (this.activeCustomer.paidMinor / this.activeCustomer.totalCostMinor) * 100;
       return Math.min(100, Math.round(pct));
     }
   },
@@ -252,7 +270,7 @@ export default {
       return status;
     },
     async submitPayment() {
-      if (!this.paymentAmount || this.paymentAmount <= 0) return;
+      if (!this.paymentAmount || this.paymentAmount <= 0 || !this.activeCustomer) return;
 
       this.isSubmitting = true;
       this.submitMessage = "";
@@ -261,8 +279,16 @@ export default {
         const minor = Math.round(this.paymentAmount * 100);
         const ref = this.paymentReference.trim() || `${this.paymentChannel === 'Paystack' ? 'pstk_' : 'trf_'}${Date.now().toString(36)}`;
 
+        if (this.fleetStore && typeof this.fleetStore.recordPayment === "function") {
+          this.fleetStore.recordPayment(this.activeCustomer.id, {
+            amountMinor: minor,
+            channel: this.paymentChannel,
+            reference: ref
+          });
+        }
+
         this.$emit("record-payment", {
-          customerId: this.customer.id,
+          customerId: this.activeCustomer.id,
           amountMinor: minor,
           channel: this.paymentChannel,
           reference: ref
@@ -326,60 +352,62 @@ export default {
 
 .crm-title-group h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--acob-text);
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 18px;
-  color: var(--acob-muted);
-  cursor: pointer;
-  padding: 4px 8px;
 }
 
 .status-badge {
   font-size: 11px;
   font-weight: 700;
-  padding: 3px 10px;
-  border-radius: 999px;
+  padding: 3px 8px;
+  border-radius: 6px;
   text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .status-badge.current {
-  background: rgba(0, 128, 0, 0.12);
-  color: var(--acob-brand);
-  border: 1px solid rgba(0, 128, 0, 0.25);
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
 }
 
 .status-badge.overdue {
   background: rgba(239, 68, 68, 0.12);
-  color: var(--color-danger);
-  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #ef4444;
 }
 
 .status-badge.grace_period {
-  background: rgba(184, 134, 46, 0.12);
-  color: var(--acob-gold);
-  border: 1px solid rgba(184, 134, 46, 0.25);
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
 }
 
 .status-badge.paid_off {
-  background: rgba(34, 197, 94, 0.15);
-  color: var(--acob-brand-bright);
-  border: 1px solid rgba(34, 197, 94, 0.30);
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
 }
 
 .overdue-tag {
   font-size: 11px;
-  font-weight: 600;
-  color: var(--color-danger);
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.20);
-  padding: 2px 8px;
+  background: #ef4444;
+  color: #ffffff;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: var(--acob-text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
   border-radius: 6px;
+}
+
+.close-btn:hover {
+  background: var(--acob-surface-hover);
+  color: var(--acob-text);
 }
 
 .crm-body {
@@ -391,25 +419,23 @@ export default {
 
 .info-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
-  background: var(--acob-bg);
-  padding: 14px 16px;
-  border-radius: 10px;
+  background: var(--acob-surface);
   border: 1px solid var(--acob-line);
+  padding: 12px 16px;
+  border-radius: 10px;
 }
 
 .info-cell {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .info-cell .label {
   font-size: 11px;
-  font-weight: 600;
-  color: var(--acob-muted);
-  text-transform: uppercase;
+  color: var(--acob-text-muted);
 }
 
 .info-cell .val {
@@ -419,14 +445,14 @@ export default {
 }
 
 .font-mono {
-  font-family: var(--acob-font-mono);
+  font-family: monospace;
 }
 
 .lease-card {
-  background: var(--acob-chip);
+  background: var(--acob-surface);
   border: 1px solid var(--acob-line);
   border-radius: 12px;
-  padding: 18px 20px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -443,12 +469,14 @@ export default {
   font-weight: 700;
   color: var(--acob-brand);
   text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 2px;
 }
 
 .lease-top h3 {
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 16px;
-  font-weight: 700;
   color: var(--acob-text);
 }
 
@@ -457,13 +485,13 @@ export default {
 }
 
 .balance-label {
-  font-size: 12px;
-  color: var(--acob-muted);
   display: block;
+  font-size: 11px;
+  color: var(--acob-text-muted);
 }
 
-.balance-num {
-  font-size: 20px;
+.balance-val {
+  font-size: 18px;
   font-weight: 800;
   color: var(--acob-text);
 }
@@ -476,24 +504,23 @@ export default {
 
 .progress-bar {
   height: 8px;
-  background: var(--acob-bg);
-  border-radius: 999px;
+  background: var(--acob-line);
+  border-radius: 4px;
   overflow: hidden;
-  border: 1px solid var(--acob-line);
 }
 
 .progress-fill {
   height: 100%;
   background: var(--acob-brand);
-  border-radius: 999px;
+  border-radius: 4px;
   transition: width 0.3s ease;
 }
 
-.progress-labels {
+.progress-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: var(--acob-muted);
+  font-size: 11.5px;
+  color: var(--acob-text-muted);
 }
 
 .installment-metrics {
@@ -504,216 +531,199 @@ export default {
   border-top: 1px solid var(--acob-line);
 }
 
-.metric-box {
+.metric-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.metric-box .sub {
+.metric-item .sub-lbl {
   font-size: 11px;
-  color: var(--acob-muted);
+  color: var(--acob-text-muted);
 }
 
-.metric-box strong {
-  font-size: 14px;
+.metric-item strong {
+  font-size: 13.5px;
   color: var(--acob-text);
 }
 
 .text-danger {
-  color: var(--color-danger) !important;
+  color: #ef4444 !important;
 }
 
 .payment-action-box {
-  background: var(--acob-bg);
-  border: 1px solid var(--acob-line);
+  background: var(--acob-surface);
+  border: 1px dashed var(--acob-line);
   border-radius: 12px;
   padding: 16px 20px;
 }
 
 .payment-action-box h4 {
-  margin: 0 0 12px;
+  margin: 0 0 12px 0;
   font-size: 14px;
-  font-weight: 700;
   color: var(--acob-text);
 }
 
-.action-grid {
+.payment-form {
   display: grid;
-  grid-template-columns: 140px 180px 1fr auto;
+  grid-template-columns: 1fr 1fr 1.2fr auto;
   gap: 12px;
   align-items: flex-end;
 }
 
-.field-group {
+.form-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.field-group label {
+.form-group label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--acob-muted);
+  color: var(--acob-text-muted);
 }
 
-.field-group input,
-.field-group select {
-  height: 36px;
-  border-radius: 6px;
+.form-group input,
+.form-group select {
+  height: 38px;
+  background: var(--acob-panel);
   border: 1px solid var(--acob-line);
-  background: var(--acob-chip);
+  border-radius: 6px;
+  color: var(--acob-text);
   padding: 0 10px;
   font-size: 13px;
-  color: var(--acob-text);
+  outline: none;
 }
 
-.record-btn {
-  height: 36px;
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--acob-brand);
+}
+
+.btn-submit-pay {
+  height: 38px;
   padding: 0 16px;
   background: var(--acob-brand);
   color: #ffffff;
   border: none;
   border-radius: 6px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s ease;
 }
 
-.record-btn:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.record-btn:disabled {
+.btn-submit-pay:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 .feedback-msg {
-  margin: 10px 0 0;
-  font-size: 12px;
-  font-weight: 600;
+  margin-top: 10px;
+  font-size: 12.5px;
+  padding: 8px 12px;
+  border-radius: 6px;
 }
 
-.feedback-msg.good {
-  color: var(--acob-brand);
+.feedback-msg.success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
 }
 
-.feedback-msg.bad {
-  color: var(--color-danger);
+.feedback-msg.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
 }
 
-.sub-tabs {
+.ledger-tabs {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   border-bottom: 1px solid var(--acob-line);
-  padding-bottom: 4px;
+  padding-bottom: 8px;
 }
 
 .tab-btn {
-  background: none;
+  background: transparent;
   border: none;
-  padding: 8px 12px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--acob-muted);
+  color: var(--acob-text-muted);
+  padding: 6px 12px;
+  border-radius: 6px;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s;
 }
 
 .tab-btn.active {
-  color: var(--acob-brand);
-  border-bottom-color: var(--acob-brand);
+  background: var(--acob-surface-hover);
+  color: var(--acob-text);
 }
 
 .table-wrap {
-  border: 1px solid var(--acob-line);
-  border-radius: 8px;
   overflow-x: auto;
 }
 
 .crm-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .crm-table th {
-  background: var(--acob-panel);
-  padding: 8px 12px;
   text-align: left;
-  font-size: 11px;
-  color: var(--acob-muted);
+  padding: 8px 12px;
+  color: var(--acob-text-muted);
+  font-weight: 600;
   border-bottom: 1px solid var(--acob-line);
 }
 
 .crm-table td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--acob-line);
-  color: var(--acob-text);
 }
 
 .sub-date {
   font-size: 11px;
-  color: var(--acob-muted);
+  color: var(--acob-text-muted);
 }
 
 .channel-pill {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
   font-size: 11px;
-  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .channel-pill.paystack {
-  background: rgba(0, 128, 0, 0.10);
-  color: var(--acob-brand);
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
 }
 
 .channel-pill.transfer {
-  background: var(--acob-chip);
-  color: var(--acob-muted);
+  background: rgba(168, 85, 247, 0.12);
+  color: #a855f7;
 }
 
 .status-pill.good {
-  background: rgba(0, 128, 0, 0.10);
-  color: var(--acob-brand);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  color: #22c55e;
   font-weight: 600;
 }
 
-.sn-tag {
-  font-family: var(--acob-font-mono);
-  padding: 2px 6px;
-  border-radius: 4px;
+.sub-soc {
   font-size: 11px;
+  color: #ef4444;
 }
 
-.sn-tag.returned {
-  background: rgba(239, 68, 68, 0.10);
-  color: var(--color-danger);
-}
-
-.sn-tag.fresh {
-  background: rgba(0, 128, 0, 0.10);
-  color: var(--acob-brand-bright);
+.sub-soc.good {
+  color: #22c55e;
 }
 
 .empty-state {
   text-align: center;
+  color: var(--acob-text-muted);
   padding: 24px;
-  color: var(--acob-muted);
 }
 
-@media (max-width: 768px) {
-  .action-grid {
-    grid-template-columns: 1fr;
-  }
+.empty-state-box {
+  text-align: center;
+  padding: 40px;
 }
 </style>

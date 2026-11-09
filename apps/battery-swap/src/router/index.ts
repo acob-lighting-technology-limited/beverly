@@ -4,9 +4,23 @@ import BsvFleetPage from '../components/BsvFleetPage.vue';
 import BsvCrmPage from '../components/BsvCrmPage.vue';
 import BsvStationsPage from '../components/BsvStationsPage.vue';
 import BsvDiagnosticsPage from '../components/BsvDiagnosticsPage.vue';
+import LoginView from '../views/LoginView.vue';
+import { useBatterySwapAuthStore } from '../stores/auth';
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/map' },
+  { path: '/', redirect: '/stations' },
+  {
+    path: '/login',
+    name: 'login',
+    component: LoginView,
+    meta: { title: 'Sign In', public: true }
+  },
+  {
+    path: '/stations',
+    name: 'stations',
+    component: BsvStationsPage,
+    meta: { title: 'Swap Stations & Racks', icon: 'station', group: 'Infrastructure' }
+  },
   {
     path: '/map',
     name: 'map',
@@ -26,18 +40,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Rider Lease CRM', icon: 'users', group: 'Operations' }
   },
   {
-    path: '/stations',
-    name: 'stations',
-    component: BsvStationsPage,
-    meta: { title: 'Swap Stations & Racks', icon: 'station', group: 'Infrastructure' }
-  },
-  {
     path: '/diagnostics',
     name: 'diagnostics',
     component: BsvDiagnosticsPage,
     meta: { title: 'Battery Diagnostics Lab', icon: 'activity', group: 'Infrastructure' }
   },
-  { path: '/:pathMatch(.*)*', redirect: '/map' }
+  { path: '/:pathMatch(.*)*', redirect: '/stations' }
 ];
 
 export const router = createRouter({
@@ -52,5 +60,22 @@ router.beforeEach((to, _from, next) => {
   if (to.meta?.title) {
     document.title = `${to.meta.title} · Beverly Battery Swap`;
   }
+
+  const auth = useBatterySwapAuthStore();
+  auth.hydrate();
+
+  const isPublic = Boolean(to.meta?.public);
+
+  if (!isPublic && !auth.isAuthenticated) {
+    return next({
+      path: '/login',
+      query: { redirect: to.fullPath }
+    });
+  }
+
+  if (to.path === '/login' && auth.isAuthenticated) {
+    return next({ path: '/stations' });
+  }
+
   next();
 });

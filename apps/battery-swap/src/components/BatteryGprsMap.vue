@@ -22,6 +22,14 @@
         <span class="map-status-label">{{ mapLoaded ? 'Live GPS · Yunhe IoT' : 'Connecting…' }}</span>
         <span class="map-status-count">{{ bikes.length }} bikes tracked</span>
       </div>
+      <button
+        class="map-action-pill map-station-toggle"
+        :class="{ 'map-action-pill--active': showStations }"
+        title="Toggle charging station rack locations"
+        @click="toggleStationMarkers"
+      >
+        ⚡ Stations {{ showStations ? 'ON' : 'OFF' }}
+      </button>
       <button class="map-action-pill" title="Fit all bikes into view" @click="fitBikes">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
@@ -131,6 +139,10 @@ import "leaflet/dist/leaflet.css";
 export default {
   name: "BatteryGprsMap",
   props: {
+    stations: {
+      type: Array,
+      default: () => []
+    },
     bikes: {
       type: Array,
       required: true
@@ -144,6 +156,7 @@ export default {
   data() {
     return {
       mapLoaded: false,
+      showStations: true,
       leafletMap: null,
       leafletMarkers: {}
     };
@@ -167,6 +180,7 @@ export default {
       handler() {
         if (this.mapLoaded) {
           this.renderMarkers();
+            this.renderStationMarkers();
         }
       },
       deep: false
@@ -244,6 +258,68 @@ export default {
         const bounds = L.latLngBounds(validCoords);
         this.leafletMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
       }
+    },
+
+    
+    toggleStationMarkers() {
+      this.showStations = !this.showStations;
+      this.renderStationMarkers();
+    },
+
+    renderStationMarkers() {
+      if (!this.leafletMap) return;
+      if (!this.leafletStationMarkers) this.leafletStationMarkers = [];
+
+      this.leafletStationMarkers.forEach(m => m.remove());
+      this.leafletStationMarkers = [];
+
+      if (!this.showStations || !Array.isArray(this.stations)) return;
+
+      this.stations.forEach(s => {
+        if (!s || typeof s.lat !== "number" || typeof s.lng !== "number") return;
+        const readyCount = (s.activeBatteries || []).filter(b => b.status === "ready").length;
+
+        const stationIcon = L.divIcon({
+          className: "custom-station-pin",
+          html: `
+            <div style="
+              background: #008000;
+              color: #ffffff;
+              border-radius: 8px;
+              padding: 2px 7px;
+              font-weight: 700;
+              font-size: 11px;
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              border: 2px solid #ffffff;
+              box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+              cursor: pointer;
+              font-family: inherit;
+            ">
+              <span>⚡</span>
+              <span>${readyCount} ready</span>
+            </div>
+          `,
+          iconSize: [80, 24],
+          iconAnchor: [40, 12]
+        });
+
+        const marker = L.marker([s.lat, s.lng], { icon: stationIcon });
+        marker.bindPopup(`
+          <div style="font-family: inherit; font-size: 12.5px; min-width: 200px; color: #0f172a; padding: 2px;">
+            <div style="font-weight: 700; font-size: 13.5px; color: #008000; margin-bottom: 2px;">${s.name}</div>
+            <div style="color: #64748b; font-size: 11px; margin-bottom: 6px;">${s.address}</div>
+            <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+              <span style="background: #ecfdf5; color: #047857; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${readyCount} Ready</span>
+              <span style="background: #fef3c7; color: #b45309; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${(s.activeBatteries || []).length - readyCount} Charging</span>
+            </div>
+            <div style="font-size: 11px; color: #64748b;">Operator: <strong>${s.operatorName}</strong> (${s.operatorPhone})</div>
+          </div>
+        `);
+        marker.addTo(this.leafletMap);
+        this.leafletStationMarkers.push(marker);
+      });
     },
 
     renderMarkers() {
@@ -471,11 +547,11 @@ export default {
   top: 14px;
   right: 14px;
   width: 320px;
-  background: var(--acob-surface);
-  border: 1px solid var(--acob-line-strong);
+  background: var(--acob-card-float, rgba(10, 22, 15, 0.96));
+  border: 1px solid var(--acob-card-border, rgba(125, 252, 154, 0.22));
   border-radius: var(--bev-radius-lg, 14px);
   backdrop-filter: blur(24px) saturate(140%);
-  box-shadow: var(--acob-panel-shadow, 0 16px 40px rgba(0, 0, 0, 0.45));
+  box-shadow: var(--acob-panel-shadow, 0 20px 48px -10px rgba(0, 0, 0, 0.75));
   z-index: 600;
   overflow: hidden;
   color: var(--acob-text);
@@ -498,134 +574,149 @@ export default {
   font-weight: 800;
   font-family: var(--acob-font-mono);
   color: var(--acob-text);
+  letter-spacing: -0.01em;
 }
 .card-plate {
-  font-size: 10px;
-  padding: 2px 6px;
-  background: var(--acob-chip);
-  border: 1px solid var(--acob-line);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  background: rgba(125, 252, 154, 0.14);
+  border: 1px solid rgba(125, 252, 154, 0.28);
   border-radius: 4px;
-  color: var(--acob-muted);
+  color: var(--acob-brand-mint, #7dfc9a);
   font-family: var(--acob-font-mono);
 }
 .card-close-btn {
   background: none;
   border: none;
   color: var(--acob-muted);
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
   padding: 3px 6px;
   border-radius: 4px;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 .card-close-btn:hover {
   color: var(--acob-text);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .card-rider-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--acob-line);
 }
 .rider-avatar {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: var(--acob-chip);
-  border: 1px solid var(--acob-line);
+  background: rgba(125, 252, 154, 0.12);
+  border: 1px solid rgba(125, 252, 154, 0.28);
+  color: var(--acob-brand-mint, #7dfc9a);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 17px;
   flex-shrink: 0;
 }
 .rider-meta {
   flex: 1;
+  min-width: 0;
 }
 .rider-name {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--acob-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rider-phone {
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--acob-muted);
+  font-family: var(--acob-font-mono);
+  margin-top: 1px;
 }
 .status-chip {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
-  padding: 3px 7px;
+  padding: 3px 8px;
   border-radius: var(--bev-radius-pill, 999px);
 }
 .status-chip--online {
-  background: rgba(0, 128, 0, 0.12);
-  color: var(--acob-brand);
+  background: rgba(34, 197, 94, 0.18);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #22c55e;
 }
 .status-chip--offline {
   background: var(--acob-chip);
+  border: 1px solid var(--acob-line);
   color: var(--acob-muted);
 }
 
 .card-telemetry-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 7px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--acob-line);
 }
 .telemetry-box {
   background: var(--acob-chip);
   border: 1px solid var(--acob-line);
-  border-radius: var(--bev-radius-xs, 6px);
-  padding: 6px 8px;
+  border-radius: var(--bev-radius-xs, 7px);
+  padding: 7px 9px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 .telemetry-lbl {
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--acob-muted);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 .telemetry-val {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 800;
   color: var(--acob-text);
+  font-family: var(--acob-font-mono);
 }
 
 .card-hardware-info {
-  padding: 8px 14px;
+  padding: 9px 14px;
   border-bottom: 1px solid var(--acob-line);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   font-size: 11px;
 }
 .hw-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .hw-label {
   color: var(--acob-muted);
   font-weight: 600;
+  font-size: 11px;
   flex-shrink: 0;
 }
 .hw-code {
   font-family: var(--acob-font-mono);
-  font-size: 10.5px;
+  font-size: 11px;
   background: var(--acob-chip);
-  padding: 2px 6px;
+  border: 1px solid var(--acob-line);
+  padding: 2px 7px;
   border-radius: 4px;
-  color: var(--acob-text);
+  color: var(--acob-brand-mint, #7dfc9a);
 }
 .hw-val {
-  color: var(--acob-muted);
-  font-size: 10.5px;
+  color: var(--acob-text);
+  font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -638,9 +729,9 @@ export default {
 }
 .btn-action {
   flex: 1;
-  height: 34px;
+  height: 36px;
   border-radius: var(--bev-radius-sm, 8px);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   border: 1px solid transparent;
@@ -650,23 +741,30 @@ export default {
   transition: all 0.15s ease;
 }
 .btn-motor--cut {
-  background: rgba(184, 134, 46, 0.12);
-  border-color: rgba(184, 134, 46, 0.35);
-  color: var(--acob-gold);
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.40);
+  color: #f59e0b;
 }
-.btn-motor--cut:hover { background: rgba(184, 134, 46, 0.22); }
+.btn-motor--cut:hover {
+  background: rgba(245, 158, 11, 0.26);
+}
 .btn-motor--restore {
-  background: rgba(0, 128, 0, 0.12);
-  border-color: rgba(0, 128, 0, 0.35);
-  color: var(--acob-brand);
+  background: rgba(34, 197, 94, 0.16);
+  border-color: rgba(34, 197, 94, 0.40);
+  color: #22c55e;
 }
-.btn-motor--restore:hover { background: rgba(0, 128, 0, 0.22); }
+.btn-motor--restore:hover {
+  background: rgba(34, 197, 94, 0.26);
+}
 .btn-swap {
   background: var(--acob-brand);
   color: #ffffff;
-  border-color: var(--acob-brand);
+  border-color: #16a34a;
+  box-shadow: 0 4px 14px rgba(0, 128, 0, 0.35);
 }
-.btn-swap:hover { filter: brightness(1.08); }
+.btn-swap:hover {
+  filter: brightness(1.12);
+}
 .btn-crm {
   background: var(--acob-chip);
   border-color: var(--acob-line);
@@ -674,6 +772,34 @@ export default {
 }
 .btn-crm:hover {
   background: var(--acob-surface-hover);
+  color: var(--acob-text);
+}
+
+/* Light Theme explicitly tuned */
+[data-theme="light"] .bike-popup-card {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #c9d6cd;
+  box-shadow: 0 16px 40px rgba(11, 26, 16, 0.14);
+}
+[data-theme="light"] .card-plate {
+  background: rgba(21, 128, 61, 0.08);
+  border-color: rgba(21, 128, 61, 0.25);
+  color: #15803d;
+}
+[data-theme="light"] .rider-avatar {
+  background: rgba(21, 128, 61, 0.08);
+  border-color: rgba(21, 128, 61, 0.25);
+  color: #15803d;
+}
+[data-theme="light"] .hw-code {
+  background: rgba(21, 128, 61, 0.08);
+  border-color: #c9d6cd;
+  color: #15803d;
+}
+[data-theme="light"] .btn-crm {
+  background: rgba(11, 26, 16, 0.05);
+  border-color: #c9d6cd;
+  color: #0b1a10;
 }
 
 /* Transitions */
@@ -683,4 +809,26 @@ export default {
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter, .fade-leave-to { opacity: 0; }
+
+/* ── Leaflet Popup Theming ── */
+:deep(.beverly-map-popup .leaflet-popup-content-wrapper) {
+  background: var(--acob-card-float, rgba(10, 22, 15, 0.96));
+  color: var(--acob-text, #f2f7f3);
+  border: 1px solid var(--acob-card-border, rgba(125, 252, 154, 0.22));
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+  padding: 4px;
+}
+:deep(.beverly-map-popup .leaflet-popup-tip) {
+  background: var(--acob-card-float, rgba(10, 22, 15, 0.96));
+}
+:deep([data-theme="light"] .beverly-map-popup .leaflet-popup-content-wrapper) {
+  background: #ffffff;
+  color: #0b1a10;
+  border: 1px solid #c9d6cd;
+  box-shadow: 0 12px 32px rgba(11, 26, 16, 0.12);
+}
+:deep([data-theme="light"] .beverly-map-popup .leaflet-popup-tip) {
+  background: #ffffff;
+}
 </style>

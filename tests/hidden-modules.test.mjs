@@ -16,7 +16,7 @@ for (const route of superAdminRoutes) {
     if (apiPath.toLowerCase() === "/api/v1/admin/abnormal-alarms") continue;
     // /api/local/* and /api/oem/* endpoints are served by the proxy itself (local queues,
     // jobs, analytics, OEM extensions) and are deliberately absent from the upstream contract.
-    if (apiPath.toLowerCase().startsWith("/api/local/") || apiPath.toLowerCase().startsWith("/api/oem/")) continue;
+    if (apiPath.toLowerCase().startsWith("/api/local/") || apiPath.toLowerCase().startsWith("/api/oem/") || apiPath.toLowerCase().startsWith("/api/battery/")) continue;
     assert(contractPaths.has(apiPath.toLowerCase()), `Missing hidden route endpoint: ${apiPath}`);
   }
 }

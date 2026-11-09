@@ -8,7 +8,8 @@
    ════════════════════════════════════════════════════════════════════ */
 
 /* ── 1. LIGHT MODE (Harmonized ACOB Sage & Forest Palette) ────────── */
-.battery-swap-app-host,
+:root[data-theme="light"],
+.battery-swap-app-host[data-theme="light"],
 [data-theme="light"] .battery-swap-app-host {
   /* ACOB Brand Ramp */
   --acob-brand:        #008000;
@@ -23,8 +24,10 @@
   --acob-muted:        rgba(11, 26, 16, 0.68);
   --acob-soft:         rgba(11, 26, 16, 0.74);
   --acob-subtle:       rgba(11, 26, 16, 0.60);
-  --acob-surface:      rgba(255, 255, 255, 0.85);
+  --acob-surface:      rgba(255, 255, 255, 0.96);
   --acob-surface-hover:rgba(255, 255, 255, 0.98);
+  --acob-card-float:   rgba(255, 255, 255, 0.98);
+  --acob-card-border:  rgba(11, 26, 16, 0.14);
   --acob-chip:         rgba(21, 128, 61, 0.08);
   --acob-line:         #c9d6cd;
   --acob-line-strong:  #bccbc1;
@@ -62,9 +65,16 @@
   --color-danger-soft:     rgba(239, 68, 68, 0.10);
 }
 
-/* ── 2. DARK MODE (Harmonized ACOB Near-Black & Mint Palette) ────── */
-[data-theme="executive"] .battery-swap-app-host,
-[data-theme="dark"] .battery-swap-app-host {
+/* ── 2. DARK MODE (Default & Explicit Dark Palette) ────── */
+:root,
+:root[data-theme="dark"],
+:root[data-theme="executive"],
+:root[data-theme="contrast"],
+.battery-swap-app-host,
+.battery-swap-app-host[data-theme="dark"],
+.battery-swap-app-host[data-theme="executive"],
+[data-theme="dark"] .battery-swap-app-host,
+[data-theme="executive"] .battery-swap-app-host {
   /* ACOB Brand Ramp */
   --acob-brand:        #008000;
   --acob-brand-bright: #22c55e;
@@ -75,22 +85,24 @@
   /* ACOB Semantic Tokens (Dark) */
   --acob-bg:           #03090a;
   --acob-text:         #f2f7f3;
-  --acob-muted:        rgba(242, 247, 243, 0.55);
-  --acob-soft:         rgba(242, 247, 243, 0.65);
-  --acob-subtle:       rgba(242, 247, 243, 0.35);
-  --acob-surface:      rgba(255, 255, 255, 0.04);
-  --acob-surface-hover:rgba(255, 255, 255, 0.08);
-  --acob-chip:         rgba(255, 255, 255, 0.06);
-  --acob-line:         rgba(255, 255, 255, 0.10);
-  --acob-line-strong:  rgba(255, 255, 255, 0.14);
+  --acob-muted:        rgba(242, 247, 243, 0.70);
+  --acob-soft:         rgba(242, 247, 243, 0.80);
+  --acob-subtle:       rgba(242, 247, 243, 0.45);
+  --acob-surface:      rgba(10, 22, 15, 0.96);
+  --acob-surface-hover:rgba(18, 36, 26, 0.98);
+  --acob-card-float:   rgba(10, 22, 15, 0.96);
+  --acob-card-border:  rgba(125, 252, 154, 0.22);
+  --acob-chip:         rgba(255, 255, 255, 0.08);
+  --acob-line:         rgba(255, 255, 255, 0.12);
+  --acob-line-strong:  rgba(125, 252, 154, 0.24);
   --acob-accent:       #7dfc9a;
-  --acob-accent-muted: rgba(125, 252, 154, 0.70);
+  --acob-accent-muted: rgba(125, 252, 154, 0.75);
   --acob-glow:         #22c55e;
-  --acob-panel:        #0a1710;
+  --acob-panel:        #0c1912;
   --acob-heading-from: #7dfc9a;
   --acob-heading-via:  #22c55e;
-  --acob-vignette:     rgba(3, 9, 10, 0.70);
-  --acob-panel-shadow: rgba(0, 0, 0, 0.80);
+  --acob-vignette:     rgba(3, 9, 10, 0.75);
+  --acob-panel-shadow: 0 20px 48px -10px rgba(0, 0, 0, 0.85);
 
   /* Typography */
   --acob-font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;

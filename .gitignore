@@ -100,6 +100,7 @@ tools/move_*.cjs
 **/.codex-*/**
 .omc/
 outputs/
+output/
 .chart-data-*/
 
 # Legacy crawl & visual comparison dumps
