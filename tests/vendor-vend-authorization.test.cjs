@@ -69,8 +69,10 @@ assert.doesNotMatch(routes, /allowArchivedFallback/);
 assert.doesNotMatch(routes, /allowHistoricalFallback/);
 assert.match(tokenEngine, /return env\.ENERGY_ENABLE_ARCHIVED_METER_FALLBACK === true/);
 assert.match(walletEnv, /resolvedData\.UPSTREAM_BEARER_TOKEN \|\| resolvedData\.ENERGY_BEARER_TOKEN/);
-assert.ok(vendingService.indexOf('assertEnergyVendReady()') < vendingService.indexOf("findWalletByOwner('vendor'"));
-assert.ok(customerPurchaseService.indexOf('assertEnergyVendReady()') < customerPurchaseService.indexOf('// Resolve meter'));
+for (const service of [vendingService, customerPurchaseService]) {
+  assert.match(service, /if \(!isDirectCreditMeter\(meter\)\) try \{\s*assertEnergyVendReady\(\)/);
+  assert.ok(service.indexOf('assertEnergyVendReady()') < service.indexOf('await executeUniversalVend('));
+}
 
 assert.match(router, /\['vend', 'remote-send'\]\.includes\(String\(to\.name\)\)/);
 assert.match(router, /MFA_OPTIONAL_ROUTE_NAMES/);
