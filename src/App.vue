@@ -196,10 +196,6 @@
                     <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .92V20a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-.92 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.92-1H4a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 .92-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.92V4a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 .92 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.13.36.43.69.92 1H20a2 2 0 1 1 0 4h-.09c-.49.31-.79.64-.51 1z"/></svg>
                     <span>{{ translate('common.settings') }}</span>
                   </BaseButton>
-                  <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="openGuide">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h6M9 11h6"/></svg>
-                    <span>Beverly Guide</span>
-                  </BaseButton>
                   <BaseButton variant="quiet" class="bw-user-menu-item" role="menuitem" @click="switchOem">
                     <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
                     <span>{{ translate('common.switchOem') }}</span>
@@ -304,8 +300,6 @@
           <RemoteRelayPage v-else-if="route.customComponent === 'RemoteRelayPage' || route.hash === '#/grid-control/remote-relay'" />
           <EnergyAuditPage v-else-if="route.customComponent === 'EnergyAuditPage' || route.hash === '#/analytics/energy-audit'" />
           <GatewayHealthPage v-else-if="route.customComponent === 'GatewayHealthPage' || route.hash === '#/mesh/gateways'" />
-
-          <GuidePage v-else-if="route.customComponent === 'GuidePage' || route.hash === '#/guide'" :route="route" />
           <TablePage v-else :route="route" />
         </main>
     </section>
@@ -365,7 +359,6 @@ import MeterKeyChangePage from "./components/MeterKeyChangePage.vue";
 import TablePage from "./components/TablePage.vue";
 import ProfilePage from "./components/ProfilePage.vue";
 import SettingsPage from "./components/SettingsPage.vue";
-import GuidePage from "./components/GuidePage.vue";
 import ToastNotification from "./components/ToastNotification.vue";
 import BaseButton from "./components/base/BaseButton.vue";
 import BaseIconButton from "./components/base/BaseIconButton.vue";
@@ -408,7 +401,7 @@ import { playLoginVoice } from "./utils/voice.js";
 
 export default {
   name: "App",
-  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, BsvCrmPage, BsvDiagnosticsPage, BsvFleetPage, BsvMapPage, BsvStationsPage, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, GuidePage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
+  components: { AcobotWidget, AbnormalAlarmPage, ArchiveReportsPage, AutomationCommandPage, BaseButton, BaseIconButton, BaseInput, BeverlyLoader, BsvCrmPage, BsvDiagnosticsPage, BsvFleetPage, BsvMapPage, BsvStationsPage, ConsumptionStatisticsPage, DashboardPage, DailyDataMeterPage, DemandCurvesPage, DisputesPage, EnergyAuditPage, GatewayHealthPage, LanguageSwitcher, LoginPage, MeterKeyChangePage, OemHubPage, OnboardingStudioPage, PowerQualityPage, ProfilePage, PwaUpdateToast, ReconciliationPage, RefundsPage, RemoteRelayPage, ReportsPage, SettingsPage, SettlementPage, StationAlertsBell, StationConsumptionPage, TablePage, ToastNotification, VendingMonitorPage, WalletFundingPage },
   data() {
     return {
       hash: window.location.hash || "#/login?redirect=%2Fdashboard",
@@ -447,7 +440,7 @@ export default {
       return useOemStore();
     },
     showOemHub() {
-      if (this.hash.startsWith("#/battery-swap") || this.hash.startsWith("#/guide")) return false;
+      if (this.hash.startsWith("#/battery-swap")) return false;
       return Boolean(this.isRoleReady && !this.isLogin && !this.oemStore.currentOemId);
     },
     isLogin() {
@@ -725,7 +718,7 @@ export default {
     },
     routeExists(hash) {
       const normalizedHash = normalizeHash(hash);
-      if (normalizedHash.startsWith("#/battery-swap") || normalizedHash === "#/guide") return true;
+      if (normalizedHash.startsWith("#/battery-swap")) return true;
       return visibleRoutes(this.currentRoleId, this.currentOemCapabilities).some((route) => route.hash === normalizedHash);
     },
     async loadUser() {
@@ -1054,12 +1047,6 @@ export default {
       this.closeUserMenu();
       this.profileOpen = false;
       this.settingsOpen = true;
-    },
-    openGuide() {
-      this.closeUserMenu();
-      this.profileOpen = false;
-      this.settingsOpen = false;
-      window.location.hash = '#/guide';
     },
     openPrimaryCreate() {
       if (!this.primaryCreateTarget) return;
