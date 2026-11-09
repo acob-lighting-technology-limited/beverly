@@ -66,7 +66,6 @@ export const routeManifest = [
   { group: "Battery Swap", title: "Rider Lease CRM", hash: "#/battery-swap/crm", apis: ["/api/battery/businessGateway"], columns: [], actions: ["Refresh", "Record Payment"], isCustomPage: true, customComponent: "BsvCrmPage", roles: ["super-admin", "admin", "operations-manager", "operations-officer", "account"] },
   { group: "Battery Swap", title: "Swap Stations & Racks", hash: "#/battery-swap/stations", apis: ["/api/battery/businessGateway"], columns: [], actions: ["Refresh", "Swap Battery"], isCustomPage: true, customComponent: "BsvStationsPage", roles: ["super-admin", "admin", "operations-manager", "operations-officer", "account"] },
   { group: "Battery Swap", title: "Battery Diagnostics Lab", hash: "#/battery-swap/diagnostics", apis: ["/api/battery/commandGateway"], columns: [], actions: ["Refresh", "Reboot DTU"], isCustomPage: true, customComponent: "BsvDiagnosticsPage", roles: ["super-admin", "admin", "operations-manager", "operations-officer", "account"] },
-  { group: "Guide", title: "Beverly Guide", hash: "#/guide", hideFromSidebar: true, apis: [], columns: [], actions: [], isCustomPage: true, customComponent: "GuidePage", roles: ["super-admin", "operations-manager", "account"] }
 ];
 
 const referenceVisibleHashes = new Set([

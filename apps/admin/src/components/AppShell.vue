@@ -482,13 +482,6 @@ onBeforeUnmount(() => {
                 </svg>
                 <span>{{ t('common.settings') }}</span>
               </button>
-              <RouterLink to="/guide" class="bw-user-menu-item" role="menuitem" @click="closeUserMenu">
-                <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                </svg>
-                <span>Beverly Guide</span>
-              </RouterLink>
               <button type="button" class="bw-user-menu-item" role="menuitem" @click="toggleTheme">
                 <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                   <path d="M12 21C7 16 5 11 6 5c6-1 11 1 13 6-4 1-7 4-9 8" />
