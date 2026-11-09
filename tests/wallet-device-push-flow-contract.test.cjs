@@ -25,14 +25,15 @@ const operations = read('backend/wallet/src/services/operational-notifications.t
 for (const route of [customer, vendor, admin]) {
   assert.match(route, /'\/push\/config'/);
   assert.match(route, /'\/push\/subscription'/);
-  assert.match(route, /'\/push\/test'/);
 }
+assert.match(read('packages/tokens/push-notifications.ts'), /registration\?\.scope === scope/);
 assert.match(customer, /requireCustomer\(\)/);
 assert.match(vendor, /requireVendor\(\)/);
 assert.match(customerNotifications, /sendWebPush\('customer'/);
 assert.match(vendorNotifications, /sendWebPush\('vendor'/);
 assert.match(operations, /sendWebPush\('staff'/);
-assert.match(admin, /sendWebPush\(recipient\.type, recipient\.id/);
+assert.match(admin, /dispatchAnnouncementDevicePush\(recipients/);
+assert.match(read('backend/wallet/src/services/announcement-delivery.ts'), /sendWebPush\(recipient\.type, recipient\.id/);
 assert.match(read('apps/customer/src/views/Notifications.vue'), /customerPushNotifications\.enable\(\)/);
 assert.match(read('apps/vendor/src/views/Notifications.vue'), /enableDeviceNotifications\(\)/);
 assert.match(read('apps/admin/src/views/Notifications.vue'), /adminPushNotifications\.enable\(\)/);

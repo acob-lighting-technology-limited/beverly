@@ -29,6 +29,7 @@ export interface SendEmailOpts {
     text?: string;
     tag?: string;
     replyTo?: string;
+    attachments?: Array<{ filename: string; content: Buffer; contentType: string }>;
 }
 
 function inlineBrandAttachments(html: string) {
@@ -42,7 +43,7 @@ function inlineBrandAttachments(html: string) {
     }];
 }
 
-function batchCompatibleHtml(html: string): string {
+export function batchCompatibleHtml(html: string): string {
     if (!html.includes('cid:beverly-logo')) return html;
     const assetBaseUrl = env.EMAIL_ASSET_BASE_URL?.trim().replace(/\/+$/, '');
     if (!assetBaseUrl) {
@@ -84,7 +85,7 @@ export async function sendEmail(opts: SendEmailOpts): Promise<EmailResult> {
         html: opts.html,
         text: opts.text,
         replyTo: opts.replyTo,
-        attachments: inlineBrandAttachments(opts.html),
+        attachments: [...(inlineBrandAttachments(opts.html) ?? []), ...(opts.attachments ?? [])],
         tags: opts.tag ? [{ name: 'category', value: sanitizeTag(opts.tag) }] : undefined,
     });
     if (error) throw new Error(error.message);
@@ -95,8 +96,9 @@ export async function sendBatch(messages: SendEmailOpts[], idempotencyKey?: stri
     if (!messages.length) return [];
     const c = getClient();
     const results: EmailResult[] = [];
-    for (let i = 0; i < messages.length; i += 100) {
-        const chunk = messages.slice(i, i + 100);
+    const chunkSize = messages.some((message) => message.attachments?.length) ? 5 : 100;
+    for (let i = 0; i < messages.length; i += chunkSize) {
+        const chunk = messages.slice(i, i + chunkSize);
         const { data, error } = await c.batch.send(chunk.map((m) => ({
             from: env.RESEND_FROM,
             to: m.to,
@@ -104,9 +106,9 @@ export async function sendBatch(messages: SendEmailOpts[], idempotencyKey?: stri
             html: batchCompatibleHtml(m.html),
             text: m.text,
             replyTo: m.replyTo,
-            attachments: undefined,
+            attachments: m.attachments,
             tags: m.tag ? [{ name: 'category', value: sanitizeTag(m.tag) }] : undefined,
-        })), idempotencyKey ? { idempotencyKey: `${idempotencyKey}:${i / 100}` } : undefined);
+        })), idempotencyKey ? { idempotencyKey: `${idempotencyKey}:${i / chunkSize}` } : undefined);
         if (error) {
             throw new EmailBatchError(
                 error.message,

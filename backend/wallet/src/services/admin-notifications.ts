@@ -108,7 +108,7 @@ export async function notifyStationAssignment(opts: {
 
 export async function notifyAdminAnnouncement(
     recipients: Array<{ email?: string | null; name: string }>,
-    body: { title: string; body: string },
+    body: { title: string; body: string; attachment?: { name: string; mimeType: string; base64: string } | null },
     idempotencyKey: string,
 ): Promise<{ sent: number; recipients: number; messages: Array<{ email: string; messageId: string }> }> {
     if (!(await flagEnabled('notifications.email.admin_announcement'))) {
@@ -124,7 +124,8 @@ export async function notifyAdminAnnouncement(
     }
     const messages = Array.from(uniqueRecipients.values()).map((recipient) => {
         const content = adminAnnouncementEmail({ name: recipient.name, title: body.title, body: body.body });
-        return { to: recipient.email, subject: content.subject, html: content.html, text: content.text, tag: 'admin-announcement' };
+        return { to: recipient.email, subject: content.subject, html: content.html, text: content.text, tag: 'admin-announcement',
+            attachments: body.attachment ? [{ filename: body.attachment.name, content: Buffer.from(body.attachment.base64, 'base64'), contentType: body.attachment.mimeType }] : undefined };
     });
     if (!messages.length) throw new Error('No reachable email recipients were found.');
     const results = await sendBatch(messages, idempotencyKey);

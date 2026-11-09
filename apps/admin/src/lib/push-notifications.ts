@@ -16,4 +16,4 @@ export const adminPushNotifications = createPushNotifications(portal, {
         });
     },
     remove: (endpoint) => api.del(`/api/v1/admin/push/subscription?endpoint=${encodeURIComponent(endpoint)}`),
-});
+}, import.meta.env.BASE_URL);

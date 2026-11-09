@@ -1,3 +1,5 @@
+import { formatAnnouncementMarkup } from '@beverly/tokens/notification-content';
+
 /**
  * Transactional email templates.
  * Each builder returns { subject, html, text } ready for the Resend adapter.
@@ -45,49 +47,7 @@ function normalizeAnnouncementBody(value: string): string {
 }
 
 function formatAnnouncementBody(value: string): { html: string; text: string } {
-    const normalized = normalizeAnnouncementBody(value);
-    const lines = normalized.split('\n');
-    const blocks: string[] = [];
-    const plain: string[] = [];
-    let paragraph: string[] = [];
-    let items: string[] = [];
-
-    const flushParagraph = () => {
-        const content = paragraph.join(' ').trim();
-        if (content) {
-            blocks.push(`<p style="margin:0 0 18px;">${esc(content)}</p>`);
-            plain.push(content);
-        }
-        paragraph = [];
-    };
-    const flushItems = () => {
-        if (items.length) {
-            blocks.push(`<ol style="margin:0 0 18px;padding-left:22px;">${items.map((item) => `<li style="margin:0 0 8px;">${esc(item)}</li>`).join('')}</ol>`);
-            plain.push(items.map((item, index) => `${index + 1}. ${item}`).join('\n'));
-        }
-        items = [];
-    };
-
-    for (const rawLine of lines) {
-        const line = rawLine.trim();
-        const numbered = line.match(/^\d+\.\s+(.+)$/);
-        if (numbered) {
-            flushParagraph();
-            items.push(numbered[1]);
-            continue;
-        }
-        if (!line) {
-            flushParagraph();
-            flushItems();
-            continue;
-        }
-        flushItems();
-        paragraph.push(line);
-    }
-    flushParagraph();
-    flushItems();
-
-    return { html: blocks.join(''), text: plain.join('\n\n') };
+    return formatAnnouncementMarkup(normalizeAnnouncementBody(value));
 }
 
 interface LayoutOpts {

@@ -34,7 +34,7 @@ const error = ref('');
 const filter = ref<'all' | 'unread' | 'read'>('all');
 const filters = ['all', 'unread', 'read'] as const;
 const deviceState = ref<DeviceNotificationState>(deviceNotificationState());
-const deviceBusy = ref(false);
+const deviceBusy = ref(true);
 const deviceError = ref('');
 const selectedNotification = ref<Notification | null>(null);
 const filteredItems = computed(() => items.value.filter((item) =>
@@ -175,7 +175,9 @@ async function toggleDeviceNotifications() {
 onMounted(() => {
     void loadInbox();
     deviceState.value = deviceNotificationState();
-    void syncDeviceNotifications().then((state) => { deviceState.value = state; }).catch(() => undefined);
+    void syncDeviceNotifications().then((state) => { deviceState.value = state; })
+        .catch((err) => { deviceState.value = 'default'; deviceError.value = err?.message ?? 'Device registration failed.'; })
+        .finally(() => { deviceBusy.value = false; });
 });
 </script>
 
