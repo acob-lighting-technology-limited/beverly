@@ -217,7 +217,7 @@ export interface UniversalVendResult {
     readonly purchaseOrder: PurchaseOrder;
     readonly receiptId: string | null;
     readonly token: string | null;
-    readonly units: number;
+    readonly units: number | null;
     readonly outcomeStatus: 'confirmed_success' | 'confirmed_failure' | 'unknown' | 'pending';
     readonly vendingStrategy: VendingStrategy;
 }
@@ -301,7 +301,7 @@ export async function executeUniversalVend(
             purchaseOrder: po,
             receiptId: po.receipt_id,
             token: po.token,
-            units: Number(po.units_kwh ?? 0),
+            units: po.units_kwh == null ? null : Number(po.units_kwh),
             outcomeStatus: po.status === 'delivered' ? 'confirmed_success' : 'pending',
             vendingStrategy,
         };
@@ -309,8 +309,10 @@ export async function executeUniversalVend(
 
     // 6. Preview purchase
     const preview = input.preview ?? await doPreview(input.amountMinor, meter.tariffId || 'RESIDENTIAL');
+    const recordedUnits = vendingStrategy === 'direct_credit' ? null : preview.units;
     const isThreePhase = input.isThreePhase !== undefined ? input.isThreePhase : meter.isThreePhase === true;
-    const meterType: MeterType = isThreePhase ? 'three_phase' : 'single_phase';
+    const meterType: MeterType | null = vendingStrategy === 'direct_credit' && input.isThreePhase == null && meter.isThreePhase == null
+        ? null : isThreePhase ? 'three_phase' : 'single_phase';
 
     // 7. For direct_credit, verify inventory & installation
     let installation: any = null;
@@ -329,7 +331,7 @@ export async function executeUniversalVend(
             `)
             .or(`serial.eq.${input.meterId},external_id.eq.${input.meterId}`)
             .eq('status', 'active')
-            .limit(1)
+            .limit(2)
             .maybeSingle();
 
         if (meterErr || !meterRow || !meterRow.oem_installations) {
@@ -337,8 +339,11 @@ export async function executeUniversalVend(
         }
 
         installation = meterRow.oem_installations;
-        if (installation.status !== 'active' && installation.id !== '53f12390-74f7-40b3-b1db-e907c256986d') {
+        if (installation.status !== 'active') {
             throw new VendingError('SparkMeter installation is not active', 'installation_inactive');
+        }
+        if (!installation.oem_id) {
+            throw new VendingError('SparkMeter manufacturer is missing', 'installation_invalid');
         }
 
         const { data: customerRow } = await db
@@ -393,15 +398,15 @@ export async function executeUniversalVend(
             station_id: meter.stationId,
             tariff_id: meter.tariffId || 'RESIDENTIAL',
             amount_minor: preview.grossAmountMinor,
-            energy_amount_minor: preview.energyAmountMinor,
-            vat_amount_minor: preview.taxAmountMinor,
-            vat_rate_basis_points: preview.vatRateBasisPoints,
-            units_kwh: preview.units,
+            energy_amount_minor: vendingStrategy === 'direct_credit' ? null : preview.energyAmountMinor,
+            vat_amount_minor: vendingStrategy === 'direct_credit' ? null : preview.taxAmountMinor,
+            vat_rate_basis_points: vendingStrategy === 'direct_credit' ? null : preview.vatRateBasisPoints,
+            units_kwh: recordedUnits,
             purchase_mode: input.mode || 'wallet',
             status: 'created',
             idempotency_key: idemKey,
             created_by: input.userId,
-            oem_id: meter.oemId || (vendingStrategy === 'direct_credit' ? 'e1532892-e09d-44f9-a9cb-b99b5c9ebecf' : null),
+            oem_id: vendingStrategy === 'direct_credit' ? installation.oem_id : (meter.oemId || null),
         })
         .select('*')
         .single();
@@ -510,7 +515,9 @@ export async function executeUniversalVend(
         const rawOutcome = await adapter.vend(vendCommand);
         outcome = requireVendOutcome(rawOutcome);
     } catch (err: any) {
-        if (err instanceof TokenEngineError && err.code === 'oem_insufficient_quota') {
+        if (vendingStrategy === 'direct_credit') {
+            outcome = { status: 'unknown', providerReference: command.id };
+        } else if (err instanceof TokenEngineError && err.code === 'oem_insufficient_quota') {
             outcome = { status: 'confirmed_failure', reason: err.message, providerReference: command.id };
         } else if (err instanceof OemContractError) {
             outcome = { status: 'confirmed_failure', reason: err.message, providerReference: command.id };
@@ -556,7 +563,7 @@ export async function executeUniversalVend(
                 },
                 receiptId: null,
                 token: finalToken,
-                units: preview.units,
+                units: recordedUnits,
                 outcomeStatus: 'pending',
                 vendingStrategy,
             };
@@ -595,10 +602,10 @@ export async function executeUniversalVend(
                 tariffId: meter.tariffId || 'RESIDENTIAL',
                 amountMinor: preview.grossAmountMinor,
                 grossAmountMinor: preview.grossAmountMinor,
-                energyAmountMinor: preview.energyAmountMinor,
-                vatAmountMinor: preview.taxAmountMinor,
-                vatRateBasisPoints: preview.vatRateBasisPoints,
-                units: preview.units,
+                energyAmountMinor: vendingStrategy === 'direct_credit' ? null : preview.energyAmountMinor,
+                vatAmountMinor: vendingStrategy === 'direct_credit' ? null : preview.taxAmountMinor,
+                vatRateBasisPoints: vendingStrategy === 'direct_credit' ? null : preview.vatRateBasisPoints,
+                units: recordedUnits,
                 token: finalToken,
                 providerReference: outcome.providerReference,
                 deliveryState,
@@ -638,7 +645,7 @@ export async function executeUniversalVend(
             },
             receiptId: receipt.id,
             token: finalToken,
-            units: preview.units,
+            units: recordedUnits,
             outcomeStatus: 'confirmed_success',
             vendingStrategy,
         };
@@ -700,7 +707,7 @@ export async function executeUniversalVend(
         },
         receiptId: null,
         token: null,
-        units: preview.units,
+        units: recordedUnits,
         outcomeStatus: outcome.status as 'unknown' | 'pending',
         vendingStrategy,
     };

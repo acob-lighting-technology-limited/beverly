@@ -18,6 +18,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { env } from '../config/env.js';
 import { adminClient } from '../db/supabase.js';
+import { loadInstallationCredentials } from './oem-installation-credentials.js';
+import { SparkMeterAdapter } from '../adapters/sparkmeter-adapter.js';
 import { resolveVatRateBasisPoints } from './vat-policy.js';
 import { calculateVendingVatBreakdown } from './vending-vat.js';
 import { resolveOemConfig, resolveOemAuthHeader, DEFAULT_OEM_SLUG } from './oem-registry.js';
@@ -171,6 +173,8 @@ async function energyCall<T>(path: string, init: RequestInit = {}, oemId?: strin
             'Content-Type': 'application/json',
             ...(init.headers ?? {}),
         },
+    }).catch(() => {
+        throw new TokenEngineError('Energy backend is temporarily unavailable', 'energy_transport_unavailable', true);
     });
     if (!res.ok) {
         const body = await res.text().catch(() => '');
@@ -287,8 +291,10 @@ export interface MeterInfo {
     communicationWay?: string | null;
     isThreePhase?: boolean | null;
     sgc?: string | null;
-    resolutionSource?: 'energy_account' | 'local_binding' | 'energy_low_purchase_report' | 'archived_contract_sample' | 'oem_inventory';
+    resolutionSource?: 'energy_account' | 'local_binding' | 'energy_low_purchase_report' | 'archived_contract_sample' | 'oem_inventory' | 'sparkmeter_live';
     liveVerified?: boolean;
+    providerCreditBalance?: { value: string; currency: string } | null;
+    latestReading?: Awaited<ReturnType<SparkMeterAdapter['readCustomer']>>['meters'][number]['latestReading'];
     /**
      * Phase 6 unification: which OEM this meter belongs to (from
      * account_bindings.oem_id when resolved locally, or the oemId the caller
@@ -480,7 +486,7 @@ export async function lookupOemInventoryMeter(
     oemId?: string | null,
     db = adminClient,
 ): Promise<MeterInfo | null> {
-    const { data: meter } = await db
+    const { data: meter, error: meterError } = await db
         .from('oem_inventory_meters')
         .select(`
             external_id,
@@ -490,22 +496,24 @@ export async function lookupOemInventoryMeter(
             meter_phase,
             site_id,
             oem_installation_id,
-            oem_installations(id, oem_id, tenant_id)
+            oem_installations(id, oem_id, tenant_id, status, base_url, approved_hostnames, oem_manufacturers(slug))
         `)
         .or(`serial.eq.${meterId},external_id.eq.${meterId}`)
         .eq('status', 'active')
-        .limit(1)
+        .limit(2)
         .maybeSingle();
 
+    if (meterError) return null;
     let resolvedMeter = meter;
     if (!resolvedMeter) {
-        const { data: custRow } = await db
+        const { data: custRow, error: customerError } = await db
             .from('oem_inventory_customers')
             .select('external_id, oem_installation_id')
             .or(`code.eq.${meterId},external_id.eq.${meterId}`)
             .eq('status', 'active')
-            .limit(1)
+            .limit(2)
             .maybeSingle();
+        if (customerError) return null;
         if (custRow) {
             const { data: custMeter } = await db
                 .from('oem_inventory_meters')
@@ -517,11 +525,12 @@ export async function lookupOemInventoryMeter(
                     meter_phase,
                     site_id,
                     oem_installation_id,
-                    oem_installations(id, oem_id, tenant_id)
+                    oem_installations(id, oem_id, tenant_id, status, base_url, approved_hostnames, oem_manufacturers(slug))
                 `)
                 .eq('customer_external_id', custRow.external_id)
+                .eq('oem_installation_id', custRow.oem_installation_id)
                 .eq('status', 'active')
-                .limit(1)
+                .limit(2)
                 .maybeSingle();
             resolvedMeter = custMeter;
         }
@@ -530,7 +539,9 @@ export async function lookupOemInventoryMeter(
     if (!resolvedMeter) return null;
     const meterRecord = resolvedMeter;
 
-    const detectedOemType = (meterRecord.oem_installations as any)?.oem_type ?? 'sparkmeter';
+    const installation = meterRecord.oem_installations as any;
+    const detectedOemType = installation?.oem_manufacturers?.slug;
+    if (detectedOemType !== 'sparkmeter') return null;
     if (oemId && oemId !== detectedOemType) {
         return null;
     }
@@ -543,20 +554,40 @@ export async function lookupOemInventoryMeter(
         .eq('status', 'active')
         .maybeSingle();
 
+    let liveVerified = false;
+    let liveCustomer: Awaited<ReturnType<SparkMeterAdapter['readCustomer']>> | null = null;
+    if (installation?.status === 'active' && customer?.external_id && meterRecord.site_id) {
+        try {
+            const credentials = await loadInstallationCredentials({ id: installation.id, tenantId: installation.tenant_id, status: installation.status });
+            if (credentials.authStrategy === 'api_key_pair') {
+                const adapter = new SparkMeterAdapter({ installationId: installation.id, baseUrl: installation.base_url,
+                    approvedHostnames: installation.approved_hostnames, apiKey: credentials.apiKey, apiSecret: credentials.apiSecret, db });
+                liveCustomer = await adapter.readCustomer({ installationId: installation.id, customerId: customer.external_id });
+                liveVerified = liveCustomer.siteId === meterRecord.site_id && liveCustomer.meters.some((meter) =>
+                    meter.id === meterRecord.external_id && meter.serial === meterRecord.serial);
+            }
+        } catch {
+            liveVerified = false;
+        }
+    }
+
+    const liveMeter = liveVerified ? liveCustomer?.meters.find((item) => item.id === meterRecord.external_id) : null;
     const siteKey = String(meterRecord.site_id || '').toLowerCase();
     const resolvedStationId = SPARKMETER_SITE_TO_STATION[siteKey] || String(meterRecord.site_id || 'UNKNOWN');
 
     return {
         meterId: String(meterRecord.serial || meterRecord.external_id),
         customerId: String(customer?.external_id || meterRecord.customer_external_id),
-        customerName: String(customer?.name || `Customer ${meterRecord.customer_external_id}`),
+        customerName: String((liveVerified && liveCustomer?.name) || customer?.name || `Customer ${meterRecord.customer_external_id}`),
         stationId: resolvedStationId,
-        tariffId: String(meterRecord.tariff_id || 'RESIDENTIAL'),
+        tariffId: String(liveMeter?.tariffId || meterRecord.tariff_id || ''),
         protocolVersion: null,
         communicationWay: null,
-        isThreePhase: meterRecord.meter_phase === 'three_phase',
-        resolutionSource: 'oem_inventory',
-        liveVerified: true,
+        isThreePhase: ['three_phase', '3'].includes(meterRecord.meter_phase) ? true : ['single_phase', '1'].includes(meterRecord.meter_phase) ? false : null,
+        providerCreditBalance: liveVerified ? liveCustomer?.credit ?? null : null,
+        latestReading: liveMeter?.latestReading ?? null,
+        resolutionSource: liveVerified ? 'sparkmeter_live' : 'oem_inventory',
+        liveVerified,
         oemId: detectedOemType,
         vendingStrategy: 'direct_credit',
     };

@@ -99,7 +99,7 @@ export async function executeSparkMeterVend(
     }
 
     const installation = meterRow.oem_installations as any;
-    if (installation.status !== 'active' && installation.id !== '53f12390-74f7-40b3-b1db-e907c256986d') {
+    if (installation.status !== 'active') {
         throw new VendingError('SparkMeter installation is not active', 'installation_inactive');
     }
 

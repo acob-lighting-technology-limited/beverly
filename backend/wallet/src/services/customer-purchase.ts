@@ -8,6 +8,7 @@
  * (Paystack gateway, same as vendor but owned by customer).
  */
 import { adminClient } from '../db/supabase.js';
+import { isDirectCreditMeter } from './vending-strategy.js';
 import {
     lookupMeter, previewPurchaseWithPolicy, createRemoteSendTask, pollRemoteSendStatus, assertEnergyVendReady,
     TokenEngineError, type MeterInfo,
@@ -108,7 +109,7 @@ export interface CustomerPurchaseInput {
 export interface CustomerPurchaseResult {
     purchaseOrder: PurchaseOrder;
     token: string | null;
-    units: number;
+    units: number | null;
     receiptId: string | null;
     authorizationUrl: null;
     reference: string | null;
@@ -272,18 +273,11 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
         return {
             purchaseOrder: po,
             token: po.token,
-            units: Number(po.units_kwh ?? 0),
+            units: po.units_kwh == null ? null : Number(po.units_kwh),
             receiptId: po.receipt_id,
             authorizationUrl: null,
             reference: null,
         };
-    }
-
-    try {
-        assertEnergyVendReady();
-    } catch (error) {
-        if (error instanceof TokenEngineError) throw new CustomerPurchaseError(error.message, error.code);
-        throw error;
     }
 
     // Resolve meter
@@ -307,10 +301,18 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
         throw error;
     }
 
+    if (!isDirectCreditMeter(meter)) try {
+        assertEnergyVendReady();
+    } catch (error) {
+        if (error instanceof TokenEngineError) throw new CustomerPurchaseError(error.message, error.code);
+        throw error;
+    }
+
     const preview = await previewPurchaseWithPolicy(input.amountMinor, meter.tariffId);
     // Resolve phase: live record wins; customer's onboarding declaration fills any gap.
     const declared = await declaredMeterType(input.customerId, meter.meterId);
-    const isThreePhase = effectiveThreePhase(meter.isThreePhase, declared);
+    const isThreePhase = isDirectCreditMeter(meter) && meter.isThreePhase == null && declared == null
+        ? null : effectiveThreePhase(meter.isThreePhase, declared);
 
     // Check wallet daily debit limit
     try {
@@ -348,7 +350,7 @@ export async function customerPurchase(input: CustomerPurchaseInput): Promise<Cu
         throw new CustomerPurchaseError(e.message, e.code ?? 'vend_failed');
     }
 
-    if (vendRes.outcomeStatus === 'confirmed_success' && vendRes.token) {
+    if (vendRes.outcomeStatus === 'confirmed_success' && vendRes.token && vendRes.units !== null) {
         try {
             const sms = await sendTokenSmsToCustomer({
                 customerId: input.customerId,
@@ -571,23 +573,25 @@ export async function previewCustomerPurchase(meterId: string, amountMinor: numb
         }
     }
     const declared = customerId ? await declaredMeterType(customerId, meter.meterId) : null;
-    const isThreePhase = effectiveThreePhase(meter.isThreePhase, declared);
+    const isThreePhase = isDirectCreditMeter(meter) && meter.isThreePhase == null && declared == null
+        ? null : effectiveThreePhase(meter.isThreePhase, declared);
     return {
         meterId: meter.meterId,
-        meterType: isThreePhase ? 'three_phase' : 'single_phase',
+        meterType: isThreePhase == null ? null : isThreePhase ? 'three_phase' : 'single_phase',
         isThreePhase,
         customerName: meter.customerName,
         stationId: meter.stationId,
         tariffId: meter.tariffId,
         amountMinor: preview.grossAmountMinor,
-        units: preview.units,
-        tariffRate: preview.effectivePricePerKwh,
-        vatMinor: preview.taxAmountMinor,
+        vendingStrategy: isDirectCreditMeter(meter) ? 'direct_credit' : 'sts_token',
+        units: isDirectCreditMeter(meter) ? null : preview.units,
+        tariffRate: isDirectCreditMeter(meter) ? null : preview.effectivePricePerKwh,
+        vatMinor: isDirectCreditMeter(meter) ? null : preview.taxAmountMinor,
         serviceChargeMinor: 0,
-        netMinor: preview.energyAmountMinor,
+        netMinor: isDirectCreditMeter(meter) ? null : preview.energyAmountMinor,
         grossAmountMinor: preview.grossAmountMinor,
-        energyAmountMinor: preview.energyAmountMinor,
-        vatRateBasisPoints: preview.vatRateBasisPoints,
+        energyAmountMinor: isDirectCreditMeter(meter) ? null : preview.energyAmountMinor,
+        vatRateBasisPoints: isDirectCreditMeter(meter) ? null : preview.vatRateBasisPoints,
     };
 }
 

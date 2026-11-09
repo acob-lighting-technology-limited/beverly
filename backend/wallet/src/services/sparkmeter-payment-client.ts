@@ -79,8 +79,20 @@ export async function submitSparkMeterPayment(
         return lookupSparkMeterPayment(input, deps);
     }
 
+    if (response.status === 429) {
+        const retryHeader = response.headers.get('Retry-After');
+        const retryDate = new Date(retryHeader ?? '');
+        const delaySeconds = retryHeader === null ? 1
+            : /^\d+$/.test(retryHeader) ? Number(retryHeader)
+                : retryDate.toUTCString() === retryHeader ? (retryDate.getTime() - Date.now()) / 1_000 : NaN;
+        await response.body?.cancel().catch(() => undefined);
+        if (!Number.isFinite(delaySeconds) || delaySeconds > 5) return { status: 'unknown' };
+        await (deps.wait ?? sleep)(Math.max(250, delaySeconds * 1_000));
+        return lookupSparkMeterPayment(input, deps);
+    }
+
     await response.body?.cancel().catch(() => undefined);
-    // 429, 5xx, or unexpected status: never retry POST; lookup original payment reference.
+    // 5xx or unexpected status: never retry POST; lookup original payment reference.
     return lookupSparkMeterPayment(input, deps);
 }
 

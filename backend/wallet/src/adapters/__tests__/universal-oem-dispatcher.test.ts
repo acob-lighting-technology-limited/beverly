@@ -58,12 +58,14 @@ describe('Universal OEM Dispatcher & CalinmeterAdapter', () => {
 
     const createMockDb = (opts: {
         meterExists?: boolean;
+        ambiguousMeter?: boolean;
         customerExists?: boolean;
         installationStatus?: string;
         leaseAvailable?: boolean;
     } = {}) => {
         const {
             meterExists = true,
+            ambiguousMeter = false,
             customerExists = true,
             installationStatus = 'active',
             leaseAvailable = true,
@@ -111,15 +113,18 @@ describe('Universal OEM Dispatcher & CalinmeterAdapter', () => {
                             approved_hostnames: ['api.sparkmeter.cloud'],
                             tenant_id: 'tenant-1',
                             status: installationStatus,
+                            oem_id: 'e1532892-e09d-44f9-a9cb-b99b5c9ebecf',
                             oem_type: 'sparkmeter',
                         },
                     } : null;
 
                     const meterQueryBuilder: any = {
+                        _limit: 0,
                         or: function() { return this; },
                         eq: function() { return this; },
-                        limit: function() { return this; },
-                        maybeSingle: async () => ({ data: meterData, error: null }),
+                        limit: function(value: number) { this._limit = value; return this; },
+                        maybeSingle: async function() { return ambiguousMeter && this._limit > 1
+                            ? { data: null, error: { code: 'PGRST116' } } : { data: meterData, error: null }; },
                         single: async () => ({ data: meterData, error: null }),
                     };
 
@@ -402,9 +407,27 @@ describe('Universal OEM Dispatcher & CalinmeterAdapter', () => {
             vendingStrategy: 'sts_token' as const,
         };
 
+        it('rejects suspended SparkMeter installations before dispatch', async () => {
+            const fetchFn = vi.fn();
+            await expect(executeUniversalVend({ ...baseInput, meter: sparkMeterInfo }, {
+                db: createMockDb({ installationStatus: 'suspended' }) as any, fetchFn,
+                loadCredentialsFn: vi.fn(async () => { throw new Error('credentials reached'); }),
+            })).rejects.toThrow('installation is not active');
+            expect(fetchFn).not.toHaveBeenCalled();
+        });
+
+        it('rejects ambiguous meters before creating a purchase', async () => {
+            const fetchFn = vi.fn();
+            await expect(executeUniversalVend({ ...baseInput, meter: sparkMeterInfo }, {
+                db: createMockDb({ ambiguousMeter: true }) as any, fetchFn,
+            })).rejects.toThrow('not found in SparkMeter active inventory');
+            expect(mockState.purchaseOrders).toHaveLength(0);
+            expect(fetchFn).not.toHaveBeenCalled();
+        });
+
         it('executes direct_credit vend: token is strictly null', async () => {
             const mockDb = createMockDb();
-            const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+            const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'GET' ? Response.json({ errors: [], data: { id: 'sm-cust-uuid', site_id: '0619f73f-922d-4ddd-afe5-901c2ae771f7', meters: [{ id: 'sm-meter-uuid', serial: 'SM-12345678' }] } }) : new Response(JSON.stringify({
                 errors: [],
                 data: {
                     id: '11111111-1111-1111-1111-111111111111',
@@ -433,6 +456,9 @@ describe('Universal OEM Dispatcher & CalinmeterAdapter', () => {
 
             expect(result.outcomeStatus).toBe('confirmed_success');
             expect(result.vendingStrategy).toBe('direct_credit');
+            expect(result.units).toBeNull();
+            expect(result.purchaseOrder.units_kwh).toBeNull();
+            expect(result.purchaseOrder.oem_id).toBe('e1532892-e09d-44f9-a9cb-b99b5c9ebecf');
             expect(result.token).toBeNull(); // Direct credit: token must be null
             expect(result.receiptId).toBe('rcpt-1');
             expect(result.purchaseOrder.status).toBe('delivered');
@@ -482,7 +508,7 @@ describe('Universal OEM Dispatcher & CalinmeterAdapter', () => {
 
         it('enforces assertStationVendAllowed: allows normalized SparkMeter site ID to station name', async () => {
             const mockDb = createMockDb();
-            const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+            const fetchFn = vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'GET' ? Response.json({ errors: [], data: { id: 'sm-cust-uuid', site_id: '0619f73f-922d-4ddd-afe5-901c2ae771f7', meters: [{ id: 'sm-meter-uuid', serial: 'SM-12345678' }] } }) : new Response(JSON.stringify({
                 errors: [],
                 data: {
                     id: '22222222-2222-2222-2222-222222222222',
@@ -610,6 +636,27 @@ describe('Universal OEM Dispatcher & CalinmeterAdapter', () => {
             expect(mockState.exceptions).toContainEqual(expect.objectContaining({
                 category: 'oem_command_review',
             }));
+        });
+
+        it('retains the hold when direct credit dispatch throws unexpectedly', async () => {
+            const mockDb = createMockDb();
+            const result = await executeUniversalVend({ ...baseInput, meter: sparkMeterInfo }, {
+                db: mockDb as any,
+                createHoldFn: async () => ({ id: 'hold-uncertain' } as any),
+                releaseHoldFn: async () => { mockState.releasedHolds.push('hold-uncertain'); return {} as any; },
+                loadCredentialsFn: async () => ({ authStrategy: 'api_key_pair', apiKey: 'key', apiSecret: 'secret' } as any),
+                adapter: {
+                    capabilities: () => ({ 'vending.direct_credit': 'write_supported' } as any),
+                    testConnection: async () => ({ ok: true }),
+                    listStations: async () => ({ items: [], nextCursor: null }),
+                    findMeter: async () => ({ externalId: 'SM-1', externalStationId: 'OTU-COSTAIN' }),
+                    vend: async () => { throw new Error('response lost'); },
+                    getVendStatus: async () => ({ status: 'unknown' }),
+                },
+            });
+            expect(result.outcomeStatus).toBe('unknown');
+            expect(result.purchaseOrder.status).toBe('delivery_pending_review');
+            expect(mockState.releasedHolds).toHaveLength(0);
         });
 
         it('handles lease contention: rejects if command lease cannot be claimed', async () => {

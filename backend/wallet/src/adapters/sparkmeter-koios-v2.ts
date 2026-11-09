@@ -73,7 +73,7 @@ export async function fetchSparkMeterTelemetryPage(input: SparkMeterTelemetryReq
         if (retryHeader !== null && (!Number.isFinite(retryAfter) || retryAfter > 5)) {
             throw new Error('SparkMeter telemetry Retry-After requires operator replay');
         }
-        await wait(Number.isFinite(retryAfter) ? Math.max(0, retryAfter * 1_000) : 250 * (2 ** attempt));
+        await wait(Number.isFinite(retryAfter) ? Math.max(0, retryAfter * 1_000) : response.status === 429 ? 5000 : 250 * (2 ** attempt));
     }
     throw new Error('SparkMeter telemetry retry budget exhausted');
 }

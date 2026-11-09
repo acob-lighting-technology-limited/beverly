@@ -12,6 +12,7 @@ import type {
     VendStatusQuery,
 } from '@beverly/oem-contracts';
 import { OemContractError } from '@beverly/oem-contracts';
+import { z } from 'zod';
 import { adminClient } from '../db/supabase.js';
 import { validateOemEndpoint } from '../services/oem-endpoint-security.js';
 import { buildSparkMeterAuthHeaders } from './sparkmeter-v1.js';
@@ -19,6 +20,24 @@ import {
     lookupSparkMeterPayment,
     submitSparkMeterPayment,
 } from '../services/sparkmeter-payment-client.js';
+
+const customerResponse = z.object({
+    errors: z.array(z.unknown()).length(0),
+    data: z.object({
+        id: z.string().min(1), name: z.string().optional(), site_id: z.string().nullable().optional(),
+        balances: z.object({ credit: z.object({ value: z.string(), currency: z.string() }).nullable().optional() }).optional(),
+        meters: z.array(z.object({
+            id: z.string().min(1), serial: z.string().min(1), tariff_id: z.string().nullable().optional(),
+            latest_reading: z.object({
+                heartbeat_end: z.string().optional(), energy: z.number().nullable().optional(),
+                voltage_avg: z.number().nullable().optional(), current_avg: z.number().nullable().optional(),
+                power_factor_avg: z.number().nullable().optional(), true_power_avg: z.number().nullable().optional(),
+                apparent_power_avg: z.number().nullable().optional(), frequency: z.number().nullable().optional(),
+                state: z.string().nullable().optional(),
+            }).nullable().optional(),
+        })).max(100),
+    }),
+});
 
 export interface SparkMeterAdapterConfig {
     readonly installationId: string;
@@ -63,10 +82,11 @@ export class SparkMeterAdapter implements MeterOemAdapter {
         try {
             const origin = await validateOemEndpoint(this.baseUrl, this.approvedHostnames);
             const headers = buildSparkMeterAuthHeaders(this.apiKey, this.apiSecret);
-            const url = new URL('/api/v1/customers?limit=1', origin);
+            const url = new URL('/api/v1/customers?per_page=1', origin);
             const fetcher = this.fetchFn ?? fetch;
             const res = await fetcher(url.toString(), {
                 method: 'GET',
+                redirect: 'error',
                 signal: AbortSignal.timeout(10_000),
                 headers: {
                     Accept: 'application/json',
@@ -74,6 +94,14 @@ export class SparkMeterAdapter implements MeterOemAdapter {
                 },
             });
             if (res.ok) {
+                const body: unknown = await res.json();
+                if (!body || typeof body !== 'object' || !Array.isArray((body as { data?: unknown }).data)) {
+                    return { ok: false, reason: 'Invalid provider response' };
+                }
+                const errors = (body as { errors?: unknown }).errors;
+                if (errors !== undefined && (!Array.isArray(errors) || errors.length > 0)) {
+                    return { ok: false, reason: 'Provider returned errors' };
+                }
                 return { ok: true };
             }
             return { ok: false, reason: `HTTP probe rejected with status ${res.status}` };
@@ -85,34 +113,61 @@ export class SparkMeterAdapter implements MeterOemAdapter {
         }
     }
 
+    async readCustomer(input: { installationId: string; customerId: string }) {
+        if (input.installationId !== this.installationId || !input.customerId.trim()) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Invalid customer scope');
+        }
+        const origin = await validateOemEndpoint(this.baseUrl, this.approvedHostnames);
+        const url = new URL(`/api/v1/customers/${encodeURIComponent(input.customerId)}`, origin);
+        url.searchParams.set('reading_details', 'true');
+        const response = await (this.fetchFn ?? fetch)(url.toString(), {
+            method: 'GET', redirect: 'error', signal: AbortSignal.timeout(15_000),
+            headers: { Accept: 'application/json', ...buildSparkMeterAuthHeaders(this.apiKey, this.apiSecret) },
+        });
+        if (!response.ok) throw new OemContractError('OEM_INSTALLATION_INVALID', 'Provider customer data unavailable');
+        const body = customerResponse.safeParse(await response.json().catch(() => null));
+        if (!body.success || body.data.data.id !== input.customerId) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Provider customer data invalid');
+        }
+        const customer = body.data.data;
+        return { id: customer.id, name: customer.name ?? null, siteId: customer.site_id ?? null,
+            credit: customer.balances?.credit ?? null, meters: customer.meters.map((meter) => ({
+                id: meter.id, serial: meter.serial, tariffId: meter.tariff_id ?? null,
+                latestReading: meter.latest_reading ?? null,
+            })) };
+    }
+
     async listStations(query: PageQuery): Promise<Page<CanonicalStation>> {
-        const { data, error } = await this.db
-            .from('oem_inventory_meters')
-            .select('site_id')
-            .eq('oem_installation_id', this.installationId)
-            .eq('status', 'active');
-        if (error) {
-            throw new OemContractError('OEM_INSTALLATION_INVALID', `Failed to list stations: ${error.message}`);
+        if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > 100) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Invalid station page size');
         }
         const siteSet = new Set<string>();
-        for (const row of data ?? []) {
-            if (row.site_id && typeof row.site_id === 'string' && row.site_id.trim()) {
-                siteSet.add(row.site_id.trim());
+        for (let page = 0; page <= 100; page++) {
+            const { data, error } = await this.db.from('oem_inventory_meters')
+                .select('site_id').eq('oem_installation_id', this.installationId).eq('status', 'active')
+                .order('id', { ascending: true }).range(page * 1000, page * 1000 + 999);
+            if (error || !data || (page === 100 && data.length > 0)) {
+                throw new OemContractError('OEM_INSTALLATION_INVALID', 'Station inventory unavailable');
             }
+            for (const row of data) {
+                if (typeof row.site_id === 'string' && row.site_id.trim()) siteSet.add(row.site_id.trim());
+            }
+            if (data.length < 1000) break;
         }
-        const items: CanonicalStation[] = Array.from(siteSet)
-            .slice(0, query.limit)
-            .map((siteId) => ({
-                externalId: siteId,
-                name: siteId,
-            }));
-        return {
-            items,
-            nextCursor: null,
-        };
+        const sites = [...siteSet].sort();
+        if (query.cursor && !siteSet.has(query.cursor)) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Invalid station cursor');
+        }
+        const start = query.cursor ? sites.indexOf(query.cursor) + 1 : 0;
+        const selected = sites.slice(start, start + query.limit);
+        return { items: selected.map((siteId) => ({ externalId: siteId, name: siteId })),
+            nextCursor: start + selected.length < sites.length ? selected[selected.length - 1] : null };
     }
 
     async findMeter(input: MeterLookup): Promise<CanonicalMeter> {
+        if (input.installationId !== this.installationId) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Installation does not match adapter');
+        }
         const { data, error } = await this.db
             .from('oem_inventory_meters')
             .select('external_id, site_id, status')
@@ -135,6 +190,9 @@ export class SparkMeterAdapter implements MeterOemAdapter {
     }
 
     async vend(command: VendCommand): Promise<VendOutcome> {
+        if (command.installationId !== this.installationId) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Installation does not match adapter');
+        }
         if (command.currency !== 'NGN') {
             throw new OemContractError(
                 'OEM_OUTCOME_INVALID',
@@ -155,6 +213,11 @@ export class SparkMeterAdapter implements MeterOemAdapter {
                 'OEM_INSTALLATION_INVALID',
                 `Meter ${command.externalMeterId} has no assigned customer in active inventory`,
             );
+        }
+
+        const customer = await this.readCustomer({ installationId: command.installationId, customerId: meter.customer_external_id });
+        if (!meter.site_id || customer.siteId !== meter.site_id || !customer.meters.some((item) => item.id === meter.external_id)) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Provider meter ownership differs from inventory');
         }
 
         const outcome = await submitSparkMeterPayment({
@@ -179,6 +242,9 @@ export class SparkMeterAdapter implements MeterOemAdapter {
         expectedAmountMinor?: number;
         expectedCurrency?: string;
     }): Promise<VendOutcome> {
+        if (query.installationId !== this.installationId) {
+            throw new OemContractError('OEM_INSTALLATION_INVALID', 'Installation does not match adapter');
+        }
         let customerId = query.externalCustomerId;
         let amountMinor = query.expectedAmountMinor;
         let currency = query.expectedCurrency ?? 'NGN';
@@ -187,13 +253,14 @@ export class SparkMeterAdapter implements MeterOemAdapter {
             // Load command payload from db if not passed directly
             const { data: cmd } = await this.db
                 .from('oem_commands')
-                .select('request_payload')
+                .select('canonical_request')
                 .eq('id', query.commandId)
+                .eq('oem_installation_id', this.installationId)
                 .maybeSingle();
-            if (cmd?.request_payload) {
-                customerId = customerId ?? cmd.request_payload.customerId ?? cmd.request_payload.customer_id;
-                amountMinor = amountMinor ?? cmd.request_payload.amountMinor ?? cmd.request_payload.expectedAmountMinor;
-                currency = currency ?? cmd.request_payload.currency ?? 'NGN';
+            if (cmd?.canonical_request) {
+                customerId = customerId ?? cmd.canonical_request.customerId ?? cmd.canonical_request.customer_id;
+                amountMinor = amountMinor ?? cmd.canonical_request.amountMinor ?? cmd.canonical_request.expectedAmountMinor;
+                currency = currency ?? cmd.canonical_request.currency ?? 'NGN';
             }
         }
 

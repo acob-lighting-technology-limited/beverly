@@ -18,6 +18,7 @@
  *   • Capture fails (rare) → mark order delivery_pending_review for ops.
  */
 import { adminClient } from '../db/supabase.js';
+import { isDirectCreditMeter } from './vending-strategy.js';
 import { executeUniversalVend } from '../adapters/universal-oem-dispatcher.js';
 import { notifyVendor } from './vendor-notifications.js';
 import { notifyTokenPurchased, sendNotification } from './notifications.js';
@@ -99,7 +100,7 @@ export interface VendorPurchaseInput {
 export interface VendorPurchaseResult {
     purchaseOrder: PurchaseOrder;
     token: string | null;
-    units: number;
+    units: number | null;
     remoteTaskId: string | null;
     receiptId: string | null;
     ledgerEntryId: string | null;
@@ -162,18 +163,11 @@ async function vendorPurchaseImpl(input: VendorPurchaseInput): Promise<VendorPur
         return {
             purchaseOrder: po,
             token: po.token,
-            units: Number(po.units_kwh ?? 0),
+            units: po.units_kwh == null ? null : Number(po.units_kwh),
             remoteTaskId: po.remote_task_id,
             receiptId: po.receipt_id,
             ledgerEntryId: null,
         };
-    }
-
-    try {
-        assertEnergyVendReady();
-    } catch (error) {
-        if (error instanceof TokenEngineError) throw new VendingError(error.message, error.code);
-        throw error;
     }
 
     try {
@@ -207,6 +201,13 @@ async function vendorPurchaseImpl(input: VendorPurchaseInput): Promise<VendorPur
         if (error instanceof StationVendScopeError) {
             throw new VendingError(error.message, error.code);
         }
+        throw error;
+    }
+
+    if (!isDirectCreditMeter(meter)) try {
+        assertEnergyVendReady();
+    } catch (error) {
+        if (error instanceof TokenEngineError) throw new VendingError(error.message, error.code);
         throw error;
     }
 
@@ -261,7 +262,7 @@ async function vendorPurchaseImpl(input: VendorPurchaseInput): Promise<VendorPur
             },
         }).catch(() => undefined);
 
-        if (meter.customerId) {
+        if (meter.customerId && vendRes.token && vendRes.units !== null) {
             await notifyTokenPurchased(meter.customerId, {
                 purchaseOrderId: vendRes.purchaseOrder.id,
                 meterId: meter.meterId,

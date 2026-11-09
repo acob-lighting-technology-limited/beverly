@@ -45,7 +45,7 @@ describe('SparkMeter Koios v2 telemetry client', () => {
             organizationId: 'org', apiKey: 'key', apiSecret: 'secret', sites: ['11111111-1111-4111-8111-111111111111'],
             mode: 'live', fetchFn, validateEndpoint: vi.fn().mockResolvedValue('https://www.sparkmeter.cloud/'), wait,
         });
-        expect(wait).toHaveBeenCalledWith(250);
+        expect(wait).toHaveBeenCalledWith(5000);
     });
 
     it('stops instead of shortening a Retry-After beyond its wait budget', async () => {
@@ -64,6 +64,18 @@ describe('SparkMeter Koios v2 telemetry client', () => {
         expect(fetchFn).toHaveBeenCalledOnce();
         expect(wait).not.toHaveBeenCalled();
         expect(cancel).toHaveBeenCalledOnce();
+    });
+
+    it('waits a full rate-limit window when 429 omits Retry-After', async () => {
+        const fetchFn = vi.fn().mockResolvedValueOnce(new Response('{}', { status: 429 }))
+            .mockResolvedValueOnce(Response.json({ data: [], pagination: { count: 0, has_more: false, cursor: null } }));
+        const wait = vi.fn().mockResolvedValue(undefined);
+        await fetchSparkMeterTelemetryPage({
+            baseUrl: 'https://www.sparkmeter.cloud', approvedHostnames: ['www.sparkmeter.cloud'],
+            organizationId: 'org', apiKey: 'key', apiSecret: 'secret', sites: ['11111111-1111-4111-8111-111111111111'],
+            mode: 'live', fetchFn, validateEndpoint: vi.fn().mockResolvedValue('https://www.sparkmeter.cloud/'), wait,
+        });
+        expect(wait).toHaveBeenCalledWith(5000);
     });
 
     it('honors an HTTP-date Retry-After within its wait budget', async () => {

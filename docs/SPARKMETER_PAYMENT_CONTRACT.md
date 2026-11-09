@@ -1,6 +1,6 @@
 # SparkMeter payments through Beverly wallets
 
-Status: specifications partly verified; dispatch unimplemented.
+Status: specifications partly verified; implementation requires provider testing.
 Verified date: 2026-10-23.
 
 ## Authoritative evidence
@@ -10,6 +10,7 @@ URL: https://www.sparkmeter.cloud/docs/api/
 Select `Koios API v1`.
 Operations: `makeCustomerPayment`, `getPaymentByExternalId`, `reverseCustomerPayment`.
 Support reference: ticket CH-82160, October 21.
+Additional support correspondence: [ticket guidance](SPARKMETER_SUPPORT_CH82160.md).
 
 The current documentation was inspected directly.
 No payment request was executed.
@@ -34,11 +35,10 @@ Their guarantees cannot certify Koios behavior.
 | Processed example | `status="processed"` |
 | Reversal | `POST /api/v1/payments/{payment_id}/reverse` |
 
-The request schema describes organization-wide uniqueness.
-It does not document duplicate-response timing.
-The 429 example mentions 500 requests/minute.
-Support still queries actual write limits.
-An example is not production capacity certification.
+Support confirms duplicate external IDs return HTTP 400.
+Lookup visibility timing remains unverified.
+Use the provider's current rate-limit FAQ.
+Do not treat an example as capacity certification.
 
 Reversal removes the customer's credited amount.
 Its example has a negative amount.
@@ -117,7 +117,7 @@ Unexpected errors cannot confirm payment success.
 
 Single-attempt dispatch avoids automatic-retry assumptions.
 It does not establish provider timing guarantees.
-Duplicate-write semantics remain a retry-specific gap.
+Provider testing must verify the deployed behavior.
 Provider write-rate scope still requires confirmation.
 Keep payment dispatch disabled pending implementation verification.
 

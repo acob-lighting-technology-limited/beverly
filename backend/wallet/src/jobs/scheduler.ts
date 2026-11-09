@@ -76,13 +76,13 @@ export async function sweepExpiredHolds(): Promise<void> {
     // Never release holds attached to active, dispatched, or ambiguous OEM commands
     const { data: protectedCommands, error: oemCmdError } = await adminClient
         .from('oem_commands')
-        .select('wallet_hold_id')
-        .in('wallet_hold_id', holdIds)
+        .select('canonical_request')
+        .in('canonical_request->>holdId', holdIds)
         .in('status', ['leased', 'submitted', 'unknown', 'manual_review']);
     if (oemCmdError) throw oemCmdError;
     for (const cmd of protectedCommands ?? []) {
-        if (cmd.wallet_hold_id) {
-            protectedHoldIds.add(cmd.wallet_hold_id);
+        if (typeof cmd.canonical_request?.holdId === 'string') {
+            protectedHoldIds.add(cmd.canonical_request.holdId);
         }
     }
 
@@ -116,7 +116,8 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
 }> {
     const { data: commands, error } = await adminClient
         .from('oem_commands')
-        .select('id, oem_installation_id, operation_key, idempotency_key, canonical_request, status, attempt_count, created_at, oem_installations(id, base_url, approved_hostnames, status, tenant_id)')
+        .select('id, oem_installation_id, operation_key, idempotency_key, canonical_request, status, attempt_count, created_at, oem_installations(id, base_url, approved_hostnames, status, tenant_id, oem_manufacturers(slug))')
+        .eq('operation_key', 'vending.payment')
         .in('status', ['submitted', 'unknown'])
         .limit(limit);
     if (error) throw error;
@@ -126,8 +127,8 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
     let pendingReview = 0;
 
     for (const cmd of (commands ?? []) as any[]) {
-        if (cmd.oem_type && cmd.oem_type !== 'sparkmeter') continue;
-        if (cmd.operation_key && !cmd.operation_key.startsWith('vending.')) continue;
+        if (cmd.oem_installations?.oem_manufacturers?.slug !== 'sparkmeter') continue;
+        if (cmd.operation_key !== 'vending.payment') continue;
         const attempts = Number(cmd.attempt_count ?? 1);
         const poId = cmd.purchase_order_id || cmd.canonical_request?.commandId;
         const holdId = cmd.wallet_hold_id || cmd.canonical_request?.holdId;
@@ -201,17 +202,6 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
             });
 
             if (outcome.status === 'confirmed_success') {
-                await adminClient
-                    .from('oem_commands')
-                    .update({
-                        status: 'succeeded',
-                        provider_reference: outcome.providerReference,
-                        response_payload: (outcome as any).rawResponse ?? null,
-                        response_received_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', cmd.id);
-
                 if (holdId) {
                     const { data: hold } = await adminClient
                         .from('wallet_holds')
@@ -227,25 +217,49 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                             entryType: 'purchase_debit',
                             referenceType: 'purchase_order',
                             referenceId: poId,
-                            idempotencyKey: ledgerKey('purchase', 'capture', poId, 'sparkmeter-reconcile'),
+                            idempotencyKey: ledgerKey('purchase', 'capture', poId, 'final'),
                             memo: `SparkMeter Reconcile · ${cmd.id}`,
                             createdBy: 'system',
                         });
+                    } else if (hold?.status === 'released' || hold?.status === 'expired') {
+                        const exception = await adminClient.from('operations_exceptions').upsert([{
+                            exception_key: `oem-command-review:${cmd.id}`, category: 'oem_command_review',
+                            target_type: 'oem_command', target_id: cmd.id, severity: 'critical', status: 'open',
+                            details: { purchase_order_id: poId, wallet_hold_id: holdId,
+                                provider_reference: outcome.providerReference, reason: 'confirmed_payment_hold_unavailable' },
+                            updated_at: new Date().toISOString(),
+                        }], { onConflict: 'exception_key' });
+                        if (exception.error) throw exception.error;
+                        const update = await adminClient.from('oem_commands').update({
+                            status: 'manual_review', provider_reference: outcome.providerReference,
+                            updated_at: new Date().toISOString(),
+                        }).eq('id', cmd.id);
+                        if (update.error) throw update.error;
+                        pendingReview++;
+                        continue;
+                    } else if (hold?.status !== 'captured') {
+                        throw new Error('Payment hold unavailable for reconciliation');
                     }
-                }
+                } else throw new Error('Payment hold missing for reconciliation');
 
                 if (poId) {
-                    await adminClient
+                    const orderUpdate = await adminClient
                         .from('purchase_orders')
                         .update({
                             status: 'delivered',
                             delivery_state: 'payment_processed_delivery_unconfirmed',
                             token: null,
-                            oem_id: 'e1532892-e09d-44f9-a9cb-b99b5c9ebecf',
                         })
                         .eq('id', poId)
-                        .in('status', ['dispatching', 'delivery_pending_review', 'hold_active']);
-                }
+                        .in('status', ['dispatching', 'delivery_pending_review', 'hold_active', 'delivered'])
+                        .select('id');
+                    if (orderUpdate.error || !orderUpdate.data?.length) throw new Error('Purchase order unavailable for reconciliation');
+                } else throw new Error('Purchase order missing for reconciliation');
+                const commandUpdate = await adminClient.from('oem_commands').update({
+                    status: 'succeeded', provider_reference: outcome.providerReference,
+                    updated_at: new Date().toISOString(),
+                }).eq('id', cmd.id);
+                if (commandUpdate.error) throw commandUpdate.error;
                 succeeded++;
             } else if (outcome.status === 'confirmed_failure') {
                 const failReason = outcome.reason || (outcome as any).message || 'OEM payment rejected';
@@ -253,9 +267,7 @@ export async function reconcileAmbiguousOemCommands(limit = 25): Promise<{
                     .from('oem_commands')
                     .update({
                         status: 'failed',
-                        error_message: failReason,
-                        response_payload: (outcome as any).rawResponse,
-                        response_received_at: new Date().toISOString(),
+                        normalized_error_message: failReason,
                         updated_at: new Date().toISOString(),
                     })
                     .eq('id', cmd.id);

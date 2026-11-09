@@ -157,6 +157,32 @@ describe('SparkMeter Koios v1 payment client', () => {
         expect(fetchFn).toHaveBeenCalledTimes(1);
     });
 
+    it('waits after a rate-limited payment before looking up the same reference', async () => {
+        const wait = vi.fn().mockResolvedValue(undefined);
+        const fetchFn = vi.fn()
+            .mockResolvedValueOnce(new Response(null, { status: 429, headers: { 'Retry-After': '2' } }))
+            .mockResolvedValueOnce(new Response(null, { status: 404 }));
+        expect(await submitSparkMeterPayment(baseInput, { fetchFn, wait })).toEqual({ status: 'unknown' });
+        expect(wait).toHaveBeenCalledWith(2000);
+        expect(wait.mock.invocationCallOrder[0]).toBeLessThan(fetchFn.mock.invocationCallOrder[1]);
+        expect(fetchFn.mock.calls.map((call) => call[1].method)).toEqual(['POST', 'GET']);
+    });
+
+    it('defers lookup when the provider asks for a longer delay', async () => {
+        const wait = vi.fn();
+        const fetchFn = vi.fn().mockResolvedValueOnce(new Response(null, { status: 429, headers: { 'Retry-After': '10' } }));
+        expect(await submitSparkMeterPayment(baseInput, { fetchFn, wait })).toEqual({ status: 'unknown' });
+        expect(fetchFn).toHaveBeenCalledTimes(1);
+        expect(wait).not.toHaveBeenCalled();
+    });
+
+    it('keeps processing payments unresolved', async () => {
+        const fetchFn = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({ data: { id: '11111111-1111-4111-8111-111111111111', recipient_id: 'cust-uuid-1', amount: { value: '100.00', currency: 'NGN' }, external_id: 'cmd-test-1', status: 'processing' }, errors: [] }), { status: 201 }))
+            .mockResolvedValueOnce(new Response(null, { status: 404 }));
+        expect(await submitSparkMeterPayment(baseInput, { fetchFn })).toEqual({ status: 'unknown' });
+    });
+
     it('enforces SSRF protection using validateOemEndpoint', async () => {
         const validateEndpoint = vi.fn().mockRejectedValue(new Error('Endpoint host not approved'));
         await expect(submitSparkMeterPayment({

@@ -191,10 +191,11 @@ export async function recordCommandSubmitted(
     client: any = adminClient,
 ): Promise<void> {
     const now = new Date().toISOString();
-    await client
+    const { error } = await client
         .from('oem_commands')
         .update({ status: 'submitted', updated_at: now })
         .eq('id', commandId);
+    if (error) throw new Error(`Could not record OEM submission: ${error.message}`);
 
     try {
         await client

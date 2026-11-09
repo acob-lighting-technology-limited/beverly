@@ -1,6 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { adminClient } from '../db/supabase.js';
+import { SparkMeterAdapter } from '../adapters/sparkmeter-adapter.js';
+import { loadInstallationCredentials } from '../services/oem-installation-credentials.js';
+import { lookupSparkMeterPayment } from '../services/sparkmeter-payment-client.js';
+import { roleHasPermission } from '../services/rbac.js';
 
 // ponytail: fail closed above 200 grants; add cursor pagination when needed.
 const grantedInstallations = z.array(z.object({
@@ -47,6 +51,127 @@ const telemetryReadings = z.object({
 
 /** Staff authentication and explicit server-managed grants both remain mandatory. */
 const oemRoutes: FastifyPluginAsync = async (app) => {
+    app.get('/installations/:installationId/payments/:commandId/verification', { preHandler: app.requireStaff() }, async (req, reply) => {
+        reply.header('Cache-Control', 'no-store');
+        const actor = req.actor?.type === 'staff' ? req.actor : null;
+        const params = z.object({ installationId: z.string().uuid(), commandId: z.string().uuid() }).safeParse(req.params);
+        if (!actor || !z.string().uuid().safeParse(actor.userId).success) return reply.code(403).send({ error: 'oem_access_denied' });
+        if (!params.success) return reply.code(400).send({ error: 'invalid_oem_payment_request' });
+        try {
+            if (!await roleHasPermission(actor.role, 'wallet.vending.monitor')) return reply.code(403).send({ error: 'oem_access_denied' });
+            const { installationId, commandId } = params.data;
+            const grant = await adminClient.rpc('get_authorized_oem_inventory_reconciliation', {
+                p_auth_user_id: actor.userId, p_installation_id: installationId,
+            }).abortSignal(AbortSignal.timeout(10_000));
+            const authorized = reconciliationSnapshot.safeParse(grant.data);
+            if (grant.error || !authorized.success) return reply.code(503).send({ error: 'oem_verification_unavailable' });
+            if (!authorized.data.authorized) return reply.code(404).send({ error: 'oem_payment_not_found' });
+            const command = await adminClient.from('oem_commands')
+                .select('id,canonical_request').eq('id', commandId).eq('oem_installation_id', installationId)
+                .eq('operation_key', 'vending.payment').abortSignal(AbortSignal.timeout(10_000)).maybeSingle();
+            if (command.error) return reply.code(503).send({ error: 'oem_verification_unavailable' });
+            const request = z.object({ commandId: z.string().uuid(), customerId: z.string().uuid(),
+                amountMinor: z.number().int().positive().safe(), currency: z.literal('NGN') }).safeParse(command.data?.canonical_request);
+            if (!command.data || !request.success) return reply.code(404).send({ error: 'oem_payment_not_found' });
+            let orders = adminClient.from('purchase_orders').select('id').eq('id', request.data.commandId);
+            if (actor.role !== 'super-admin') {
+                const stations = [...new Set([...(actor.stationIds ?? []), ...(actor.stationId ? [actor.stationId] : [])])];
+                if (!stations.length) return reply.code(404).send({ error: 'oem_payment_not_found' });
+                orders = orders.in('station_id', stations);
+            }
+            const order = await orders.abortSignal(AbortSignal.timeout(10_000)).maybeSingle();
+            if (order.error) return reply.code(503).send({ error: 'oem_verification_unavailable' });
+            if (!order.data) return reply.code(404).send({ error: 'oem_payment_not_found' });
+            const installation = await adminClient.from('oem_installations')
+                .select('id,tenant_id,status,base_url,approved_hostnames,oem_manufacturers!inner(slug)')
+                .eq('id', installationId).eq('status', 'active').eq('oem_manufacturers.slug', 'sparkmeter')
+                .abortSignal(AbortSignal.timeout(10_000)).maybeSingle();
+            if (installation.error || !installation.data) return reply.code(503).send({ error: 'oem_verification_unavailable' });
+            const row = installation.data;
+            const credentials = await loadInstallationCredentials({ id: row.id, tenantId: row.tenant_id, status: row.status });
+            if (credentials.authStrategy !== 'api_key_pair') throw new Error('Unsupported credentials');
+            const outcome = await lookupSparkMeterPayment({ commandId, baseUrl: row.base_url,
+                approvedHostnames: row.approved_hostnames, apiKey: credentials.apiKey, apiSecret: credentials.apiSecret,
+                externalCustomerId: request.data.customerId, amountMinor: request.data.amountMinor,
+                currency: request.data.currency, settlementCurrency: request.data.currency });
+            return { status: outcome.status === 'confirmed_success' ? 'confirmed_success' : 'unknown' };
+        } catch {
+            return reply.code(503).send({ error: 'oem_verification_unavailable' });
+        }
+    });
+    app.post('/installations/:installationId/test-connection', { preHandler: app.requireStaff() }, async (req, reply) => {
+        reply.header('Cache-Control', 'no-store');
+        const actor = req.actor?.type === 'staff' ? z.string().uuid().safeParse(req.actor.userId) : { success: false as const };
+        const params = z.object({ installationId: z.string().uuid() }).safeParse(req.params);
+        if (!actor.success) return reply.code(403).send({ error: 'oem_access_denied' });
+        if (!params.success) return reply.code(400).send({ error: 'invalid_oem_installation_request' });
+        const { installationId } = params.data;
+        const grant = await adminClient.rpc('get_authorized_oem_inventory_reconciliation', {
+            p_auth_user_id: actor.data, p_installation_id: installationId,
+        }).abortSignal(AbortSignal.timeout(10_000));
+        const authorized = reconciliationSnapshot.safeParse(grant.data);
+        if (grant.error || !authorized.success) return reply.code(503).send({ error: 'oem_inventory_unavailable' });
+        if (!authorized.data.authorized) return reply.code(404).send({ error: 'oem_installation_not_found' });
+        const installation = await adminClient.from('oem_installations')
+            .select('id,tenant_id,status,base_url,approved_hostnames,oem_manufacturers!inner(slug)')
+            .eq('id', installationId).eq('status', 'active').eq('oem_manufacturers.slug', 'sparkmeter')
+            .abortSignal(AbortSignal.timeout(10_000)).maybeSingle();
+        if (installation.error) return reply.code(503).send({ error: 'oem_inventory_unavailable' });
+        if (!installation.data) return reply.code(501).send({ error: 'oem_connection_probe_unavailable' });
+        const row = installation.data;
+        try {
+            const credentials = await loadInstallationCredentials({ id: row.id, tenantId: row.tenant_id, status: row.status });
+            if (credentials.authStrategy !== 'api_key_pair') throw new Error('Unsupported credentials');
+            const adapter = new SparkMeterAdapter({ installationId, baseUrl: row.base_url, approvedHostnames: row.approved_hostnames,
+                apiKey: credentials.apiKey, apiSecret: credentials.apiSecret });
+            const result = await adapter.testConnection();
+            return { ok: result.ok };
+        } catch {
+            return reply.code(503).send({ error: 'oem_provider_unavailable' });
+        }
+    });
+
+    app.get('/installations/:installationId/customers/:customerId/live', { preHandler: app.requireStaff() }, async (req, reply) => {
+        reply.header('Cache-Control', 'no-store');
+        const actor = req.actor?.type === 'staff' ? z.string().uuid().safeParse(req.actor.userId) : { success: false as const };
+        const params = z.object({ installationId: z.string().uuid(), customerId: z.string().uuid() }).safeParse(req.params);
+        if (!actor.success) return reply.code(403).send({ error: 'oem_access_denied' });
+        if (!params.success) return reply.code(400).send({ error: 'invalid_oem_customer_request' });
+        const { installationId, customerId } = params.data;
+        const grant = await adminClient.rpc('get_authorized_oem_inventory_reconciliation', {
+            p_auth_user_id: actor.data, p_installation_id: installationId,
+        }).abortSignal(AbortSignal.timeout(10_000));
+        const authorized = reconciliationSnapshot.safeParse(grant.data);
+        if (grant.error || !authorized.success) return reply.code(503).send({ error: 'oem_inventory_unavailable' });
+        if (!authorized.data.authorized) return reply.code(404).send({ error: 'oem_installation_not_found' });
+        const [customer, meters, installation] = await Promise.all([
+            adminClient.from('oem_inventory_customers').select('external_id,site_id').eq('oem_installation_id', installationId)
+                .eq('external_id', customerId).eq('status', 'active').abortSignal(AbortSignal.timeout(10_000)).maybeSingle(),
+            adminClient.from('oem_inventory_meters').select('external_id,serial').eq('oem_installation_id', installationId)
+                .eq('customer_external_id', customerId).eq('status', 'active').limit(101).abortSignal(AbortSignal.timeout(10_000)),
+            adminClient.from('oem_installations').select('id,tenant_id,status,base_url,approved_hostnames,oem_manufacturers!inner(slug)')
+                .eq('id', installationId).eq('status', 'active').eq('oem_manufacturers.slug', 'sparkmeter')
+                .abortSignal(AbortSignal.timeout(10_000)).maybeSingle(),
+        ]);
+        if (customer.error || meters.error || installation.error || !Array.isArray(meters.data) || meters.data.length > 100) {
+            return reply.code(503).send({ error: 'oem_inventory_unavailable' });
+        }
+        if (!customer.data || !installation.data || meters.data.length === 0) return reply.code(404).send({ error: 'oem_customer_not_found' });
+        const row = installation.data;
+        try {
+            const credentials = await loadInstallationCredentials({ id: row.id, tenantId: row.tenant_id, status: row.status });
+            if (credentials.authStrategy !== 'api_key_pair') throw new Error('Unsupported credentials');
+            const adapter = new SparkMeterAdapter({ installationId, baseUrl: row.base_url, approvedHostnames: row.approved_hostnames,
+                apiKey: credentials.apiKey, apiSecret: credentials.apiSecret });
+            const live = await adapter.readCustomer({ installationId, customerId });
+            if (!customer.data.site_id || live.siteId !== customer.data.site_id) return reply.code(409).send({ error: 'oem_inventory_outdated' });
+            const approved = live.meters.filter((meter) => meters.data.some((stored: { external_id: string; serial: string }) => stored.external_id === meter.id && stored.serial === meter.serial));
+            return { customer: { ...live, meters: approved }, inventoryMismatch: approved.length !== live.meters.length || approved.length !== meters.data.length };
+        } catch {
+            return reply.code(503).send({ error: 'oem_provider_unavailable' });
+        }
+    });
+
     app.get('/installations/:installationId/telemetry', { preHandler: app.requireStaff() }, async (req, reply) => {
         reply.header('Cache-Control', 'no-store');
         const actorId = req.actor?.type === 'staff' ? z.string().uuid().safeParse(req.actor.userId) : { success: false as const };

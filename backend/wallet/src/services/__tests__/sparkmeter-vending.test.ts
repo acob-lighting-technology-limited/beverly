@@ -239,6 +239,13 @@ describe('SparkMeter Vending Orchestration', () => {
             .rejects.toThrow('not found in SparkMeter active inventory');
     });
 
+    it('rejects the production installation when suspended', async () => {
+        const mockDb = createMockDb({ installationStatus: 'suspended' });
+        await expect(executeSparkMeterVend(sampleInput, { db: mockDb as any }))
+            .rejects.toThrow('installation is not active');
+        expect(mockState.purchaseOrders).toHaveLength(0);
+    });
+
     it('rejects vend for meterless customer', async () => {
         const mockDb = createMockDb({ meterExists: true, customerExists: false });
         await expect(executeSparkMeterVend(sampleInput, { db: mockDb as any }))

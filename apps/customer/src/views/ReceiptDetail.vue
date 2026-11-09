@@ -119,7 +119,7 @@ onMounted(load);
               Credit Method: Direct Credit (Account Top-up)
             </div>
             <div class="rcpt-direct-desc">
-              Balance credited automatically to meter
+              Payment processed. Meter delivery awaits confirmation.
             </div>
           </div>
 
@@ -128,9 +128,9 @@ onMounted(load);
             <div class="rcpt-row"><span>Meter</span><span class="bw-mono">{{ receipt.meter_id }}</span></div>
             <div class="rcpt-row"><span>Phase</span><span>{{ meterTypeLabel(receipt.meter_type) }}</span></div>
             <div class="rcpt-row"><span>Amount paid</span><span>{{ fmtAmount(receipt.amount_minor) }}</span></div>
-            <div class="rcpt-row"><span>Energy value</span><span>{{ fmtAmount(energyAmountMinor()) }}</span></div>
-            <div class="rcpt-row"><span>VAT ({{ vatRateLabel() }}%)</span><span>{{ fmtAmount(vatAmountMinor()) }}</span></div>
-            <div class="rcpt-row"><span>Units</span><span>{{ receipt.units_kwh?.toFixed(4) }} kWh</span></div>
+            <div v-if="!isDirectCredit" class="rcpt-row"><span>Energy value</span><span>{{ fmtAmount(energyAmountMinor()) }}</span></div>
+            <div v-if="!isDirectCredit" class="rcpt-row"><span>VAT ({{ vatRateLabel() }}%)</span><span>{{ fmtAmount(vatAmountMinor()) }}</span></div>
+            <div v-if="receipt.units_kwh != null" class="rcpt-row"><span>Units</span><span>{{ receipt.units_kwh?.toFixed(4) }} kWh</span></div>
             <div class="rcpt-row"><span>Tariff</span><span>{{ receipt.tariff_id }}</span></div>
             <div class="rcpt-row"><span>Reference</span><span class="bw-mono rcpt-ref">{{ receipt.reference }}</span></div>
             <div class="rcpt-row"><span>Date</span><span>{{ fmtDate(receipt.created_at) }}</span></div>
