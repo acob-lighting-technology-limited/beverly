@@ -14,7 +14,6 @@
         <div class="login-badge-wrap">
           <span class="bsv-brand-tag">BATTERY SWAP PORTAL</span>
         </div>
-        <h1 class="bw-h1 login-title">Battery Swap Operations</h1>
         <p class="bw-muted login-sub">
           {{ step === 'challenge' ? 'Two-Factor Authentication' : 'Your Smart Power Partner.' }}
         </p>
@@ -368,7 +367,7 @@ onMounted(() => {
 }
 
 .login-badge-wrap {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .bsv-brand-tag {
@@ -383,17 +382,9 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-.login-title {
-  font-size: 1.45rem;
-  font-weight: 800;
-  color: var(--acob-text, #ffffff);
-  margin: 0.4rem 0 0.25rem;
-  letter-spacing: -0.02em;
-}
-
 .login-sub {
-  margin: 0;
-  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
   color: var(--acob-muted, rgba(242, 247, 243, 0.70));
 }
 

@@ -22,6 +22,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     esbuild: {
+      target: 'es2022',
       supported: {
         destructuring: true,
       },
@@ -29,6 +30,9 @@ export default defineConfig(({ command, mode }) => {
     optimizeDeps: {
       esbuildOptions: {
         target: 'es2022',
+        supported: {
+          destructuring: true,
+        },
       },
     },
     build: {
