@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { adminClient } from '../db/supabase.js';
 import { SparkMeterAdapter } from '../adapters/sparkmeter-adapter.js';
-import { loadInstallationCredentials } from '../services/oem-installation-credentials.js';
+import { InstallationCredentialError, loadInstallationCredentials } from '../services/oem-installation-credentials.js';
 import { lookupSparkMeterPayment } from '../services/sparkmeter-payment-client.js';
 import { roleHasPermission } from '../services/rbac.js';
 
@@ -126,8 +126,9 @@ const oemRoutes: FastifyPluginAsync = async (app) => {
                 apiKey: credentials.apiKey, apiSecret: credentials.apiSecret });
             const result = await adapter.testConnection();
             return { ok: result.ok };
-        } catch {
-            return reply.code(503).send({ error: 'oem_provider_unavailable' });
+        } catch (error) {
+            const reason = error instanceof InstallationCredentialError ? error.code : 'OEM_PROVIDER_UNAVAILABLE';
+            return reply.code(503).send({ error: 'oem_provider_unavailable', message: reason });
         }
     });
 
