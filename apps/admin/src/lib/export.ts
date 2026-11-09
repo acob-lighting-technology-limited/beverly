@@ -6,12 +6,18 @@
  * downloadAuthedCsv, which attaches the staff bearer token.
  */
 import { API_BASE } from './api';
-import { resolveWalletPrintBranding } from '@beverly/tokens/wallet-export';
+import { formatMoneyTotal, isMoneyColumn, parseMoneyNumber, resolveWalletPrintBranding } from '@beverly/tokens/wallet-export';
 
 export type Column<T> = {
     key: string;
     header: string;
     value: (row: T) => unknown;
+    aggregate?: 'sum' | 'none';
+    isMoney?: boolean;
+};
+
+export type ExportOptions = {
+    includeTotals?: boolean;
 };
 
 function csvEscape(value: unknown): string {
@@ -21,9 +27,44 @@ function csvEscape(value: unknown): string {
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export function rowsToCsv<T>(rows: T[], columns: Column<T>[]): string {
+export function rowsToCsv<T>(rows: T[], columns: Column<T>[], options?: ExportOptions | boolean): string {
+    const includeTotals = typeof options === 'boolean' ? options : Boolean(options?.includeTotals);
     const head = columns.map((c) => csvEscape(c.header)).join(',');
     const body = rows.map((row) => columns.map((c) => csvEscape(c.value(row))).join(','));
+
+    if (includeTotals && rows.length > 0) {
+        const moneyColIndices = new Set<number>();
+        columns.forEach((column, index) => {
+            if (isMoneyColumn(column, rows)) moneyColIndices.add(index);
+        });
+
+        if (moneyColIndices.size > 0) {
+            let labelIndex = columns.findIndex((_, index) => !moneyColIndices.has(index));
+            if (labelIndex === -1) labelIndex = 0;
+
+            const totalCells = columns.map((column, index) => {
+                if (moneyColIndices.has(index)) {
+                    let sum = 0;
+                    let firstSample: unknown = null;
+                    for (const row of rows) {
+                        const val = column.value(row);
+                        if (firstSample === null && val !== null && val !== undefined && val !== '') {
+                            firstSample = val;
+                        }
+                        sum += parseMoneyNumber(val);
+                    }
+                    return csvEscape(formatMoneyTotal(sum, firstSample));
+                }
+                if (index === labelIndex) {
+                    return csvEscape('Total');
+                }
+                return '';
+            });
+
+            body.push(totalCells.join(','));
+        }
+    }
+
     return [head, ...body].join('\r\n');
 }
 
@@ -42,9 +83,10 @@ function triggerDownload(blob: Blob, filename: string): void {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function exportCsv<T>(filenameBase: string, rows: T[], columns: Column<T>[]): void {
-    const csv = rowsToCsv(rows, columns);
-    triggerDownload(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }), `${filenameBase}-${timestamp()}.csv`);
+export function exportCsv<T>(filenameBase: string, rows: T[], columns: Column<T>[], options?: ExportOptions | boolean): void {
+    const opts = options !== undefined ? options : { includeTotals: true };
+    const csv = rowsToCsv(rows, columns, opts);
+    triggerDownload(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }), `${filenameBase}-${timestamp()}.csv`);
 }
 
 /** Fetch a server CSV endpoint with the staff token and save it. */

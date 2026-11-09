@@ -30,6 +30,7 @@ const props = withDefaults(defineProps<{
   initialActor?: string;
   initialSince?: string;
   initialUntil?: string;
+  initialIncludeTotalsRow?: boolean;
   dateValue?: (row: T) => string | null | undefined;
   statusValue?: (row: T) => string | null | undefined;
   stationValue?: (row: T) => string | null | undefined;
@@ -59,6 +60,7 @@ const props = withDefaults(defineProps<{
   initialActor: '',
   initialSince: '',
   initialUntil: '',
+  initialIncludeTotalsRow: true,
   allowDailyCsvArchive: false,
 });
 
@@ -77,6 +79,7 @@ const preparedCount = ref(0);
 const preparedSelection = ref<WalletExportSelection | null>(null);
 const format = ref<'csv' | 'pdf'>(props.formats[0] ?? 'pdf');
 const csvDelivery = ref<'single' | 'daily-zip'>('single');
+const includeTotalsRow = ref(props.initialIncludeTotalsRow);
 const since = ref(props.initialSince);
 const until = ref(props.initialUntil);
 const status = ref(props.initialStatus);
@@ -116,6 +119,7 @@ function reset() {
   step.value = 1;
   format.value = props.formats[0] ?? 'pdf';
   csvDelivery.value = 'single';
+  includeTotalsRow.value = props.initialIncludeTotalsRow;
   since.value = props.initialSince;
   until.value = props.initialUntil;
   status.value = props.initialStatus;
@@ -199,6 +203,7 @@ function selection(): WalletExportSelection {
     actor: actor.value,
     actorType: actorType.value,
     columnKeys: chosenColumns.value.map((column) => column.key),
+    includeTotalsRow: includeTotalsRow.value,
   };
 }
 
@@ -233,8 +238,8 @@ async function run() {
       const daily = csvDelivery.value === 'daily-zip';
       if (daily && !props.dateValue) throw new Error('Daily exports require dated records.');
       const blob = daily
-        ? new Blob([buildDailyCsvZip(props.filename, exportRows, chosenColumns.value, props.dateValue!)], { type: 'application/zip' })
-        : new Blob(['\uFEFF' + rowsToCsv(exportRows, chosenColumns.value)], { type: 'text/csv;charset=utf-8;' });
+        ? new Blob([buildDailyCsvZip(props.filename, exportRows, chosenColumns.value, props.dateValue!, { includeTotals: includeTotalsRow.value })], { type: 'application/zip' })
+        : new Blob(['\uFEFF' + rowsToCsv(exportRows, chosenColumns.value, { includeTotals: includeTotalsRow.value })], { type: 'text/csv;charset=utf-8;' });
       clearDownload();
       downloadFilename.value = `${props.filename}${daily ? '-daily' : ''}-${exportTimestamp()}.${daily ? 'zip' : 'csv'}`;
       downloadUrl.value = URL.createObjectURL(blob);
@@ -346,10 +351,18 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKeydown); clea
                 <button v-if="formats.includes('csv')" type="button" :class="{ selected: format === 'csv' }" @click="format = 'csv'"><strong>CSV</strong><span>Power BI and spreadsheets</span></button>
                 <button v-if="formats.includes('pdf')" type="button" :class="{ selected: format === 'pdf' }" @click="format = 'pdf'"><strong>PDF</strong><span>Printable Beverly report</span></button>
               </div>
+              <div v-if="format === 'csv'" class="bw-export-totals-option">
+                <label class="bw-export-totals-label">
+                  <input v-model="includeTotalsRow" type="checkbox" />
+                  <span>Include totals row</span>
+                </label>
+                <small class="bw-export-totals-hint">Appends a pre-calculated summary row for monetary columns.</small>
+              </div>
               <dl class="bw-export-review">
                 <div><dt>Scope</dt><dd>{{ scopeSummary }}</dd></div>
                 <div><dt>Fields</dt><dd>{{ chosenColumns.length }} selected</dd></div>
                 <div><dt>Source</dt><dd>{{ resolveRows ? 'Complete filtered dataset' : `${rows.length} loaded records` }}</dd></div>
+                <div v-if="format === 'csv'"><dt>Totals</dt><dd>{{ includeTotalsRow ? 'Included' : 'None' }}</dd></div>
               </dl>
             </div>
 
@@ -361,6 +374,13 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKeydown); clea
                 <label :class="{ selected: csvDelivery === 'daily-zip' }"><input v-model="csvDelivery" type="radio" value="daily-zip" /> One CSV per day, zipped</label>
                 <small v-if="csvDelivery === 'daily-zip'">Dates use your local time.</small>
               </fieldset>
+              <div class="bw-export-totals-option" style="margin-top: var(--s-3);">
+                <label class="bw-export-totals-label">
+                  <input v-model="includeTotalsRow" type="checkbox" />
+                  <span>Include totals row</span>
+                </label>
+                <small class="bw-export-totals-hint">Appends a pre-calculated summary row for monetary columns.</small>
+              </div>
             </div>
 
             <p v-if="message" class="bw-export-message" role="status">{{ message }}</p>
@@ -389,4 +409,7 @@ onBeforeUnmount(() => { document.removeEventListener('keydown', onKeydown); clea
 .bw-export-csv-delivery legend { color:var(--text-muted); font-size:var(--t-xs); font-weight:700; padding:0 var(--s-1); text-transform:uppercase; letter-spacing:.06em; }
 .bw-export-csv-delivery label { display:flex; gap:var(--s-2); align-items:center; cursor:pointer; }
 .bw-export-csv-delivery small { color:var(--text-muted); }
+.bw-export-totals-option { display:grid; gap:var(--s-1); margin-top:var(--s-3); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--s-3); }
+.bw-export-totals-label { display:flex; gap:var(--s-2); align-items:center; cursor:pointer; font-size:var(--t-sm); font-weight:600; color:var(--text-default, inherit); }
+.bw-export-totals-hint { color:var(--text-muted); font-size:var(--t-xs); margin-left:22px; }
 </style>

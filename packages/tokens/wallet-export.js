@@ -11,9 +11,93 @@ function csvEscape(value) {
     return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-export function rowsToCsv(rows, columns) {
+export function isMoneyColumn(column, sampleRows = []) {
+    if (column.aggregate === 'sum' || column.isMoney === true) return true;
+    if (column.aggregate === 'none' || column.isMoney === false) return false;
+    const header = String(column.header || '');
+    const key = String(column.key || '');
+    const hasCurrencySymbol = /[₦]|NGN|naira/i.test(header) || /_naira/i.test(key);
+    const isNonMoney = /\b(kwh|units|reading|count|rate|percent|percentage|id|date|when|phone|meter)\b/i.test(header)
+        || /(kwh|units|reading|count|rate|percent|percentage|id|date|when|phone|meter)/i.test(key);
+    if (isNonMoney && !hasCurrencySymbol) return false;
+    const isMoneyName = hasCurrencySymbol
+        || /\b(amount|gross|net|fee|fees|vat|balance|holds|available|paid|refund|credit|debit|payment|spent|value)\b/i.test(header)
+        || /^(amount|gross|net|fee|fees|vat|balance|holds|available|paid|refund|credit|debit)/i.test(key);
+    if (!isMoneyName) return false;
+    if (sampleRows && sampleRows.length > 0) {
+        for (const row of sampleRows) {
+            const raw = column.value(row);
+            if (raw === null || raw === undefined || raw === '' || raw === '—' || raw === '-') continue;
+            const clean = String(raw).replace(/[^0-9.-]/g, '');
+            if (clean === '' || !Number.isFinite(parseFloat(clean))) return false;
+        }
+    }
+    return true;
+}
+
+export function parseMoneyNumber(raw) {
+    if (raw === null || raw === undefined || raw === '' || raw === '—' || raw === '-') return 0;
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : 0;
+    let text = String(raw).trim();
+    const isParenNegative = /^\(.*\)$/.test(text);
+    text = text.replace(/[^0-9.-]/g, '');
+    let parsed = parseFloat(text);
+    if (!Number.isFinite(parsed)) return 0;
+    if (isParenNegative && parsed > 0) parsed = -parsed;
+    return parsed;
+}
+
+export function formatMoneyTotal(sum, sampleValue) {
+    const s = String(sampleValue ?? '');
+    if (s.includes('₦')) {
+        const absVal = Math.abs(sum);
+        const formatted = absVal.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return sum < 0 ? `-₦${formatted}` : `₦${formatted}`;
+    }
+    if (/^NGN\b/i.test(s.trim())) {
+        return `NGN ${sum.toFixed(2)}`;
+    }
+    return sum.toFixed(2);
+}
+
+export function rowsToCsv(rows, columns, options = {}) {
+    const includeTotals = typeof options === 'boolean' ? options : Boolean(options?.includeTotals);
     const header = columns.map((column) => csvEscape(column.header)).join(',');
     const body = rows.map((row) => columns.map((column) => csvEscape(column.value(row))).join(','));
+
+    if (includeTotals && rows.length > 0) {
+        const moneyColIndices = new Set();
+        columns.forEach((column, index) => {
+            if (isMoneyColumn(column, rows)) moneyColIndices.add(index);
+        });
+
+        if (moneyColIndices.size > 0) {
+            let labelIndex = columns.findIndex((_, index) => !moneyColIndices.has(index));
+            if (labelIndex === -1) labelIndex = 0;
+
+            const totalCells = columns.map((column, index) => {
+                if (moneyColIndices.has(index)) {
+                    let sum = 0;
+                    let firstSample = null;
+                    for (const row of rows) {
+                        const val = column.value(row);
+                        if (firstSample === null && val !== null && val !== undefined && val !== '') {
+                            firstSample = val;
+                        }
+                        sum += parseMoneyNumber(val);
+                    }
+                    return csvEscape(formatMoneyTotal(sum, firstSample));
+                }
+                if (index === labelIndex) {
+                    return csvEscape('Total');
+                }
+                return '';
+            });
+
+            body.push(totalCells.join(','));
+        }
+    }
+
     return [header, ...body].join('\r\n');
 }
 
@@ -36,9 +120,9 @@ export function downloadBlob(blob, filename) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function exportCsv(filenameBase, rows, columns) {
+export function exportCsv(filenameBase, rows, columns, options = {}) {
     if (!rows.length) throw new Error('No records available.');
-    const csv = rowsToCsv(rows, columns);
+    const csv = rowsToCsv(rows, columns, options);
     downloadBlob(
         new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }),
         `${filenameBase}-${exportTimestamp()}.csv`,
@@ -99,7 +183,7 @@ function buildZip(files) {
     ])]);
 }
 
-export function buildDailyCsvZip(filenameBase, rows, columns, dateValue) {
+export function buildDailyCsvZip(filenameBase, rows, columns, dateValue, options = {}) {
     if (!rows.length) throw new Error('No records available.');
     const grouped = new Map();
     for (const row of rows) {
@@ -113,12 +197,12 @@ export function buildDailyCsvZip(filenameBase, rows, columns, dateValue) {
     }
     const files = [...grouped.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([day, records]) => ({ name: `${filenameBase}-${day}.csv`, text: '\uFEFF' + rowsToCsv(records, columns) }));
+        .map(([day, records]) => ({ name: `${filenameBase}-${day}.csv`, text: '\uFEFF' + rowsToCsv(records, columns, options) }));
     return buildZip(files);
 }
 
-export function exportCsvByDayZip(filenameBase, rows, columns, dateValue) {
-    downloadBlob(new Blob([buildDailyCsvZip(filenameBase, rows, columns, dateValue)], { type: 'application/zip' }), `${filenameBase}-daily-${exportTimestamp()}.zip`);
+export function exportCsvByDayZip(filenameBase, rows, columns, dateValue, options = {}) {
+    downloadBlob(new Blob([buildDailyCsvZip(filenameBase, rows, columns, dateValue, options)], { type: 'application/zip' }), `${filenameBase}-daily-${exportTimestamp()}.zip`);
 }
 
 function escapeHtml(value) {

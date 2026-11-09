@@ -14,4 +14,5 @@ export interface WalletExportSelection {
   actor: string;
   actorType: '' | 'vendor' | 'customer';
   columnKeys: string[];
+  includeTotalsRow?: boolean;
 }

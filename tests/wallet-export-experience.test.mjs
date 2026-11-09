@@ -18,6 +18,27 @@ const columns = [
 const csv = rowsToCsv([{ name: '=1+1', note: 'quoted, value' }], columns);
 assert.equal(csv, `Name,Note\r\n'=1+1,"quoted, value"`);
 
+const moneyColumns = [
+  { key: 'id', header: 'Transaction ID', value: (row) => row.id },
+  { key: 'amount', header: 'Amount (NGN)', value: (row) => row.amount },
+  { key: 'vat', header: 'VAT (NGN)', value: (row) => row.vat },
+  { key: 'status', header: 'Status', value: (row) => row.status },
+];
+const moneyRows = [
+  { id: 'TX-101', amount: 1500, vat: 112.5, status: 'delivered' },
+  { id: 'TX-102', amount: 2500, vat: 187.5, status: 'delivered' },
+];
+
+const summedCsv = rowsToCsv(moneyRows, moneyColumns, { includeTotals: true });
+assert.equal(summedCsv, `Transaction ID,Amount (NGN),VAT (NGN),Status\r\nTX-101,1500,112.5,delivered\r\nTX-102,2500,187.5,delivered\r\nTotal,4000.00,300.00,`);
+
+const unsummedCsv = rowsToCsv(moneyRows, moneyColumns, { includeTotals: false });
+assert.equal(unsummedCsv, `Transaction ID,Amount (NGN),VAT (NGN),Status\r\nTX-101,1500,112.5,delivered\r\nTX-102,2500,187.5,delivered`);
+
+// Columns without money do not produce a total row even if includeTotals is true
+const noMoneyCsv = rowsToCsv([{ name: 'Ada', note: 'ok' }], columns, { includeTotals: true });
+assert.equal(noMoneyCsv, `Name,Note\r\nAda,ok`);
+
 const printDocument = buildPrintDocument({ title: '<Wallet Report>', rows: [{ name: 'Ada', note: '<script>alert(1)</script>' }], columns });
 assert.match(printDocument, /&lt;Wallet Report&gt;/);
 assert.doesNotMatch(printDocument, /<script>alert\(1\)<\/script>/);
@@ -89,6 +110,9 @@ assert.match(wizard, /All statuses/);
 assert.match(wizard, /aria-live="polite"/);
 assert.match(wizard, /format === 'csv'/);
 assert.match(wizard, /formats\.includes\('pdf'\)/);
+assert.match(wizard, /Include totals row/);
+assert.match(wizard, /includeTotalsRow/);
+assert.match(wizard, /initialIncludeTotalsRow: true/);
 
 const purchases = fs.readFileSync(path.join(root, 'apps/admin/src/views/Purchases.vue'), 'utf8');
 assert.match(purchases, /purchase-filter-button/);
