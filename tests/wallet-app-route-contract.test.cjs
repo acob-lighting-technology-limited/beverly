@@ -62,7 +62,6 @@ function main() {
     "fastify.post('/vendors'",
     "fastify.get('/vendors'",
     "fastify.get('/vendors/summary'",
-    "fastify.delete('/vendors/:id'",
     "fastify.patch('/vendors/:id/status'",
     "fastify.get('/vendors/:id'",
     "fastify.get('/vendors/:id/wallet'",
@@ -122,6 +121,10 @@ function main() {
     "station_required",
     "overlaps('operating_stations', stationIds)",
     "scopeStations(query, assignedStations)",
+  ]);
+  assertMarkers("backend/wallet/src/routes/admin-vendor-deletion.ts", [
+    "fastify.delete('/vendors/:id'",
+    "fastify.get('/vendors/:id/deletion-check'",
   ]);
 
   assertMarkers("backend/wallet/src/services/staff-provisioning.ts", [
