@@ -68,8 +68,12 @@ const deleteTarget = ref<Vendor | null>(null);
 const deleteReason = ref('');
 const deleteConfirmation = ref('');
 const deleteBusy = ref(false);
+const deleteCheck = ref<{ canDelete: boolean; blockers: string[] } | null>(null);
+const deleteCheckLoading = ref(false);
+const deleteCheckError = ref('');
 const deleteValid = computed(() => Boolean(
     deleteTarget.value
+    && deleteCheck.value?.canDelete
     && deleteReason.value.trim().length >= 4
     && deleteConfirmation.value === deleteTarget.value.legal_name,
 ));
@@ -107,7 +111,22 @@ function askDelete(v: Vendor) {
     deleteTarget.value = v;
     deleteReason.value = '';
     deleteConfirmation.value = '';
+    deleteCheck.value = null;
+    deleteCheckError.value = '';
     deleteOpen.value = true;
+    void loadDeleteCheck(v.id);
+}
+
+async function loadDeleteCheck(id: string) {
+    deleteCheckLoading.value = true;
+    try {
+        const result = await api.get<{ canDelete: boolean; blockers: string[] }>(`/api/v1/admin/vendors/${id}/deletion-check`);
+        if (deleteTarget.value?.id === id) deleteCheck.value = result;
+    } catch (error: any) {
+        if (deleteTarget.value?.id === id) deleteCheckError.value = error?.message ?? 'Could not verify vendor deletion.';
+    } finally {
+        if (deleteTarget.value?.id === id) deleteCheckLoading.value = false;
+    }
 }
 
 async function doAction() {
@@ -140,11 +159,13 @@ async function deleteVendor() {
     deleteBusy.value = true;
     banner.value = null;
     try {
-        await api.del(`/api/v1/admin/vendors/${deleteTarget.value.id}`, {
+        const result = await api.del<{ cleanupPending: number }>(`/api/v1/admin/vendors/${deleteTarget.value.id}`, {
             reason: deleteReason.value.trim(),
             confirmation: deleteConfirmation.value,
         });
-        banner.value = { tone: 'success', text: `${deleteTarget.value.legal_name} deleted.` };
+        banner.value = { tone: 'success', text: result.cleanupPending
+            ? `${deleteTarget.value.legal_name} closed. Sign-in cleanup needs follow-up; vendor access is disabled.`
+            : `${deleteTarget.value.legal_name} deleted.` };
         vendors.value = vendors.value.filter((v) => v.id !== deleteTarget.value?.id);
         await loadSummary();
         deleteOpen.value = false;
@@ -152,7 +173,10 @@ async function deleteVendor() {
     } catch (e: any) {
         const msg = e instanceof ApiError ? `${e.message} (${e.code})` : e?.message ?? 'Delete failed.';
         banner.value = { tone: 'error', text: msg };
-        deleteOpen.value = false;
+        if (e instanceof ApiError && e.status === 409 && deleteTarget.value) {
+            deleteCheck.value = null;
+            void loadDeleteCheck(deleteTarget.value.id);
+        }
     } finally {
         deleteBusy.value = false;
     }
@@ -414,6 +438,12 @@ onMounted(() => {
       :disable-confirm="!deleteValid"
       @confirm="deleteVendor"
     >
+      <p v-if="deleteCheckLoading" role="status">Checking wallet and open transactions...</p>
+      <p v-else-if="deleteCheckError" role="alert">{{ deleteCheckError }}</p>
+      <div v-else-if="deleteCheck?.blockers.length" role="alert">
+        <strong>Complete these steps first:</strong>
+        <ul><li v-for="blocker in deleteCheck.blockers" :key="blocker">{{ blocker }}</li></ul>
+      </div>
       <label class="cd-input-label">Reason *</label>
       <textarea
         v-model="deleteReason"
