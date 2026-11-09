@@ -20,10 +20,7 @@
       </div>
     </header>
 
-    <!-- ── Plain Language 3-Step Guide Banner ─────────────────── -->
-    <StationGuideBanner />
-
-    <!-- ── Live Status Strip (KPIs in plain words) ───────────── -->
+    <!-- ── Live Network KPI Strip ────────────────────────────── -->
     <StationKpiStrip
       :station-count="fleetStore.stations.length"
       :total-ready="totalReady"
@@ -120,7 +117,6 @@
 <script>
 import { useBatteryFleetStore } from "../stores/battery-fleet-store.js";
 import BatterySwapStationModal from "./BatterySwapStationModal.vue";
-import StationGuideBanner from "./station/StationGuideBanner.vue";
 import StationKpiStrip from "./station/StationKpiStrip.vue";
 import StationCard from "./station/StationCard.vue";
 import StationSwapHistory from "./station/StationSwapHistory.vue";
@@ -140,7 +136,6 @@ export default {
   name: "BsvStationsPage",
   components: {
     BatterySwapStationModal,
-    StationGuideBanner,
     StationKpiStrip,
     StationCard,
     StationSwapHistory
