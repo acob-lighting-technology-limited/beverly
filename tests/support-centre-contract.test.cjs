@@ -57,7 +57,29 @@ for (const action of [
   assert.ok(storeContent.includes(action), `Store missing action: ${action}`);
 }
 
-// 5. Portals & Vercel routing
+// 5. Beverly Wallet Shared Tokens & Components Contract
+const mainContent = fs.readFileSync(path.join(root, "apps/support-centre/src/main.ts"), "utf8");
+assert.ok(mainContent.includes("@beverly/tokens/tokens.css"), "Must import Beverly tokens.css");
+assert.ok(mainContent.includes("@beverly/tokens/theme.css"), "Must import Beverly theme.css");
+assert.ok(mainContent.includes("@beverly/tokens/wallet.css"), "Must import Beverly wallet.css");
+assert.ok(mainContent.includes("initTheme('dark')"), "Must initialize Beverly dark theme");
+assert.ok(mainContent.includes("initLocale()"), "Must initialize Beverly i18n locale");
+
+const appContent = fs.readFileSync(path.join(root, "apps/support-centre/src/App.vue"), "utf8");
+assert.ok(appContent.includes("LanguageSwitcher"), "Must integrate Beverly LanguageSwitcher shared component");
+assert.ok(appContent.includes("toggleTheme"), "Must integrate Beverly toggleTheme");
+assert.ok(appContent.includes("/brand/beverly-mark.png"), "Must use Beverly official brand mark");
+
+const casesContent = fs.readFileSync(path.join(root, "apps/support-centre/src/views/CasesView.vue"), "utf8");
+assert.ok(casesContent.includes("WalletExportMenu"), "Cases view must use Beverly shared WalletExportMenu");
+
+const queueContent = fs.readFileSync(path.join(root, "apps/support-centre/src/views/QueueView.vue"), "utf8");
+assert.ok(queueContent.includes("WalletExportMenu"), "Queue view must use Beverly shared WalletExportMenu");
+
+// Brand assets check
+assert.ok(fs.existsSync(path.join(root, "apps/support-centre/public/brand/beverly-mark.png")), "Must have beverly-mark.png");
+
+// 6. Portals & Vercel routing
 const portalsContent = fs.readFileSync(path.join(root, "apps/wallet-landing/src/portals.ts"), "utf8");
 assert.ok(portalsContent.includes("supportCentre: 'http://localhost:5178/'"), "DEV_PORTALS missing supportCentre");
 assert.ok(portalsContent.includes("supportCentre: '/support-centre/'"), "PROD_PORTALS missing supportCentre");
@@ -76,7 +98,7 @@ assert.ok(
   "vercel.json missing /support-centre/:path* rewrite"
 );
 
-// 6. Root build script verification
+// 7. Root build script verification
 const rootPkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 assert.ok(
   rootPkg.scripts.build.includes("@beverly/support-centre-app"),
@@ -85,6 +107,9 @@ assert.ok(
 
 console.log(JSON.stringify({
   status: "support centre contract passed",
+  tokensVerified: true,
+  sharedComponents: ["LanguageSwitcher", "WalletExportMenu", "toggleTheme", "initLocale", "initTheme"],
+  brandAssets: "beverly-mark.png",
   views: 7,
   components: 3,
   routes: 7,

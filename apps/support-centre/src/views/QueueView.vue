@@ -2,12 +2,25 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSupportCentreStore } from '../stores/support-centre';
+import type { QueueItem } from '../types';
+import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
+import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 
 const store = useSupportCentreStore();
 const router = useRouter();
 
 const filterType = ref<'all' | 'voice' | 'callback' | 'risk'>('all');
 const searchQuery = ref('');
+
+const queueExportColumns: WalletExportColumn<QueueItem>[] = [
+  { key: 'caller', header: 'Caller Name', value: (q) => q.callerName },
+  { key: 'phone', header: 'Phone Number', value: (q) => q.phone },
+  { key: 'issue', header: 'Reported Issue', value: (q) => q.issue },
+  { key: 'channel', header: 'Channel', value: (q) => q.queueType === 'voice' ? 'Voice' : 'Callback' },
+  { key: 'priority', header: 'Priority', value: (q) => q.priority },
+  { key: 'wait', header: 'Wait Time (sec)', value: (q) => `${q.waitSeconds}s` },
+  { key: 'sla', header: 'SLA Risk', value: (q) => q.slaRisk },
+];
 
 const filteredQueue = computed(() => {
   return store.queue.filter((item) => {
@@ -46,6 +59,15 @@ function formatTimer(s: number) {
         <p>Real-time caller queues, priority routing and supervisor backlog management.</p>
       </div>
       <div class="actions">
+        <!-- Beverly Wallet Shared Export Wizard Menu -->
+        <WalletExportMenu
+          filename="beverly-support-queue"
+          title="Beverly Live Queue Report"
+          subtitle="Snapshot of waiting calls and scheduled callbacks"
+          :rows="filteredQueue"
+          :columns="queueExportColumns"
+        />
+
         <button class="btn btn-primary" @click="store.triggerSimulatedInbound">
           + Simulate Caller (Africa's Talking DID)
         </button>
@@ -173,6 +195,7 @@ function formatTimer(s: number) {
 }
 
 .page-head h1 {
+  font-family: var(--display);
   font-size: 24px;
   margin: 0;
   color: var(--ink);
@@ -185,13 +208,19 @@ function formatTimer(s: number) {
   font-size: 13px;
 }
 
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .btn-primary {
   height: 38px;
   padding: 0 16px;
   background: var(--brand);
   color: oklch(18% 0.02 145);
   border: 1px solid var(--brand);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   font-weight: 700;
   cursor: pointer;
 }
@@ -268,13 +297,14 @@ function formatTimer(s: number) {
 
 .filter-chips button {
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .filter-chips button.active {
@@ -284,10 +314,10 @@ function formatTimer(s: number) {
 }
 
 .search-input {
-  height: 34px;
+  height: 36px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   font-size: 12px;
   min-width: 260px;
   background: var(--card);
@@ -417,7 +447,7 @@ function formatTimer(s: number) {
   border: 1px solid var(--brand);
   background: var(--brand-soft);
   color: var(--brand-deep);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   font-weight: 700;
   font-size: 12px;
   cursor: pointer;

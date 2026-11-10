@@ -125,3 +125,123 @@ export interface QualityRecord {
     documentation: boolean;
   };
 }
+
+export interface VendCustomer {
+  meter: string;
+  name: string;
+  phone: string;
+  addr: string;
+  area: string;
+  band: 'A' | 'B' | 'C' | 'D' | 'E';
+  disco: string;
+  debt: number;
+  pct: number;
+  status: 'Active' | 'Suspended';
+  pri: number;
+  last: { amt: number; d: string };
+  notes: { t: string; txt: string }[];
+  flag?: string;
+  bal?: number;
+  type?: 'customer' | 'vendor' | 'both';
+  vid?: string;
+  float?: number;
+  comm?: number;
+  outlets?: number;
+}
+
+export interface VendTransaction {
+  ref: string;
+  meter: string;
+  name: string;
+  amt: number;
+  kwh: number;
+  debt: number;
+  tok: string;
+  t: string;
+  ts: number;
+  ch: 'transfer' | 'card' | 'ussd' | 'wallet';
+  st: 'Success' | 'Pending' | 'Failed';
+}
+
+export interface CallQueueItem {
+  id: string;
+  cust: VendCustomer;
+  skill: 'token' | 'outage' | 'billing';
+  at: number;
+  pri: number;
+}
+
+export interface ActiveCall {
+  c: CallQueueItem;
+  start: number;
+  mute: boolean;
+  hold: boolean;
+  rec: boolean;
+  lines: number;
+  tr: { w: 'a' | 'c'; t: string }[];
+  cap: string;
+  sent: number;
+  tip: string;
+  notes: string;
+  tm: any;
+  acts: number;
+}
+
+export interface WrapCallData {
+  c: CallQueueItem;
+  at: number;
+  dur: number;
+  sent: number;
+  notes: string;
+  disp: string;
+  csat: number;
+  cb: string;
+  acts: number;
+}
+
+export interface VendTicket {
+  id: string;
+  type: string;
+  name: string;
+  meter: string;
+  pri: 'Normal' | 'High' | 'Critical';
+  note: string;
+  st: 'New' | 'Assigned' | 'In progress' | 'Resolved' | 'Pending approval';
+  due: number;
+  at: string;
+  ts: number;
+  crew: string;
+  amt: number;
+}
+
+export interface CareAgent {
+  n: string;
+  s: 'available' | 'break' | 'offline' | 'oncall' | 'wrap';
+  sk: ('token' | 'outage' | 'billing')[];
+  h: number;
+  idle: number;
+  me?: number;
+  busy?: { c: CallQueueItem; start: number; end: number } | null;
+}
+
+export interface AudioRecording {
+  id: string;
+  callId: string;
+  name: string;
+  meter: string;
+  dur: number;
+  t: string;
+  tr: string[];
+  blob?: Blob | null;
+  url?: string;
+  qa?: number;
+}
+
+export interface OutageReport {
+  area: string;
+  feeder: string;
+  eta: string;
+  cause: string;
+  st: 'Active' | 'Restored';
+  sms: number;
+}
