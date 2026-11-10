@@ -4,6 +4,8 @@ import { useSupportCentreStore } from '../stores/support-centre';
 import type { CaseItem } from '../types';
 import ResolveCaseModal from '../components/ResolveCaseModal.vue';
 import EscalateModal from '../components/EscalateModal.vue';
+import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
+import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 
 const store = useSupportCentreStore();
 
@@ -14,6 +16,20 @@ const searchQuery = ref('');
 const selectedCase = ref<CaseItem | null>(null);
 const showResolveModal = ref(false);
 const showEscalateModal = ref(false);
+
+const caseExportColumns: WalletExportColumn<CaseItem>[] = [
+  { key: 'reference', header: 'Reference', value: (c) => `#${c.reference}` },
+  { key: 'customer', header: 'Customer', value: (c) => c.customerName },
+  { key: 'phone', header: 'Phone', value: (c) => c.customerPhone },
+  { key: 'meter', header: 'Meter', value: (c) => c.meterNumber },
+  { key: 'title', header: 'Summary', value: (c) => c.title },
+  { key: 'category', header: 'Category', value: (c) => c.category.replace('_', ' ') },
+  { key: 'priority', header: 'Priority', value: (c) => c.priority },
+  { key: 'status', header: 'Status', value: (c) => c.status.replace('_', ' ') },
+  { key: 'owner', header: 'Owner', value: (c) => c.owner },
+  { key: 'lastPayment', header: 'Last Payment', value: (c) => c.lastPaymentSummary },
+  { key: 'createdAt', header: 'Created', value: (c) => formatDate(c.createdAt) },
+];
 
 const filteredCases = computed(() => {
   return store.cases.filter((c) => {
@@ -56,6 +72,17 @@ function formatDate(iso: string) {
       <div>
         <h1>Cases & Investigations</h1>
         <p>Cross-department support tickets, SLA tracking and resolution governance.</p>
+      </div>
+
+      <div class="head-actions">
+        <!-- Beverly Wallet Shared Export Wizard Menu -->
+        <WalletExportMenu
+          filename="beverly-support-cases"
+          title="Beverly Support Cases"
+          subtitle="Export of active and resolved customer cases"
+          :rows="filteredCases"
+          :columns="caseExportColumns"
+        />
       </div>
     </div>
 
@@ -249,10 +276,20 @@ function formatDate(iso: string) {
 }
 
 .page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
   margin-bottom: 20px;
 }
 
+.head-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
 .page-head h1 {
+  font-family: var(--display);
   font-size: 24px;
   margin: 0;
   color: var(--ink);
@@ -290,13 +327,14 @@ function formatDate(iso: string) {
 
 .filter-chips button {
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .filter-chips button.active {
@@ -312,10 +350,10 @@ function formatDate(iso: string) {
 
 .category-select,
 .search-input {
-  height: 34px;
+  height: 36px;
   padding: 0 10px;
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   font-size: 12px;
   background: var(--card);
   color: var(--ink);
@@ -466,7 +504,7 @@ function formatDate(iso: string) {
   padding: 0 10px;
   border: 1px solid var(--line-strong);
   background: var(--card);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -612,7 +650,7 @@ function formatDate(iso: string) {
 .btn {
   height: 38px;
   padding: 0 16px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   font-weight: 700;
   font-size: 12px;
   cursor: pointer;

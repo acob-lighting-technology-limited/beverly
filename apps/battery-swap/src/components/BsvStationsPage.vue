@@ -14,6 +14,12 @@
           <span :class="{ 'bsv-spin': fleetStore.loading }">↻</span>
           <span>{{ fleetStore.loading ? 'Updating…' : 'Sync Hubs' }}</span>
         </button>
+        <button class="bsv-btn bsv-btn--ghost" @click="showAddStationModal = true">
+          <span>+ New Station</span>
+        </button>
+        <button class="bsv-btn bsv-btn--ghost" @click="showDistributeModal = true">
+          <span>📦 Batch Distribution</span>
+        </button>
         <button class="bsv-btn bsv-btn--primary" @click="openSwapModal(null)">
           <span>⚡ Record Swap</span>
         </button>
@@ -117,6 +123,8 @@
 <script>
 import { useBatteryFleetStore } from "../stores/battery-fleet-store.js";
 import BatterySwapStationModal from "./BatterySwapStationModal.vue";
+import AddStationModal from "./AddStationModal.vue";
+import BatchDistributeModal from "./BatchDistributeModal.vue";
 import StationKpiStrip from "./station/StationKpiStrip.vue";
 import StationCard from "./station/StationCard.vue";
 import StationSwapHistory from "./station/StationSwapHistory.vue";
@@ -136,6 +144,8 @@ export default {
   name: "BsvStationsPage",
   components: {
     BatterySwapStationModal,
+    AddStationModal,
+    BatchDistributeModal,
     StationKpiStrip,
     StationCard,
     StationSwapHistory
@@ -150,6 +160,8 @@ export default {
   data() {
     return {
       modalVisible: false,
+      showAddStationModal: false,
+      showDistributeModal: false,
       selectedStationIdForModal: null,
       presetBatterySn: "",
       searchQuery: "",
