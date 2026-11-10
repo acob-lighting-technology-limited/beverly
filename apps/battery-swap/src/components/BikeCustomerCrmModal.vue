@@ -214,6 +214,7 @@
 
 <script>
 import { useBatteryFleetStore } from "../stores/battery-fleet-store.js";
+import YunheBatteryDetailModal from "./YunheBatteryDetailModal.vue";
 
 export default {
   name: "BikeCustomerCrmModal",
@@ -258,6 +259,40 @@ export default {
     }
   },
   methods: {
+    getSocColor(soc) {
+      if (soc > 50) return "var(--acob-brand-mint, #00D084)";
+      if (soc > 20) return "var(--acob-brand-accent, #FF9900)";
+      return "var(--acob-coral-bright, #FF5555)";
+    },
+    openDiagnosticsModal() {
+      this.showDetailModal = true;
+    },
+    async handleToggleImmobilizer(cmd) {
+      if (!this.assignedBattery) return;
+      this.executingCommand = true;
+      this.iotCommandFeedback = "";
+      try {
+        const res = await this.fleetStore.executeYunheCommand(this.assignedBattery.sn, cmd);
+        this.iotCommandSuccess = res.success;
+        this.iotCommandFeedback = res.message;
+        if (cmd === "turn_off_d_fet" || cmd === "turn_off_cd_fet") {
+          this.assignedBattery.immobilized = true;
+          this.assignedBattery.fetState = "d_off";
+        } else if (cmd === "enable_cd_fet") {
+          this.assignedBattery.immobilized = false;
+          this.assignedBattery.fetState = "normal";
+        }
+      } catch (err) {
+        this.iotCommandSuccess = false;
+        this.iotCommandFeedback = err.message || "Command failed";
+      } finally {
+        this.executingCommand = false;
+      }
+    },
+    onCommandExecuted(res) {
+      this.iotCommandSuccess = res.success;
+      this.iotCommandFeedback = res.message;
+    },
     formatNaira(minor) {
       if (typeof minor !== "number") return "0";
       return (minor / 100).toLocaleString("en-NG", { minimumFractionDigits: 0 });
@@ -725,5 +760,183 @@ export default {
 .empty-state-box {
   text-align: center;
   padding: 40px;
+}
+
+/* ── Battery IoT & Immobilizer Controls ── */
+.battery-iot-card {
+  background: linear-gradient(180deg, rgba(0, 208, 132, 0.04) 0%, rgba(20, 28, 22, 0.6) 100%);
+  border: 1px solid rgba(0, 208, 132, 0.25);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.battery-iot-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.iot-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.iot-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(0, 208, 132, 0.15);
+  color: var(--acob-brand-mint, #00D084);
+}
+
+.signal-tag {
+  font-size: 11px;
+  color: var(--acob-text-muted, #8b949e);
+  font-family: monospace;
+}
+
+.fet-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.fet-enabled {
+  background: rgba(0, 208, 132, 0.12);
+  color: var(--acob-brand-mint, #00D084);
+}
+
+.fet-disabled {
+  background: rgba(255, 85, 85, 0.18);
+  color: var(--acob-coral-bright, #FF5555);
+  animation: pulse-danger 2s infinite ease-in-out;
+}
+
+@keyframes pulse-danger {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.iot-part-title {
+  margin: 0;
+  font-size: 15px;
+  color: var(--acob-text, #ffffff);
+}
+
+.iot-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-iot-inspect {
+  background: rgba(0, 208, 132, 0.1);
+  border: 1px solid rgba(0, 208, 132, 0.3);
+  color: var(--acob-brand-mint, #00D084);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-iot-inspect:hover {
+  background: rgba(0, 208, 132, 0.2);
+  border-color: var(--acob-brand-mint, #00D084);
+}
+
+.btn-iot-immobilize {
+  background: rgba(255, 85, 85, 0.15);
+  border: 1px solid rgba(255, 85, 85, 0.35);
+  color: var(--acob-coral-bright, #FF5555);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-iot-immobilize:hover:not(:disabled) {
+  background: rgba(255, 85, 85, 0.25);
+  border-color: #ff5555;
+}
+
+.btn-iot-rearm {
+  background: rgba(0, 208, 132, 0.18);
+  border: 1px solid rgba(0, 208, 132, 0.4);
+  color: var(--acob-brand-mint, #00D084);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-iot-rearm:hover:not(:disabled) {
+  background: rgba(0, 208, 132, 0.3);
+}
+
+.iot-stats-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--acob-line, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+@media (max-width: 768px) {
+  .iot-stats-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.iot-stat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-lbl {
+  font-size: 10px;
+  color: var(--acob-text-muted, #8b949e);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-val {
+  font-size: 13px;
+  color: var(--acob-text, #ffffff);
+}
+
+.iot-command-feedback {
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(255, 85, 85, 0.15);
+  border: 1px solid rgba(255, 85, 85, 0.3);
+  color: var(--acob-coral-bright, #FF5555);
+}
+
+.iot-command-feedback.feedback-success {
+  background: rgba(0, 208, 132, 0.12);
+  border-color: rgba(0, 208, 132, 0.3);
+  color: var(--acob-brand-mint, #00D084);
 }
 </style>
