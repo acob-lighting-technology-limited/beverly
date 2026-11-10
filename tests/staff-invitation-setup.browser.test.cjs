@@ -10,6 +10,12 @@ const root = path.resolve(__dirname, "..");
 const dist = path.join(root, "dist", "wallet-admin");
 const edge = "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
 
+assert.match(
+  fs.readFileSync(path.join(root, "supabase", "config.toml"), "utf8"),
+  /"https:\/\/beverly\.acoblighting\.com\/wallet-admin\/setup-account"/,
+  "Staff setup must be an explicitly allowed Supabase redirect URL.",
+);
+
 function startServer() {
   const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, "http://localhost").pathname;

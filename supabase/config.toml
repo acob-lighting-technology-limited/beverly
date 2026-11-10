@@ -3,6 +3,7 @@ project_id = "beverly"
 [auth]
 site_url = "https://beverly.acoblighting.com"
 additional_redirect_urls = [
+  "https://beverly.acoblighting.com/wallet-admin/setup-account",
   "https://beverly.acoblighting.com/**",
   "https://acob-beverly.vercel.app/**",
   "http://localhost:5173/**",
@@ -15,6 +16,21 @@ additional_redirect_urls = [
 enable_confirmations = true
 max_frequency = "1m"
 otp_length = 8
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = false
+template = "Your Beverly Verification code is {{ .Code }}"
+max_frequency = "5s"
+
+[auth.sms.twilio]
+enabled = true
+account_sid = "env(TWILIO_ACCOUNT_SID)"
+message_service_sid = "env(TWILIO_MESSAGING_SERVICE_SID)"
+auth_token = "env(TWILIO_AUTH_TOKEN)"
+
+[auth.sms.test_otp]
+08162300002 = "212121"
 
 [auth.mfa.totp]
 enroll_enabled = true
