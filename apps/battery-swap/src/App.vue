@@ -261,6 +261,11 @@ const brandLockupLight = `${base}brand/beverly-lockup.png`;
 const brandMarkDark = `${base}brand/beverly-mark-light.png`;
 const brandMarkLight = `${base}brand/beverly-mark.png`;
 
+const portalUrls = {
+  admin: import.meta.env.DEV ? 'http://localhost:5175/' : '/wallet-admin/',
+  landing: import.meta.env.DEV ? 'http://localhost:5176/' : '/wallet/'
+};
+
 const collapsed = ref(false);
 const mobileSidebarOpen = ref(false);
 const theme = ref<'dark' | 'light'>('dark');
