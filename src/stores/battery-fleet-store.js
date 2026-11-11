@@ -375,7 +375,7 @@ function seedFleetData() {
         stationName: station.name,
         batteryInSn: `B100072509${9000 + i}`,
         batteryInSoc: 12 + (i % 8),
-        batteryOutSn,
+        batteryOutSn: batterySn,
         batteryOutSoc: 98 - (i % 5),
         operatorName: station.operatorName,
         feeMinor: 80000,
