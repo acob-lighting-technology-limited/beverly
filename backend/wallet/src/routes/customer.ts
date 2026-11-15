@@ -1739,7 +1739,7 @@ const customer: FastifyPluginAsync = async (fastify) => {
 
     // ── NOTIFICATIONS ─────────────────────────────────────────────────────────
 
-    fastify.get('/push/config', { preHandler: fastify.requireCustomer() }, async () => pushConfig());
+    fastify.get('/push/config', async () => pushConfig());
 
     fastify.post('/push/subscription', { preHandler: fastify.requireCustomer() }, async (req) => {
         const subscription = z.object({

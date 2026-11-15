@@ -5,12 +5,26 @@ import { env } from '../config/env.js';
 export type PushActorType = 'customer' | 'vendor' | 'staff';
 export type PushPortal = 'customer' | 'vendor' | 'admin' | 'crm';
 
+export interface PushAction {
+    action: string;
+    title: string;
+    icon?: string;
+}
+
 export interface PushPayload {
     title: string;
     body: string;
     url?: string;
     tag?: string;
     icon?: string;
+    badge?: string;
+    image?: string;
+    vibrate?: number[];
+    silent?: boolean;
+    requireInteraction?: boolean;
+    actions?: PushAction[];
+    data?: Record<string, unknown>;
+    timestamp?: number;
 }
 
 interface SubscriptionInput {
@@ -102,7 +116,11 @@ export async function sendWebPush(
             await webpush.sendNotification({
                 endpoint: row.endpoint,
                 keys: { p256dh: row.p256dh, auth: row.auth },
-            }, JSON.stringify(payload), { vapidDetails, TTL: 300, urgency: 'normal' });
+            }, JSON.stringify(payload), {
+                vapidDetails,
+                TTL: 86400,
+                urgency: 'high',
+            });
             sent += 1;
         } catch (caught: any) {
             failed += 1;

@@ -490,7 +490,7 @@ const route: FastifyPluginAsync = async (fastify) => {
         }
     });
 
-    fastify.get('/push/config', { preHandler: fastify.requireVendor() }, async () => pushConfig());
+    fastify.get('/push/config', async () => pushConfig());
 
     fastify.post('/push/subscription', { preHandler: fastify.requireVendor() }, async (req) => {
         const subscription = z.object({
