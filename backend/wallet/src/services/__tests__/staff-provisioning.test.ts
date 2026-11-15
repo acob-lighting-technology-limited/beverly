@@ -69,7 +69,7 @@ describe('staff provisioning pipeline', () => {
         const { provisionStaff } = await import('../staff-provisioning.js');
 
         await expect(provisionStaff({
-            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true,
+            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true, portalAccess: ['staff_wallet'],
         }, { userId: 'admin-1' }, { error: vi.fn() })).resolves.toMatchObject({ ok: true, userId: 'staff-1' });
 
         expect(upsertProfile).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe('staff provisioning pipeline', () => {
         const { provisionStaff } = await import('../staff-provisioning.js');
 
         await expect(provisionStaff({
-            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true,
+            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true, portalAccess: ['staff_wallet'],
         }, { userId: 'admin-1' }, { error: vi.fn() })).rejects.toMatchObject({ code: 'staff_email_in_use', statusCode: 409 });
 
         expect(staffInvitationReadiness).not.toHaveBeenCalled();
@@ -94,7 +94,7 @@ describe('staff provisioning pipeline', () => {
         const { provisionStaff } = await import('../staff-provisioning.js');
 
         await expect(provisionStaff({
-            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true,
+            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true, portalAccess: ['staff_wallet'],
         }, { userId: 'admin-1' }, { error: vi.fn() })).rejects.toMatchObject({ code: 'staff_email_in_use', statusCode: 409, message: 'A staff account already exists for this email. Edit the existing staff member instead.' });
         expect(deleteUser).toHaveBeenCalledWith('staff-1');
     });
@@ -102,7 +102,7 @@ describe('staff provisioning pipeline', () => {
     it('normalizes once and completes auth, profile, verification, invitation, and audit', async () => {
         const { provisionStaff } = await import('../staff-provisioning.js');
         const result = await provisionStaff({
-            email: ' ADA@ACOBLIGHTING.COM ', fullName: ' Ada Lovelace ', roleKey: 'account', stationIds: [' station-1 ', 'station-1'], allStations: false,
+            email: ' ADA@ACOBLIGHTING.COM ', fullName: ' Ada Lovelace ', roleKey: 'account', stationIds: [' station-1 ', 'station-1'], allStations: false, portalAccess: ['call', 'crm'],
         }, { userId: 'admin-1', role: 'super-admin' }, { error: vi.fn() });
 
         expect(result).toMatchObject({ ok: true, userId: 'staff-1' });
@@ -112,7 +112,7 @@ describe('staff provisioning pipeline', () => {
             type: 'recovery',
             options: { redirectTo: 'https://staff.example.test/wallet-admin/setup-account' },
         }));
-        expect(upsertProfile).toHaveBeenCalledWith(expect.objectContaining({ email: 'ada@acoblighting.com', user_name: 'Ada Lovelace', station_ids: ['STATION-1'] }), { onConflict: 'user_id' });
+        expect(upsertProfile).toHaveBeenCalledWith(expect.objectContaining({ email: 'ada@acoblighting.com', user_name: 'Ada Lovelace', station_ids: ['STATION-1'], portal_access: ['crm', 'call'] }), { onConflict: 'user_id' });
         expect(notifyStaffInvitation).toHaveBeenCalledOnce();
         expect(logAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'access.user.create', targetId: 'staff-1' }));
     });
@@ -122,7 +122,7 @@ describe('staff provisioning pipeline', () => {
         const { provisionStaff, StaffProvisioningError } = await import('../staff-provisioning.js');
 
         await expect(provisionStaff({
-            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: ['station-1'], allStations: false,
+            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: ['station-1'], allStations: false, portalAccess: ['pue'],
         }, { userId: 'admin-1' }, { error: vi.fn() })).rejects.toMatchObject<Partial<InstanceType<typeof StaffProvisioningError>>>({ code: 'staff_verification_link_failed', statusCode: 502 });
         expect(deleteProfile).toHaveBeenCalledWith('user_id', 'staff-1');
         expect(deleteUser).toHaveBeenCalledWith('staff-1');
@@ -151,5 +151,35 @@ describe('staff provisioning pipeline', () => {
         });
         expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({ role_key: 'super-admin', station_id: null, station_ids: ['*'] }));
         expect(updateUserById).toHaveBeenCalledWith('staff-1', expect.objectContaining({ user_metadata: expect.objectContaining({ role_key: 'super-admin', station_ids: ['*'], all_stations: true }) }));
+    });
+
+    it('rejects staff creation without any portal', async () => {
+        const { provisionStaff } = await import('../staff-provisioning.js');
+        await expect(provisionStaff({
+            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true, portalAccess: [],
+        }, { userId: 'admin-1' }, { error: vi.fn() })).rejects.toThrow();
+        expect(createUser).not.toHaveBeenCalled();
+    });
+
+    it('keeps saved portals when an update omits them and saves a new list when given', async () => {
+        profileToRead = { email: 'ada@acoblighting.com', user_name: 'Ada', role_key: 'account', station_id: 'TUNGA', station_ids: ['TUNGA'], portal_access: ['crm'] };
+        const { updateStaff } = await import('../staff-provisioning.js');
+
+        await expect(updateStaff('staff-1', { roleKey: 'account', stationIds: ['TUNGA'] }, { userId: 'admin-1', role: 'super-admin' }, { error: vi.fn() }))
+            .resolves.toMatchObject({ portalAccess: ['crm'] });
+        expect(notifyStaffAccountChange).not.toHaveBeenCalledWith('staff-1', 'portal_access_update', expect.anything(), expect.anything(), expect.anything());
+
+        await expect(updateStaff('staff-1', { roleKey: 'account', stationIds: ['TUNGA'], portalAccess: ['pue', 'call'] }, { userId: 'admin-1', role: 'super-admin' }, { error: vi.fn() }))
+            .resolves.toMatchObject({ portalAccess: ['call', 'pue'] });
+        expect(updateProfile).toHaveBeenLastCalledWith(expect.objectContaining({ portal_access: ['call', 'pue'] }));
+        expect(notifyStaffAccountChange).toHaveBeenCalledWith('staff-1', 'portal_access_update', 'Your portal access changed', 'You can sign in to: Beverly Call, Beverly PUE.', expect.any(String));
+    });
+
+    it('stops a non-super-admin from removing their own Staff Wallet access', async () => {
+        profileToRead = { email: 'ops@acoblighting.com', user_name: 'Ops', role_key: 'account', station_id: 'TUNGA', station_ids: ['TUNGA'], portal_access: ['staff_wallet'] };
+        const { updateStaff } = await import('../staff-provisioning.js');
+        await expect(updateStaff('staff-1', { roleKey: 'account', stationIds: ['TUNGA'], portalAccess: ['call'] }, { userId: 'staff-1', role: 'account' }, { error: vi.fn() }))
+            .rejects.toMatchObject({ code: 'self_portal_lockout', statusCode: 400 });
+        expect(updateProfile).not.toHaveBeenCalled();
     });
 });

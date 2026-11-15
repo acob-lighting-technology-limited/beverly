@@ -186,13 +186,35 @@ const CRM_STAFF_ROLES = new Set([
   "account_officer"
 ]);
 
+/**
+ * CRM portal gate. users.portal_access (set in Wallet Admin → Roles & Team)
+ * decides who may sign in to Beverly CRM. Super admins always may. When the
+ * column is not deployed yet (portalAccess undefined) the legacy role list
+ * applies. Mirrors backend/wallet/src/services/staff-portal-access.ts.
+ */
+function crmPortalAllowed(roleId, portalAccess) {
+  const role = String(roleId || "").trim().toLowerCase();
+  if (role === "super-admin" || role === "super_admin") return true;
+  if (!Array.isArray(portalAccess)) return CRM_STAFF_ROLES.has(role);
+  return portalAccess.includes("crm");
+}
+
 async function staffActorFromAuthUser(user = {}, fallback = {}) {
   if (!serviceConfigured() || !user.id) return null;
   const encodedUserId = encodeURIComponent(user.id);
-  const rows = await restRequest(`/users?select=id,auth_user_id,user_id,email,user_name,role_key,station_id,station_ids,password_reset_required&or=(auth_user_id.eq.${encodedUserId},user_id.eq.${encodedUserId})&limit=1`);
+  const filter = `or=(auth_user_id.eq.${encodedUserId},user_id.eq.${encodedUserId})&limit=1`;
+  let rows;
+  try {
+    rows = await restRequest(`/users?select=id,auth_user_id,user_id,email,user_name,role_key,station_id,station_ids,password_reset_required,portal_access&${filter}`);
+  } catch (error) {
+    // portal_access migration not pushed yet: read without it and use legacy role gates.
+    if (!/portal_access/i.test(error instanceof Error ? error.message : String(error))) throw error;
+    rows = await restRequest(`/users?select=id,auth_user_id,user_id,email,user_name,role_key,station_id,station_ids,password_reset_required&${filter}`);
+  }
   const staff = Array.isArray(rows) ? rows[0] : null;
   const roleId = staff?.role_key || "";
   if (!staff || !roleId) return null;
+  const portalAccess = Array.isArray(staff.portal_access) ? staff.portal_access.map(String) : undefined;
   const stationIds = [...new Set([...(Array.isArray(staff.station_ids) ? staff.station_ids : []), staff.station_id].map((value) => String(value || '').trim().toUpperCase()).filter(Boolean))];
   return {
     authUserId: staff.auth_user_id || user.id,
@@ -203,7 +225,8 @@ async function staffActorFromAuthUser(user = {}, fallback = {}) {
     stationId: stationIds.includes('*') ? '' : (stationIds[0] || ''),
     stationIds,
     passwordResetRequired: staff.password_reset_required === true,
-    email: staff.email || user.email || fallback.email || ""
+    email: staff.email || user.email || fallback.email || "",
+    crmAllowed: crmPortalAllowed(roleId, portalAccess)
   };
 }
 
@@ -339,14 +362,13 @@ async function signInWithPassword({ userId, password, mfaCode }, options = {}) {
   } catch {
     return { status: 503, body: { code: 503, msg: 'Staff account verification is temporarily unavailable.', reason: 'Staff account verification is temporarily unavailable.', data: null, result: null } };
   }
-  const normalizedRole = String(actor?.roleId || '').toLowerCase();
-  if (!CRM_STAFF_ROLES.has(normalizedRole)) {
+  if (!actor?.crmAllowed) {
     return {
       status: 403,
       body: {
         code: 403,
-        msg: "Access Denied: This account cannot sign in to Beverly CRM. Please use your designated portal.",
-        reason: "Access Denied: This account cannot sign in to Beverly CRM. Please use your designated portal.",
+        msg: "Access Denied: This account is not allowed to sign in to Beverly CRM. Ask a super admin to add it in Wallet Admin → Roles & Team.",
+        reason: "Access Denied: This account is not allowed to sign in to Beverly CRM. Ask a super admin to add it in Wallet Admin → Roles & Team.",
         data: null,
         result: null,
         _proxy: {
@@ -385,7 +407,8 @@ async function signInWithPassword({ userId, password, mfaCode }, options = {}) {
         roleId: actor.roleId,
         remark: actor.remark,
         stationId: actor.stationId,
-        email: actor.email
+        email: actor.email,
+        crmAllowed: true
       },
       result: {
         token: body.access_token,
@@ -424,7 +447,7 @@ async function refreshAccessToken(refreshToken, previousAccessToken = '') {
   if (!response.ok || !body?.access_token) return null;
   const user = body.user || {};
   const actor = await staffActorFromAuthUser(user).catch(() => null);
-  if (!actor || actor.passwordResetRequired || !CRM_STAFF_ROLES.has(String(actor.roleId || '').toLowerCase())) return null;
+  if (!actor || actor.passwordResetRequired || !actor.crmAllowed) return null;
   try {
     const mfa = await staffMfaState(user.id, previousAccessToken);
     if (mfa.required) {
@@ -464,7 +487,7 @@ async function authUserFromAccessToken(accessToken) {
   const actor = normalizedActorFromAuthUser(body || {});
   const staffActor = await staffActorFromAuthUser(body || {});
   if (staffActor) {
-    if (staffActor.passwordResetRequired) return null;
+    if (staffActor.passwordResetRequired || !staffActor.crmAllowed) return null;
     const mfa = await staffMfaState(body.id, token);
     return mfa.required && !mfa.verified ? null : staffActor;
   }
@@ -766,6 +789,7 @@ module.exports = {
   restRequestWithResponse,
   serviceConfigured,
   signInWithPassword,
+  crmPortalAllowed,
   refreshAccessToken,
   authUserFromAccessToken,
   storageEnabled,

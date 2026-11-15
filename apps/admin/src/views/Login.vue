@@ -87,7 +87,7 @@ async function signIn() {
     loading.value = true;
     error.value = null;
     try {
-        const data = await api.post<any>('/api/v1/admin/auth/password-login', { email: normalizedEmail, password: password.value });
+        const data = await api.post<any>('/api/v1/admin/auth/password-login', { email: normalizedEmail, password: password.value, portal: 'staff_wallet' });
         const accessToken: string = data.access_token;
         if (!accessToken || !data.user?.id) {
             error.value = 'Sign-in response was incomplete. Try again.';

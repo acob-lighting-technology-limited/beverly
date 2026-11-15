@@ -12,7 +12,7 @@ import { useRoute } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import WalletTablePagination from '@beverly/tokens/WalletTablePagination.vue';
 import WalletDataViewSwitch from '@beverly/tokens/WalletDataViewSwitch.vue';
-import { api, shortDate, API_BASE, ApiError } from '../lib/api';
+import { api, shortDate, API_BASE, ApiError, STAFF_PORTAL_HEADERS } from '../lib/api';
 
 // ─ Types ──────────────────────────────────────────────────────────
 interface AuditEntry {
@@ -135,7 +135,7 @@ async function exportCsv() {
     const token = localStorage.getItem('beverly.staff.access_token') ?? '';
     try {
         const response = await fetch(`${API_BASE}/api/v1/admin/audit/export.csv?${p}`, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            headers: token ? { ...STAFF_PORTAL_HEADERS, Authorization: `Bearer ${token}` } : { ...STAFF_PORTAL_HEADERS },
             credentials: 'include',
         });
         if (!response.ok) throw new Error(`status ${response.status}`);
