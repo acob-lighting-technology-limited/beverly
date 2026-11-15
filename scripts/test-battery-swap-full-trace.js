@@ -61,7 +61,7 @@ async function testFullPipeline() {
 
     // 2. Navigate to /fleet
     console.log('\n--- 2. Navigating to /fleet ---');
-    await page.goto('http://localhost:5177/#/fleet', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('http://localhost:5177/#/fleet', { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForTimeout(1000);
     await page.screenshot({ path: path.join(__dirname, '../screenshot-fleet-page.png') });
     console.log('Screenshot saved: screenshot-fleet-page.png');
@@ -89,7 +89,7 @@ async function testFullPipeline() {
 
     // 3. Navigate to /stations
     console.log('\n--- 3. Navigating to /stations ---');
-    await page.goto('http://localhost:5177/#/stations', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('http://localhost:5177/#/stations', { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForTimeout(1000);
     await page.screenshot({ path: path.join(__dirname, '../screenshot-stations-page.png') });
     console.log('Screenshot saved: screenshot-stations-page.png');
@@ -107,7 +107,7 @@ async function testFullPipeline() {
 
     // 4. Navigate to /crm
     console.log('\n--- 4. Navigating to /crm ---');
-    await page.goto('http://localhost:5177/#/crm', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('http://localhost:5177/#/crm', { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForTimeout(1000);
     await page.screenshot({ path: path.join(__dirname, '../screenshot-crm-page.png') });
     console.log('Screenshot saved: screenshot-crm-page.png');
@@ -134,14 +134,14 @@ async function testFullPipeline() {
 
     // 5. Navigate to /diagnostics
     console.log('\n--- 5. Navigating to /diagnostics ---');
-    await page.goto('http://localhost:5177/#/diagnostics', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('http://localhost:5177/#/diagnostics', { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForTimeout(1000);
     await page.screenshot({ path: path.join(__dirname, '../screenshot-diagnostics-page.png') });
     console.log('Screenshot saved: screenshot-diagnostics-page.png');
 
     // 6. Navigate to /map
     console.log('\n--- 6. Navigating to /map ---');
-    await page.goto('http://localhost:5177/#/map', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('http://localhost:5177/#/map', { waitUntil: 'domcontentloaded', timeout: 10000 });
     await page.waitForTimeout(1000);
     await page.screenshot({ path: path.join(__dirname, '../screenshot-map-page.png') });
     console.log('Screenshot saved: screenshot-map-page.png');

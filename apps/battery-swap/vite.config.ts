@@ -12,6 +12,7 @@ export default defineConfig(({ command, mode }) => {
       vue(),
     ],
     server: {
+      host: true,
       port: 5177,
       proxy: {
         '/api': {
