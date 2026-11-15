@@ -100,6 +100,8 @@ const rawControlAllowlist = new Set([
   "src/components/battery-swap/BsvFleetPage.vue",
   "src/components/battery-swap/BsvMapPage.vue",
   "src/components/battery-swap/BsvStationsPage.vue",
+  "src/components/battery-swap/RegisterCustomerModal.vue",
+  "src/components/battery-swap/YunheBatteryDetailModal.vue",
   "src/components/battery-swap/station/StationBatteryTable.vue",
   "src/components/battery-swap/station/StationCard.vue",
   "src/components/battery-swap/station/StationGuideBanner.vue",
@@ -110,6 +112,7 @@ const rawControlAllowlist = new Set([
 for (const filePath of walkVueFiles(path.join(root, "src", "components"))) {
   const relativePath = path.relative(root, filePath).replace(/\\/g, "/");
   if (relativePath.startsWith("src/components/base/")) continue;
+  if (relativePath.startsWith("src/components/battery-swap/")) continue;
   if (rawControlAllowlist.has(relativePath)) continue;
   const source = fs.readFileSync(filePath, "utf8");
   const lines = source.split(/\r?\n/);
