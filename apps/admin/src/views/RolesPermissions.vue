@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { onBeforeRouteLeave, useRouter } from 'vue-router';
 import AppShell from '../components/AppShell.vue';
 import StationMultiSelect from '../components/StationMultiSelect.vue';
+import PortalAccessPicker, { type StaffPortalOption } from '../components/PortalAccessPicker.vue';
 import { api, shortDate } from '../lib/api';
 import { useStaffAuthStore } from '../stores/auth';
 import { stationDisplayLabel } from '@beverly/tokens/station-identity';
@@ -24,12 +25,16 @@ interface StaffRow {
     station_id?: string | null;
     station_ids?: string[];
     suspended?: boolean;
+    /** Beverly portals this account may sign in to (users.portal_access). */
+    portal_access?: string[];
 }
 interface AccessResponse {
     catalog: PermissionCatalogItem[]; roles: RoleRow[];
     permissions: PermissionRow[]; staff: StaffRow[];
     /** role_key → default permissions. Its keys are the system roles. */
     defaults?: Record<string, string[]>;
+    /** Portal catalog for the access picker. */
+    portals?: StaffPortalOption[];
 }
 
 /* ─── State ───────────────────────────────────────────────────────────── */
@@ -41,6 +46,7 @@ const catalog     = ref<PermissionCatalogItem[]>([]);
 const roles       = ref<RoleRow[]>([]);
 const permissions = ref<PermissionRow[]>([]);
 const staff       = ref<StaffRow[]>([]);
+const portals     = ref<StaffPortalOption[]>([]);
 const activeTab   = ref<'matrix' | 'staff'>('matrix');
 const selectedRole = ref('super-admin');
 const staffSearch  = ref('');
@@ -53,8 +59,9 @@ let loadVersion = 0;
 
 /* invite */
 const inviteOpen = ref(false);
-const draft = ref({ email: '', fullName: '', roleKey: 'account', stationIds: [] as string[], allStations: false });
-const staffDrafts = ref<Record<string, { roleKey: string; stationIds: string[] }>>({});
+const emptyDraft = () => ({ email: '', fullName: '', roleKey: 'account', stationIds: [] as string[], allStations: false, portalAccess: [] as string[] });
+const draft = ref(emptyDraft());
+const staffDrafts = ref<Record<string, { roleKey: string; stationIds: string[]; portalAccess: string[] }>>({});
 
 /* custom role editor */
 const roleEditor = ref({ open: false, creating: true, roleKey: '', name: '', description: '', permissions: [] as string[] });
@@ -174,7 +181,7 @@ function isStaffExpanded(u: StaffRow) {
 function toggleStaffExpanded(u: StaffRow) {
     const key = staffKey(u);
     if (!staffDrafts.value[key]) {
-        staffDrafts.value[key] = { roleKey: u.role_key, stationIds: u.station_ids?.length ? [...u.station_ids] : u.station_id ? [u.station_id] : [] };
+        staffDrafts.value[key] = { roleKey: u.role_key, stationIds: u.station_ids?.length ? [...u.station_ids] : u.station_id ? [u.station_id] : [], portalAccess: [...(u.portal_access ?? [])] };
     }
     expandedStaff.value = isStaffExpanded(u)
         ? expandedStaff.value.filter((k) => k !== key)
@@ -203,6 +210,7 @@ async function load() {
         roles.value       = d.roles;
         permissions.value = d.permissions;
         staff.value       = d.staff;
+        portals.value     = d.portals ?? [];
         if (d.defaults && Object.keys(d.defaults).length) systemRoleKeys.value = Object.keys(d.defaults);
         if (!roles.value.some(r => r.role_key === selectedRole.value)) selectedRole.value = roles.value[0]?.role_key ?? 'super-admin';
     } catch (e: any) { toast(e?.message ?? 'Failed to load access policy', 'err'); }
@@ -416,29 +424,44 @@ function viewAuditTrail(user: StaffRow) {
 }
 
 function staffDraft(u: StaffRow) {
-    return staffDrafts.value[staffKey(u)] ?? { roleKey: u.role_key, stationIds: u.station_ids?.length ? u.station_ids : u.station_id ? [u.station_id] : [] };
+    return staffDrafts.value[staffKey(u)] ?? { roleKey: u.role_key, stationIds: u.station_ids?.length ? u.station_ids : u.station_id ? [u.station_id] : [], portalAccess: u.portal_access ?? [] };
+}
+
+/* Super admins always reach every portal, so the picker is locked for them. */
+const allPortalKeys = computed(() => (portals.value.length ? portals.value.map((p) => p.key) : ['crm', 'staff_wallet', 'call', 'pue']));
+function portalsFor(roleKey: string, chosen: string[]) {
+    return roleKey === 'super-admin' ? allPortalKeys.value : chosen;
+}
+function portalNames(keys: string[]) {
+    const byKey = new Map(portals.value.map((p) => [p.key, p.label]));
+    return keys.map((k) => byKey.get(k) ?? k).join(', ') || 'None selected';
 }
 
 function staffDraftChanged(u: StaffRow) {
     const current = staffDraft(u);
     const savedStations = u.station_ids?.length ? u.station_ids : u.station_id ? [u.station_id] : [];
-    return current.roleKey !== u.role_key || JSON.stringify([...current.stationIds].sort()) !== JSON.stringify([...savedStations].sort());
+    return current.roleKey !== u.role_key
+        || JSON.stringify([...current.stationIds].sort()) !== JSON.stringify([...savedStations].sort())
+        || JSON.stringify([...current.portalAccess].sort()) !== JSON.stringify([...(u.portal_access ?? [])].sort());
 }
 
 async function saveStaffChanges(u: StaffRow) {
     if (!canManage.value || !u.auth_user_id || !staffDraftChanged(u) || saving.value) return;
     const next = staffDraft(u);
     if (!next.stationIds.length) return toast('Choose at least one station or All Stations.', 'err');
+    const portalAccess = portalsFor(next.roleKey, next.portalAccess);
+    if (!portalAccess.length) return toast('Choose at least one portal this staff member can sign in to.', 'err');
     saving.value = true;
     try {
         await api.patch(`/api/v1/admin/access/users/${u.auth_user_id}`, {
             roleKey: next.roleKey,
             stationIds: next.stationIds.includes('*') ? [] : next.stationIds,
             allStations: next.stationIds.includes('*'),
+            portalAccess,
         });
         toast('Staff changes saved.');
         await load();
-        staffDrafts.value[staffKey(u)] = { roleKey: next.roleKey, stationIds: [...next.stationIds] };
+        staffDrafts.value[staffKey(u)] = { roleKey: next.roleKey, stationIds: [...next.stationIds], portalAccess: [...portalAccess] };
     } catch (e: any) { toast(e?.message ?? 'Could not save staff changes', 'err'); }
     finally { saving.value = false; }
 }
@@ -460,10 +483,11 @@ async function createStaff() {
         }>('/api/v1/admin/access/users', {
             email: draft.value.email, fullName: draft.value.fullName,
             roleKey: draft.value.roleKey, stationIds: draft.value.stationIds, allStations: draft.value.allStations,
+            portalAccess: portalsFor(draft.value.roleKey, draft.value.portalAccess),
         }, { signal: AbortSignal.timeout(60_000) });
         const invitedEmail = draft.value.email;
         closeInvite();
-        draft.value = { email: '', fullName: '', roleKey: 'account', stationIds: [], allStations: false };
+        draft.value = emptyDraft();
         await load();
         toast(`Invitation sent to ${invitedEmail}.`);
     } catch (e: any) { toast(e?.message ?? 'Could not create user', 'err'); }
@@ -665,6 +689,17 @@ onMounted(() => { window.addEventListener('beforeunload', warnUnsaved); void loa
                   />
                   <p class="ac-field-help">{{ draft.allStations ? 'Estate-wide station scope stays current automatically.' : 'This staff member only sees selected stations.' }}</p>
                 </div>
+
+                <div class="ac-field ac-field--full">
+                  <label class="bw-label">Portal access</label>
+                  <PortalAccessPicker
+                    v-model="draft.portalAccess"
+                    :portals="portals"
+                    :locked-all="draft.roleKey === 'super-admin'"
+                    test-id="invite-portal-access"
+                  />
+                  <p class="ac-field-help">{{ draft.roleKey === 'super-admin' ? 'Super Admins can always sign in to every portal.' : 'They can only sign in to the portals you tick. Their role still decides what they can do inside each one.' }}</p>
+                </div>
               </div>
 
               <div class="ac-invite-grid">
@@ -688,13 +723,14 @@ onMounted(() => { window.addEventListener('beforeunload', warnUnsaved); void loa
                   <div><dt>Email</dt><dd>{{ draft.email }}</dd></div>
                   <div><dt>Role</dt><dd>{{ roles.find(r => r.role_key === draft.roleKey)?.role_name }}</dd></div>
                   <div><dt>Stations</dt><dd>{{ draft.allStations ? 'All current and future stations' : draft.stationIds.map(stationDisplayLabel).join(', ') }}</dd></div>
+                  <div><dt>Portals</dt><dd>{{ portalNames(portalsFor(draft.roleKey, draft.portalAccess)) }}</dd></div>
                   <div class="ac-invite-email"><dt>Email invitation</dt><dd>One secure invitation lets the staff member create their password and activate their account.</dd></div>
                 </dl>
               </div>
 
               <div class="ac-invite-actions">
                 <button type="button" class="bw-btn ghost" @click="closeInvite">Cancel</button>
-                <button class="bw-btn primary" :disabled="saving || !draft.email || !draft.fullName || !/.+@(acoblighting\.com|org\.acoblighting\.com)$/i.test(draft.email) || (!draft.allStations && !draft.stationIds.length)">
+                <button class="bw-btn primary" :disabled="saving || !draft.email || !draft.fullName || !/.+@(acoblighting\.com|org\.acoblighting\.com)$/i.test(draft.email) || (!draft.allStations && !draft.stationIds.length) || !portalsFor(draft.roleKey, draft.portalAccess).length" data-testid="btn-staff-invite-send">
                   {{ saving ? 'Sending…' : 'Send Invite' }}
                 </button>
               </div>
@@ -1047,6 +1083,18 @@ onMounted(() => { window.addEventListener('beforeunload', warnUnsaved); void loa
               />
             </div>
 
+            <div v-if="isStaffExpanded(u)" class="ac-staff-role">
+              <label class="bw-label" style="margin-bottom:5px">Portal access</label>
+              <PortalAccessPicker
+                :model-value="staffDraft(u).portalAccess"
+                :portals="portals"
+                :disabled="saving || !canManage || !u.auth_user_id"
+                :locked-all="staffDraft(u).roleKey === 'super-admin'"
+                :test-id="`staff-portal-access-${staffKey(u)}`"
+                @update:model-value="staffDrafts[staffKey(u)].portalAccess = $event"
+              />
+            </div>
+
             <div v-if="isStaffExpanded(u)" class="ac-staff-actions">
               <button class="bw-btn primary" :disabled="!canManage || saving || !u.auth_user_id || !staffDraftChanged(u) || !staffDraft(u).stationIds.length" @click="saveStaffChanges(u)">
                 {{ saving ? 'Saving…' : 'Save Changes' }}
@@ -1090,6 +1138,17 @@ onMounted(() => { window.addEventListener('beforeunload', warnUnsaved); void loa
                       <div class="ac-staff-role">
                         <label class="bw-label">Stations</label>
                         <StationMultiSelect :model-value="staffDraft(u).stationIds" :disabled="saving || !canManage || !u.auth_user_id" @update:model-value="staffDrafts[staffKey(u)].stationIds = $event" />
+                      </div>
+                      <div class="ac-staff-role">
+                        <label class="bw-label">Portal access</label>
+                        <PortalAccessPicker
+                          :model-value="staffDraft(u).portalAccess"
+                          :portals="portals"
+                          :disabled="saving || !canManage || !u.auth_user_id"
+                          :locked-all="staffDraft(u).roleKey === 'super-admin'"
+                          :test-id="`staff-table-portal-access-${staffKey(u)}`"
+                          @update:model-value="staffDrafts[staffKey(u)].portalAccess = $event"
+                        />
                       </div>
                     </div>
                     <div class="ac-staff-actions">

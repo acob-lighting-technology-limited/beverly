@@ -7,6 +7,10 @@ import { logAction } from './audit.js';
 import { isCorporateStaffEmail } from './email-validation.js';
 import { notifyRoleAssignment, notifyStaffInvitation, notifyStationAssignment, notifyStaffAccountChange, staffInvitationReadiness } from './admin-notifications.js';
 import { ALL_STATIONS_SCOPE, normalizeStaffStationIds } from './staff-station-scope.js';
+import { normalizePortalAccess, portalLabel, staffPortalKeySchema, STAFF_PORTAL_KEYS, type StaffPortalKey } from './staff-portal-access.js';
+
+/* At least one portal: an account with none could never sign in anywhere. */
+const portalAccessSchema = z.array(staffPortalKeySchema).min(1, 'Choose at least one portal this staff member can sign in to.').max(STAFF_PORTAL_KEYS.length);
 
 export const createStaffSchema = z.object({
     email: z.string().trim().email().transform((value) => value.toLowerCase()),
@@ -14,6 +18,7 @@ export const createStaffSchema = z.object({
     roleKey: z.string().trim().min(2).max(80),
     stationIds: z.array(z.string().trim().min(1).max(120)).max(100).default([]),
     allStations: z.boolean().default(false),
+    portalAccess: portalAccessSchema,
 }).refine((value) => value.allStations || value.stationIds.length > 0, {
     message: 'Choose at least one station or All stations.',
     path: ['stationIds'],
@@ -25,6 +30,8 @@ export const updateStaffSchema = z.object({
     roleKey: z.string().trim().min(2).max(80),
     stationIds: z.array(z.string().trim().min(1).max(120)).max(100).default([]),
     allStations: z.boolean().default(false),
+    /* Optional so older callers keep the saved list; omitted means unchanged. */
+    portalAccess: portalAccessSchema.optional(),
 }).refine((value) => value.allStations || value.stationIds.length > 0, {
     message: 'Choose at least one station or All stations.',
     path: ['stationIds'],
@@ -71,12 +78,13 @@ export async function provisionStaff(rawInput: unknown, actor: ProvisioningActor
         throw new StaffProvisioningError('station_required', 'Choose at least one valid station.', 400);
     }
     const primaryStationId = input.allStations ? null : stationIds[0];
+    const portalAccess: StaffPortalKey[] = normalizePortalAccess(input.portalAccess);
     const { data: assignedRole, error: roleError } = await adminClient.from('roles').select('role_key, role_name, label').eq('role_key', input.roleKey).maybeSingle();
     if (roleError) throw new StaffProvisioningError('role_lookup_failed', 'The staff role could not be verified. Try again.', 503);
     if (!assignedRole) throw new StaffProvisioningError('role_not_found', 'Choose an existing role.', 400);
 
     const { data: existingProfile, error: existingProfileError } = await adminClient.from('users')
-        .select('id, auth_user_id, user_id, user_name, role_key, station_id, station_ids, password_reset_required, password_changed_at, password_session_id, updated_at')
+        .select('id, auth_user_id, user_id, user_name, role_key, station_id, station_ids, portal_access, password_reset_required, password_changed_at, password_session_id, updated_at')
         .eq('email', input.email).maybeSingle();
     if (existingProfileError) throw new StaffProvisioningError('staff_lookup_failed', 'The staff account could not be checked. Try again.', 503);
     if (existingProfile) {
@@ -122,6 +130,7 @@ export async function provisionStaff(rawInput: unknown, actor: ProvisioningActor
         role_key: input.roleKey,
         station_id: primaryStationId,
         station_ids: stationIds,
+        portal_access: portalAccess,
         password_reset_required: true,
         password_changed_at: null,
         password_session_id: null,
@@ -183,10 +192,10 @@ export async function provisionStaff(rawInput: unknown, actor: ProvisioningActor
 
     await logAction({ actorUserId: actor.userId, actorType: 'staff', actorRole: actor.role,
         action: 'access.user.create', targetType: 'staff_user', targetId: userId,
-        after: { email: input.email, roleKey: input.roleKey, stationIds, allStations: input.allStations, invitationEmailStatus: invitationDelivery.status, invitationEmailMessageId: invitationDelivery.messageId ?? null },
+        after: { email: input.email, roleKey: input.roleKey, stationIds, allStations: input.allStations, portalAccess, invitationEmailStatus: invitationDelivery.status, invitationEmailMessageId: invitationDelivery.messageId ?? null },
     }).catch((error) => logger.error({ error, userId }, 'Staff was created but its audit event could not be written'));
 
-    return { ok: true as const, userId, invitationDelivery };
+    return { ok: true as const, userId, portalAccess, invitationDelivery };
 }
 
 export async function updateStaff(userId: string, rawInput: unknown, actor: ProvisioningActor, logger: ProvisioningLogger) {
@@ -197,14 +206,19 @@ export async function updateStaff(userId: string, rawInput: unknown, actor: Prov
     if (roleError) throw new StaffProvisioningError('role_lookup_failed', 'The staff role could not be verified. Try again.', 503);
     if (!assignedRole) throw new StaffProvisioningError('role_not_found', 'Choose an existing role.', 400);
     const { data: before, error: readError } = await adminClient.from('users')
-        .select('email, user_name, role_key, station_id, station_ids').or(`auth_user_id.eq.${userId},user_id.eq.${userId}`).maybeSingle();
+        .select('email, user_name, role_key, station_id, station_ids, portal_access').or(`auth_user_id.eq.${userId},user_id.eq.${userId}`).maybeSingle();
     if (readError || !before) throw new StaffProvisioningError('staff_not_found', 'Staff account was not found.', 404);
     const primaryStationId = input.allStations ? null : stationIds[0];
+    const previousPortals = normalizePortalAccess((before as any).portal_access);
+    const portalAccess: StaffPortalKey[] = input.portalAccess ? normalizePortalAccess(input.portalAccess) : previousPortals;
+    if (userId === actor.userId && !portalAccess.includes('staff_wallet') && actor.role !== 'super-admin') {
+        throw new StaffProvisioningError('self_portal_lockout', 'You cannot remove your own Beverly Staff Wallet access.', 400);
+    }
     const { data: authUser, error: authReadError } = await adminClient.auth.admin.getUserById(userId);
     if (authReadError || !authUser.user) throw new StaffProvisioningError('staff_auth_not_found', 'The staff login could not be verified.', 404);
 
     const { error: profileError } = await adminClient.from('users').update({
-        role_key: input.roleKey, station_id: primaryStationId, station_ids: stationIds, updated_at: new Date().toISOString(),
+        role_key: input.roleKey, station_id: primaryStationId, station_ids: stationIds, portal_access: portalAccess, updated_at: new Date().toISOString(),
     }).or(`auth_user_id.eq.${userId},user_id.eq.${userId}`);
     if (profileError) throw new StaffProvisioningError('staff_update_failed', 'No changes were saved.', 503);
 
@@ -213,7 +227,7 @@ export async function updateStaff(userId: string, rawInput: unknown, actor: Prov
     });
     if (authError) {
         const rollback = await adminClient.from('users').update({
-            role_key: (before as any).role_key, station_id: (before as any).station_id, station_ids: (before as any).station_ids,
+            role_key: (before as any).role_key, station_id: (before as any).station_id, station_ids: (before as any).station_ids, portal_access: (before as any).portal_access,
         }).or(`auth_user_id.eq.${userId},user_id.eq.${userId}`);
         if (rollback.error) logger.error({ authError, rollback: rollback.error, userId }, 'Staff update rollback failed');
         throw new StaffProvisioningError(rollback.error ? 'staff_update_cleanup_required' : 'staff_auth_update_failed', rollback.error ? 'The update failed and requires administrator review.' : 'No changes were saved.', rollback.error ? 500 : 503);
@@ -221,14 +235,18 @@ export async function updateStaff(userId: string, rawInput: unknown, actor: Prov
 
     await logAction({ actorUserId: actor.userId, actorType: 'staff', actorRole: actor.role,
         action: 'access.user.update', targetType: 'staff_user', targetId: userId,
-        before, after: { roleKey: input.roleKey, stationIds, allStations: input.allStations },
+        before, after: { roleKey: input.roleKey, stationIds, allStations: input.allStations, portalAccess },
     }).catch((error) => logger.error({ error, userId }, 'Staff was updated but its audit event could not be written'));
     if ((before as any).role_key !== input.roleKey) await notifyRoleAssignment(userId, (assignedRole as any).label ?? (assignedRole as any).role_name ?? input.roleKey);
     if (JSON.stringify((before as any).station_ids ?? []) !== JSON.stringify(stationIds)) {
         await notifyStationAssignment({ email: (before as any).email, name: (before as any).user_name, stationLabel: input.allStations ? 'All stations (including future stations)' : stationIds.join(', '), previousStationLabel: ((before as any).station_ids ?? []).includes(ALL_STATIONS_SCOPE) ? 'All stations' : ((before as any).station_ids ?? []).join(', ') || null });
         await notifyStaffAccountChange(userId, 'station_update', 'Your station access changed', input.allStations ? 'You can now access all stations.' : `Your assigned stations: ${stationIds.join(', ')}.`, `station.assignment.${userId}.${Date.now()}`).catch(() => undefined);
     }
-    return { ok: true as const, userId, roleKey: input.roleKey, stationIds, allStations: input.allStations };
+    if (JSON.stringify(previousPortals) !== JSON.stringify(portalAccess)) {
+        const labels = portalAccess.map(portalLabel).join(', ');
+        await notifyStaffAccountChange(userId, 'portal_access_update', 'Your portal access changed', `You can sign in to: ${labels}.`, `portal.access.${userId}.${Date.now()}`).catch(() => undefined);
+    }
+    return { ok: true as const, userId, roleKey: input.roleKey, stationIds, allStations: input.allStations, portalAccess };
 }
 
 export async function sendStaffPasswordSetup(userId: string, actor: ProvisioningActor, logger: ProvisioningLogger) {

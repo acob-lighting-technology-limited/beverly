@@ -58,6 +58,7 @@ import { decideKycReview, getKycReviewDocumentUrl, KycReviewError, listKycReview
 import { getKycTierPolicy, KycTierPolicyError, updateKycTierPolicy } from '../services/kyc-tier-policy.js';
 import { replaceStaffPassword, StaffPasswordChangeError } from '../services/staff-password-change.js';
 import { provisionStaff, sendStaffPasswordSetup, updateStaff, StaffProvisioningError } from '../services/staff-provisioning.js';
+import { effectivePortalAccess, isMissingPortalAccessColumn, STAFF_PORTALS } from '../services/staff-portal-access.js';
 import { applyPurchasePageCursor, purchasePageCursor } from './purchase-pagination.js';
 import { pagedAmountTotal } from './paged-amount-total.js';
 import { ledgerFundingSummary } from '../services/ledger-funding-summary.js';
@@ -885,6 +886,22 @@ function requireWalletStatusManager(req: FastifyRequest, reply: FastifyReply): b
     return true;
 }
 
+/**
+ * Staff directory read for Roles & Team. Tries newest columns first and falls
+ * back while migrations are pending (portal_access, then station_ids).
+ */
+async function readStaffDirectory() {
+    let result = await adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, station_ids, created_at, updated_at, portal_access').order('updated_at', { ascending: false }).limit(300);
+    if (result.error && isMissingPortalAccessColumn(result.error)) result = await adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, station_ids, created_at, updated_at').order('updated_at', { ascending: false }).limit(300) as typeof result;
+    if (missingColumn(result.error, 'station_ids')) result = await adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, created_at, updated_at').order('updated_at', { ascending: false }).limit(300) as typeof result;
+    return result;
+}
+
+/** Effective portals for a staff row; legacy role gates when the column is absent. */
+function staffPortalAccess(row: any) {
+    return effectivePortalAccess(String(row?.role_key ?? ''), row && 'portal_access' in row ? row.portal_access : undefined);
+}
+
 function shapeStaffProfile(actor: FastifyRequest['actor'], staff: any) {
     return {
         id: actor!.userId,
@@ -897,6 +914,7 @@ function shapeStaffProfile(actor: FastifyRequest['actor'], staff: any) {
         login_voice_enabled: staff?.login_voice_enabled !== false,
         updated_at: staff?.updated_at ?? null,
         password_reset_required: actor?.passwordResetRequired === true,
+        portal_access: actor?.portalAccess ?? [],
     };
 }
 
@@ -1228,18 +1246,16 @@ const route: FastifyPluginAsync = async (fastify) => {
     });
 
     fastify.get('/access', async () => {
-        const [roleResult, permissionResult, initialStaffResult] = await Promise.all([
+        const [roleResult, permissionResult, staffResult] = await Promise.all([
             adminClient.from('roles').select('*').order('role_key', { ascending: true }),
             adminClient.from('permissions').select('*').order('role_key', { ascending: true }),
-            adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, station_ids, created_at, updated_at').order('updated_at', { ascending: false }).limit(300),
+            readStaffDirectory(),
         ]);
-        const staffResult = missingColumn(initialStaffResult.error, 'station_ids')
-            ? await adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, created_at, updated_at').order('updated_at', { ascending: false }).limit(300)
-            : initialStaffResult;
         const roles = roleResult.data;
         const permissions = permissionResult.data;
         const staff = (staffResult.data ?? []).map((row: any) => ({
             ...row,
+            portal_access: staffPortalAccess(row),
             auth_user_id: row.auth_user_id ?? row.user_id ?? null,
             last_sign_in_at: null,
             confirmed_at: null,
@@ -1251,17 +1267,15 @@ const route: FastifyPluginAsync = async (fastify) => {
             permissions: permissions ?? [],
             staff,
             defaults: DEFAULT_ROLE_PERMISSIONS,
+            portals: STAFF_PORTALS,
         };
     });
 
     fastify.get('/access/staff-status', async (_req, reply) => {
-        const [initialStaffResult, authUsers] = await Promise.all([
-            adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, station_ids, created_at, updated_at').order('updated_at', { ascending: false }).limit(300),
+        const [staffResult, authUsers] = await Promise.all([
+            readStaffDirectory(),
             adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
         ]);
-        const staffResult = missingColumn(initialStaffResult.error, 'station_ids')
-            ? await adminClient.from('users').select('id, auth_user_id, user_id, user_name, email, role_key, station_id, created_at, updated_at').order('updated_at', { ascending: false }).limit(300)
-            : initialStaffResult;
         const staffRows = staffResult.data;
         if (staffResult.error || authUsers.error) {
             return reply.code(503).send({ error: 'staff_directory_unavailable', message: 'The staff directory could not be verified.' });
@@ -1273,6 +1287,7 @@ const route: FastifyPluginAsync = async (fastify) => {
             if (!authUser) return [];
             return [{
                 ...row,
+                portal_access: staffPortalAccess(row),
                 auth_user_id: authUser?.id ?? row.auth_user_id ?? row.user_id ?? null,
                 email: row.email ?? authUser?.email ?? null,
                 user_name: row.user_name ?? authUser?.user_metadata?.full_name ?? authUser?.email ?? 'Staff user',

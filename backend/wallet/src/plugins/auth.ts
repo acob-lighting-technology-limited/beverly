@@ -25,6 +25,10 @@ import { vendorMfaSessionVerified } from '../services/vendor-mfa.js';
 import { tokenAllowedAfterPasswordChange, tokenPredatesPasswordChange } from '../services/vendor-password-change.js';
 import { staffMfaEnrolled, staffMfaSessionVerified } from '../services/staff-mfa.js';
 import { enforcePortalSession, PortalSessionError } from '../services/portal-session.js';
+import {
+    effectivePortalAccess, isMissingPortalAccessColumn, portalLabel, requestedBackendPortal,
+    STAFF_PORTAL_HEADER, type StaffPortalKey,
+} from '../services/staff-portal-access.js';
 
 export type ActorType = 'staff' | 'vendor_user' | 'customer';
 
@@ -44,6 +48,8 @@ export interface Actor {
     kycTier?: number;
     passwordResetRequired?: boolean;
     emailVerified?: boolean;
+    /** Staff only: Beverly portals this account may use (users.portal_access). */
+    portalAccess?: StaffPortalKey[];
 }
 
 declare module 'fastify' {
@@ -192,9 +198,17 @@ async function resolveActor(token: string): Promise<Actor | null> {
     // Ordering marker for SOP tests: STAFF_ROLES.has(rawRole) stays after customer lookup.
     let staffResult = await adminClient
         .from('users')
-        .select('id, auth_user_id, user_id, email, role_key, station_id, station_ids, password_reset_required, password_changed_at, password_session_id')
+        .select('id, auth_user_id, user_id, email, role_key, station_id, station_ids, portal_access, password_reset_required, password_changed_at, password_session_id')
         .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`)
         .maybeSingle();
+    // Before the portal_access migration is pushed, fall back to the legacy role gates.
+    if (staffResult.error && isMissingPortalAccessColumn(staffResult.error)) {
+        staffResult = await adminClient
+            .from('users')
+            .select('id, auth_user_id, user_id, email, role_key, station_id, station_ids, password_reset_required, password_changed_at, password_session_id')
+            .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`)
+            .maybeSingle();
+    }
     if (staffResult.error && isMissingColumn(staffResult.error.message, 'station_ids')) {
         staffResult = await adminClient
             .from('users')
@@ -229,6 +243,7 @@ async function resolveActor(token: string): Promise<Actor | null> {
             mfaVerified: mfaVerified || appMfaVerified,
             mfaEnrolled,
             passwordResetRequired: (staffRow as any).password_reset_required === true,
+            portalAccess: effectivePortalAccess(staffRole, (staffRow as any).portal_access),
         };
     }
 
@@ -268,6 +283,20 @@ const plugin: FastifyPluginAsync = async (fastify) => {
                 return reply.code(403).send({ error: 'forbidden', message: 'Staff role required.' });
             }
             const routeUrl = req.routeOptions?.url ?? '';
+            // Portal gate. Account setup and sign-out stay reachable so invited
+            // staff can set a password even without Staff Wallet access.
+            // Limitation: the header is client-supplied. It picks which portal
+            // gate applies; role permissions still guard every action.
+            const portal = requestedBackendPortal(req.headers[STAFF_PORTAL_HEADER]);
+            const adminPath = routeUrl.replace(/^\/api\/v1\/admin/, '') || '/';
+            if (!['/password-change', '/account-setup', '/logout'].includes(adminPath)
+                && !(req.actor.portalAccess ?? []).includes(portal)) {
+                return reply.code(403).send({
+                    error: 'portal_access_denied',
+                    message: `This account is not allowed to use ${portalLabel(portal)}.`,
+                    portal,
+                });
+            }
             if (req.actor.passwordResetRequired && !['/me', '/password-change', '/account-setup', '/logout'].includes(routeUrl)) {
                 return reply.code(403).send({
                     error: 'password_reset_required',

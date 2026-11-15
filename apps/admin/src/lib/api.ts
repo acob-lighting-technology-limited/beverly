@@ -25,6 +25,8 @@ function normalizeBaseUrl(rawBase: unknown): string {
 
 const BASE = normalizeBaseUrl(import.meta.env.VITE_API_BASE);
 export const API_BASE = BASE;
+/** Identifies Wallet Admin to the backend's per-portal access check (users.portal_access). */
+export const STAFF_PORTAL_HEADERS = { 'X-Beverly-Portal': 'staff_wallet' } as const;
 const STAFF_ACCESS_TOKEN_KEY = 'beverly.staff.access_token';
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -98,6 +100,7 @@ async function request<T>(method: string, path: string, body?: unknown, init: Re
     const hasBody = body !== undefined;
     const headers: Record<string, string> = {
         ...(init.headers as Record<string, string> ?? {}),
+        ...STAFF_PORTAL_HEADERS,
         'Accept-Language': getIntlLocale(),
     };
     if (hasBody) headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';

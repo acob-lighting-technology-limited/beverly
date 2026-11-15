@@ -421,7 +421,7 @@ function applyCorsHeaders(request, response) {
   if (allowedOrigin) setResponseHeader(response, "Access-Control-Allow-Origin", allowedOrigin);
   setResponseHeader(response, "Vary", "Origin");
   setResponseHeader(response, "Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  setResponseHeader(response, "Access-Control-Allow-Headers", "Content-Type,Authorization,X-Authorization-Password,X-Route-Hash,X-Route-Action,X-Oem-Id");
+  setResponseHeader(response, "Access-Control-Allow-Headers", "Content-Type,Authorization,X-Authorization-Password,X-Route-Hash,X-Route-Action,X-Oem-Id,X-Beverly-Portal");
   setResponseHeader(response, "Access-Control-Max-Age", "86400");
 }
 
@@ -7146,10 +7146,13 @@ async function proxyCanonicalWallet(request, pathname, requestData) {
 
   const axios = require("axios");
   const headers = {};
-  for (const name of ["authorization", "content-type", "idempotency-key", "x-correlation-id", "x-paystack-signature", "user-agent"]) {
+  for (const name of ["authorization", "content-type", "idempotency-key", "x-correlation-id", "x-paystack-signature", "user-agent", "x-beverly-portal"]) {
     const value = request.headers[name];
     if (typeof value === "string" && value) headers[name] = value;
   }
+  // Staff portal identity for the wallet backend's portal-access check.
+  // Wallet Admin and PUE send their own; anything else through this gateway is the CRM.
+  if (!headers["x-beverly-portal"]) headers["x-beverly-portal"] = "crm";
   if (!headers["content-type"] && requestData.contentType) headers["content-type"] = requestData.contentType;
 
   if (env.walletApiBaseUrl === "internal") {
@@ -7258,8 +7261,8 @@ async function handler(request, response) {
         response.status(401).json({ code: 401, msg: "Invalid session", reason: "Invalid session", data: null, result: null });
         return;
       }
-      const actorRole = String(actor?.roleId || '').toLowerCase();
-      if (!localActor && !isCrmStaffRole(actorRole)) {
+      // Staff actors only resolve when users.portal_access allows Beverly CRM.
+      if (!localActor && actor?.crmAllowed !== true) {
         clearCrmSessionCookies(response);
         response.status(403).json({
           code: 403,
@@ -7718,7 +7721,10 @@ async function handler(request, response) {
       const token = result.body?.data?.token || result.body?.result?.token;
       const refreshToken = result.body?.data?.refreshToken || result.body?.result?.refreshToken || "";
       const roleId = String(result.body?.data?.roleId || result.body?.result?.roleId || "").toLowerCase();
-      if (!isCrmStaffRole(roleId)) {
+      // Supabase sign-in already checked users.portal_access; local demo auth keeps the role gate.
+      const crmAllowed = result.body?.data?.crmAllowed === true
+        || (result.body?._proxy?.source === "local-auth" && isCrmStaffRole(roleId));
+      if (!crmAllowed) {
         clearCrmSessionCookies(response);
         result = authFailure(403, pathname, "Access Denied: This account cannot sign in to Beverly CRM. Please use your designated portal.");
       } else {

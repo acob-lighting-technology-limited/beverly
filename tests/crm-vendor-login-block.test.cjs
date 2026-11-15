@@ -12,30 +12,39 @@ function main() {
   const supabaseService = read("backend/src/services/supabase-service.js");
   const pkg = JSON.parse(read("package.json"));
 
-  // 1. Verify signInWithPassword uses an explicit CRM staff allowlist.
+  // 1. CRM sign-in is gated by users.portal_access ('crm'). The legacy role
+  //    allowlist only applies while the portal_access column is not deployed.
   assert.match(
     supabaseService,
     /const CRM_STAFF_ROLES = new Set\(\[[\s\S]*?operations-officer[\s\S]*?\]\)/,
-    "signInWithPassword must define approved CRM staff roles"
+    "supabase-service must keep the legacy CRM role list as the pre-migration fallback"
   );
   assert.match(
     supabaseService,
-    /if \(!CRM_STAFF_ROLES\.has\(normalizedRole\)\)/,
-    "signInWithPassword must reject every non-CRM role"
+    /if \(!actor\?\.crmAllowed\) \{/,
+    "signInWithPassword must reject every account without CRM portal access"
   );
+  const { crmPortalAllowed } = require("../backend/src/services/supabase-service.js");
+  assert.equal(crmPortalAllowed("account", ["crm"]), true, "portal_access with crm allows CRM");
+  assert.equal(crmPortalAllowed("account", ["staff_wallet", "call"]), false, "portal_access without crm blocks CRM");
+  assert.equal(crmPortalAllowed("custom-auditor", ["crm"]), true, "custom roles can be granted CRM");
+  assert.equal(crmPortalAllowed("super-admin", []), true, "super admins always reach CRM");
+  assert.equal(crmPortalAllowed("vendor", undefined), false, "vendors never reach CRM");
+  assert.equal(crmPortalAllowed("account", undefined), true, "legacy role list applies before the migration");
+  assert.equal(crmPortalAllowed("finance-checker", undefined), false, "legacy role list still blocks finance checkers");
 
   // 2. Verify /api/auth/session rejects vendor & customer accounts
   assert.match(
     referenceJs,
-    /if \(!localActor && !isCrmStaffRole\(actorRole\)\)/,
-    "/api/auth/session must verify actorRole and reject non-staff accounts"
+    /if \(!localActor && actor\?\.crmAllowed !== true\)/,
+    "/api/auth/session must reject accounts without CRM portal access"
   );
 
   // 3. Verify /api/user/login response handling refuses session cookies for vendor & customer accounts
   assert.match(
     referenceJs,
-    /if \(!isCrmStaffRole\(roleId\)\)/,
-    "/api/user/login must refuse session creation for vendor/customer roleId"
+    /const crmAllowed = result\.body\?\.data\?\.crmAllowed === true[\s\S]*?if \(!crmAllowed\)/,
+    "/api/user/login must refuse session creation without CRM portal access"
   );
 
   // 4. Verify test script registration in package.json
@@ -48,7 +57,7 @@ function main() {
   console.log({
     status: "crm vendor login block contract passed",
     endpoints: ["/api/user/login", "/api/auth/session"],
-    blockedRoles: "all non-CRM roles",
+    blockedRoles: "every account without CRM portal access",
   });
 }
 

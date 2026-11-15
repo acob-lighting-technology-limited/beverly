@@ -93,11 +93,9 @@ Keep write safety strict.
 - `backend/src/services/interval-export-service.js` streams styled interval XLSX exports.
 - `backend/src/services/gateway-health-service.js` reads live gateway health and persists shared incidents.
 - `backend/src/services/tariff-snapshot-service.js` synchronizes live account assignments and tariff rates into date-effective history used by consumption valuation.
-- `backend/src/services/wallet-ledger-service.js` owns immutable wallet ledger posting and balance derivation.
-- `backend/src/services/wallet-funding-service.js` owns funding requests, proof metadata, and finance approval.
-- `backend/src/services/wallet-ledger-service.js` also owns wallet holds, capture, release, and freeze state.
-- `backend/src/services/wallet-purchase-service.js` owns purchase orders, delivery state, receipts, and idempotent vend orchestration.
-- `backend/src/services/wallet-approval-service.js` owns maker-checker approval contracts.
+- `backend/wallet/src/services/ledger.ts` is the canonical wallet ledger. Production money movement goes only through `backend/wallet/`.
+- Legacy local-facade wallet services: `backend/src/services/wallet-ledger-service.js`, `wallet-funding-service.js`, `wallet-purchase-service.js`, and `wallet-approval-service.js` back `api/reference.js` against the file-based `local-database`. They are not a production ledger. Legacy financial mutations through the gateway return 410 unless `allowLegacyWalletTestMode` is set. Do not add new money features here; extend `backend/wallet/` instead.
+- The legacy ledger keeps the same append-only rule for its local entries, holds, capture, release, and freeze state.
 - `backend/wallet/src/services/fraud-engine.ts` owns wallet risk scoring and anomaly signals.
 - `backend/wallet/src/services/audit.ts` owns structured wallet audit events.
 - `backend/wallet/src/services/payment-transactions.ts` owns Paystack success fulfillment and legacy status compatibility.
@@ -112,6 +110,15 @@ Keep write safety strict.
 - `LIVE_BEARER_TOKEN` has priority over client auth.
 - `CORS_ORIGINS` controls CORS.
 - `RATE_LIMIT_*` controls rate limiting.
+
+## Staff Portal Access
+
+- `public.users.portal_access` (text[]) lists the Beverly staff portals an account may sign in to: `crm`, `staff_wallet`, `call`, `pue`. Migration `20261115120000_staff_portal_access.sql` backfills the old role-based gates; rollback in `supabase/rollbacks/`.
+- Super admins set it in Wallet Admin → Roles & Team when inviting or editing staff (`apps/admin/src/components/PortalAccessPicker.vue`). Super admins always reach every portal.
+- `backend/wallet/src/services/staff-portal-access.ts` owns portal keys, labels, legacy fallback, and checks.
+- Staff Wallet and PUE sign in through `POST /api/v1/admin/auth/password-login` with `portal`. CRM signs in through `backend/src/services/supabase-service.js`. Beverly Call (separate project) must read the same column.
+- `requireStaff` checks the `X-Beverly-Portal` header (`staff_wallet` default, `pue`, or `crm` added by `api/reference.js`). The header is client-supplied: it selects which portal gate applies, and role permissions still guard every action.
+- Beverly PUE reads Yunhe directly from the browser, so its portal gate is the sign-in check only.
 
 ## Routing
 

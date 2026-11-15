@@ -5,7 +5,7 @@
  * a few hundred rows server-side). For server-streamed CSV (audit, reports) use
  * downloadAuthedCsv, which attaches the staff bearer token.
  */
-import { API_BASE } from './api';
+import { API_BASE, STAFF_PORTAL_HEADERS } from './api';
 import { formatMoneyTotal, isMoneyColumn, parseMoneyNumber, resolveWalletPrintBranding } from '@beverly/tokens/wallet-export';
 
 export type Column<T> = {
@@ -93,7 +93,7 @@ export function exportCsv<T>(filenameBase: string, rows: T[], columns: Column<T>
 export async function downloadAuthedCsv(path: string, filenameBase: string): Promise<void> {
     const token = localStorage.getItem('beverly.staff.access_token');
     const res = await fetch(`${API_BASE}${path}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: token ? { ...STAFF_PORTAL_HEADERS, Authorization: `Bearer ${token}` } : { ...STAFF_PORTAL_HEADERS },
         credentials: 'include',
     });
     if (!res.ok) throw new Error(`Export failed (${res.status})`);
