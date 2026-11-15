@@ -12,7 +12,7 @@
           />
         </div>
         <div class="login-badge-wrap">
-          <span class="bsv-brand-tag">BATTERY SWAP PORTAL</span>
+          <span class="bsv-brand-tag">BEVERLY PUE</span>
         </div>
         <p class="bw-muted login-sub">
           {{ sent ? 'Enter verification code' : 'Staff Account Password Recovery' }}

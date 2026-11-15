@@ -1,5 +1,11 @@
 import { defineStore } from 'pinia';
 
+/** Portal keys from users.portal_access (see backend staff-portal-access.ts). */
+export type StaffPortalKey = 'crm' | 'staff_wallet' | 'call' | 'pue';
+
+/** Identifies Beverly PUE to the backend's per-portal access check. */
+export const PUE_PORTAL_HEADERS = { 'X-Beverly-Portal': 'pue' } as const;
+
 export interface BatterySwapUser {
   id: string;
   email: string | null;
@@ -8,12 +14,27 @@ export interface BatterySwapUser {
   station_id?: string | null;
   station_ids?: string[];
   login_voice_enabled?: boolean;
+  portal_access?: StaffPortalKey[];
 }
 
 interface AuthState {
   hydrated: boolean;
   accessToken: string | null;
   user: BatterySwapUser | null;
+}
+
+/*
+ * PUE keeps its own session keys. It used to share beverly.staff.* with Wallet
+ * Admin, which let a session from one portal open the other without that
+ * portal's access check.
+ */
+const TOKEN_KEY = 'beverly.battery_swap.access_token';
+const USER_KEY = 'beverly.battery_swap.user';
+
+/** Super admins always reach every portal; everyone else needs 'pue'. */
+function canUsePue(user: BatterySwapUser | null): boolean {
+  if (!user) return false;
+  return user.role === 'super-admin' || (user.portal_access ?? []).includes('pue');
 }
 
 export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
@@ -24,7 +45,7 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
   }),
 
   getters: {
-    isAuthenticated: (s) => Boolean(s.accessToken && s.user),
+    isAuthenticated: (s) => Boolean(s.accessToken && s.user && canUsePue(s.user)),
     displayName: (s) => s.user?.full_name || (s.user?.email ? s.user.email.split('@')[0] : 'Operations Officer'),
     roleLabel: (s) => {
       const r = s.user?.role || 'operations-officer';
@@ -44,16 +65,17 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
       this.hydrated = true;
 
       try {
-        const token =
-          localStorage.getItem('beverly.battery_swap.access_token') ||
-          localStorage.getItem('beverly.staff.access_token');
-        const userJson =
-          localStorage.getItem('beverly.battery_swap.user') ||
-          localStorage.getItem('beverly.staff.user');
-
+        const token = localStorage.getItem(TOKEN_KEY);
+        const userJson = localStorage.getItem(USER_KEY);
         if (token && userJson) {
-          this.accessToken = token;
-          this.user = JSON.parse(userJson);
+          const user = JSON.parse(userJson) as BatterySwapUser;
+          // Sessions saved before portal access existed have no list: sign in again.
+          if (canUsePue(user)) {
+            this.accessToken = token;
+            this.user = user;
+          } else {
+            this.logout();
+          }
         }
       } catch (err) {
         console.warn('[BatterySwapAuth] Failed to hydrate auth state:', err);
@@ -64,11 +86,8 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
       this.accessToken = token;
       this.user = user;
       try {
-        localStorage.setItem('beverly.battery_swap.access_token', token);
-        localStorage.setItem('beverly.battery_swap.user', JSON.stringify(user));
-        // Cross-portal compatibility with Beverly Staff Admin
-        localStorage.setItem('beverly.staff.access_token', token);
-        localStorage.setItem('beverly.staff.user', JSON.stringify(user));
+        localStorage.setItem(TOKEN_KEY, token);
+        localStorage.setItem(USER_KEY, JSON.stringify(user));
       } catch (err) {
         console.warn('[BatterySwapAuth] Failed to persist session:', err);
       }
@@ -78,10 +97,8 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
       this.accessToken = null;
       this.user = null;
       try {
-        localStorage.removeItem('beverly.battery_swap.access_token');
-        localStorage.removeItem('beverly.battery_swap.user');
-        localStorage.removeItem('beverly.staff.access_token');
-        localStorage.removeItem('beverly.staff.user');
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
       } catch (err) {
         console.warn('[BatterySwapAuth] Failed to clear session:', err);
       }

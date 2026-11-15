@@ -2,7 +2,7 @@
   "name": "@beverly/battery-swap-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Beverly Battery Swap Operations Portal - EV Fleet, GPRS Telemetry & Rider Lease CRM",
+  "description": "Beverly PUE portal - PUE Hub, Battery Swap Stations (EV fleet, GPRS telemetry, rider lease CRM)",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5177",

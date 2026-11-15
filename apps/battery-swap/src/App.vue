@@ -21,7 +21,7 @@
           'sidebar--collapsed': collapsed,
           'sidebar--mobile-open': mobileSidebarOpen
         }"
-        aria-label="Battery Swap Navigation"
+        aria-label="Beverly PUE Navigation"
       >
         <!-- Sidebar Brand Lockup -->
         <div class="bsv-sidebar-brand">
@@ -42,7 +42,7 @@
             />
           </a>
           <div v-if="!collapsed" class="bsv-brand-meta">
-            <span class="bsv-brand-tag">BATTERY SWAP PORTAL</span>
+            <span class="bsv-brand-tag">BEVERLY PUE · BATTERY SWAP</span>
             <span class="bsv-brand-pill">
               <span class="bsv-live-dot" /> LIVE GPRS
             </span>
@@ -51,6 +51,29 @@
 
       <!-- Navigation Links -->
       <nav class="bsv-nav-scroller">
+        <div class="bsv-nav-section">
+          <ul class="bsv-nav-list">
+            <li>
+              <router-link
+                to="/hub"
+                class="bsv-nav-item"
+                data-testid="nav-pue-hub"
+                @click="mobileSidebarOpen = false"
+              >
+                <span class="bsv-nav-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                  </svg>
+                </span>
+                <span v-if="!collapsed" class="bsv-nav-label">PUE Hub</span>
+              </router-link>
+            </li>
+          </ul>
+        </div>
+
         <div class="bsv-nav-section">
           <span v-if="!collapsed" class="bsv-section-heading">OPERATIONS</span>
           <ul class="bsv-nav-list">
@@ -219,7 +242,8 @@
             </div>
             <button
               class="bsv-logout-btn"
-              title="Sign Out of Battery Swap"
+              title="Sign out of Beverly PUE"
+              aria-label="Sign out of Beverly PUE"
               @click="handleLogout"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -252,7 +276,8 @@ const router = useRouter();
 const fleetStore = useBatteryFleetStore();
 const auth = useBatterySwapAuthStore();
 
-const isLoginRoute = computed(() => Boolean(route.meta?.public) || route.path === '/login' || route.path === '/forgot-password' || route.path === '/reset-password');
+// Full-screen routes without the workspace shell: sign-in pages and the PUE Hub.
+const isLoginRoute = computed(() => Boolean(route.meta?.public) || Boolean(route.meta?.standalone) || route.path === '/login' || route.path === '/forgot-password' || route.path === '/reset-password');
 
 // Assets with base path
 const base = import.meta.env.BASE_URL || '/';
@@ -271,7 +296,7 @@ const mobileSidebarOpen = ref(false);
 const theme = ref<'dark' | 'light'>('dark');
 
 const currentPath = computed(() => route.path);
-const currentRouteTitle = computed(() => String(route.meta?.title || 'Battery Swap Operations'));
+const currentRouteTitle = computed(() => String(route.meta?.title || 'Battery Swap Stations'));
 const liveBikesCount = computed(() => fleetStore.onlineBikesCount || 0);
 
 function toggleTheme() {
