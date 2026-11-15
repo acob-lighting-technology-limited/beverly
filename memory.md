@@ -18,7 +18,6 @@ Beverly Workspace Root
 │   ├── admin/             -> @beverly/admin-app (Vue 3 Back-office & Operations CRM)
 │   ├── battery-swap/      -> @beverly/battery-swap-app (Yunhe OEM operations, 15S cell inspector, locker cabinets, CRM IoT immobilizer)
 │   ├── customer/          -> @beverly/customer-app (Customer self-service portal)
-│   ├── support-centre/    -> @beverly/support-centre-app (Call centre UX, Africa's Talking compatibility, dispute pipeline)
 │   ├── vendor/            -> @beverly/vendor-app (Vendor vending & digital wallet portal)
 │   └── wallet-landing/    -> @beverly/landing-app (Public entry & portal redirect routing)
 ├── backend/
@@ -70,7 +69,7 @@ All commands below are verified directly from `package.json`:
 ```powershell
 # Monorepo Full Build
 npm run build
-# Compiles: @beverly/wallet-backend -> root vite -> admin-app -> vendor-app -> customer-app -> landing-app -> battery-swap-app -> support-centre-app
+# Compiles: @beverly/wallet-backend -> root vite -> admin-app -> vendor-app -> customer-app -> landing-app -> battery-swap-app
 
 # Typecheck
 npm run typecheck
@@ -83,7 +82,6 @@ npm run test:wallet
 npm run test:security
 npm run test:oem
 npm run test:smart-metering
-npm run test:support-centre
 npm run test:consumption-sync
 npm run test:interval-export
 

@@ -109,7 +109,6 @@
     { "source": "/wallet-vendor", "destination": "/wallet-vendor/", "permanent": true },
     { "source": "/wallet-customer", "destination": "/wallet-customer/", "permanent": true },
     { "source": "/battery-swap", "destination": "/battery-swap/", "permanent": true },
-    { "source": "/support-centre", "destination": "/support-centre/", "permanent": true },
     { "source": "/wallet", "destination": "/wallet/", "permanent": true }
   ],
   "rewrites": [
@@ -161,9 +160,6 @@
     { "source": "/battery-swap", "destination": "/battery-swap/index.html" },
     { "source": "/battery-swap/", "destination": "/battery-swap/index.html" },
     { "source": "/battery-swap/:path*", "destination": "/battery-swap/index.html" },
-    { "source": "/support-centre", "destination": "/support-centre/index.html" },
-    { "source": "/support-centre/", "destination": "/support-centre/index.html" },
-    { "source": "/support-centre/:path*", "destination": "/support-centre/index.html" },
     { "source": "/((?!api/).*)", "destination": "/wallet/index.html" }
   ]
 }

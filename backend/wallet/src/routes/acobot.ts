@@ -15,7 +15,7 @@ import { roleHasPermission } from '../services/rbac.js';
 
 const ChatBodySchema = z.object({
     prompt: z.string().min(1).max(2000),
-    portal: z.enum(['admin', 'crm', 'customer', 'vendor', 'battery-swap', 'support-centre']).default('admin'),
+    portal: z.enum(['admin', 'crm', 'customer', 'vendor', 'battery-swap']).default('admin'),
     stream: z.boolean().default(false),
     currentPath: z.string().max(500).nullable().optional(),
 });

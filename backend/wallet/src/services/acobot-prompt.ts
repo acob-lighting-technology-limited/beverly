@@ -32,7 +32,7 @@ const BEVERLY_PAGE_DESCRIPTIONS: Array<[string, string]> = [
 
 export function buildBeverlySystemPrompt(
     actor: Actor,
-    portal: 'admin' | 'crm' | 'customer' | 'vendor' | 'battery-swap' | 'support-centre',
+    portal: 'admin' | 'crm' | 'customer' | 'vendor' | 'battery-swap',
     currentPath?: string | null
 ): string {
     let activePageContext = '';

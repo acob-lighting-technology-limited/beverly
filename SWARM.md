@@ -20,14 +20,12 @@ graph TD
     Boss --> WalletAgent["@wallet-backend-specialist<br/>(backend/wallet, Ledger, Idempotency)"]
     Boss --> OemAgent["@oem-gateway-specialist<br/>(packages/oem-contracts, SparkMeter, Calinmeter)"]
     Boss --> FrontAgent["@frontend-apps-specialist<br/>(apps/admin, vendor, customer, @beverly/tokens)"]
-    Boss --> SuppAgent["@support-centre-specialist<br/>(apps/support-centre, Call Centre, Disputes)"]
     Boss --> DbAgent["@database-migrations-specialist<br/>(supabase/migrations, RLS, Grants, Capacity)"]
     Boss --> QaAgent["@qa-verification-specialist<br/>(tests/, tools/, Hardening, Hermetic CI)"]
 
     BsvAgent -. Test Trace .-> QaAgent
     WalletAgent -. Migration Spec .-> DbAgent
     OemAgent -. Quarantine Triggers .-> DbAgent
-    SuppAgent -. Portal Manifest .-> FrontAgent
     QaAgent -. Gate Sign-off .-> Boss
 ```
 
@@ -44,7 +42,6 @@ Every agent owns an explicit, verified slice of the repository:
 | **`@wallet-backend-specialist`**| **Fintech Ledger Engine** | `backend/wallet/` (`@beverly/wallet-backend`), `backend/src/services/wallet*` | `npm run test:wallet`, `tests/payment-transaction-status-contract.test.cjs` |
 | **`@oem-gateway-specialist`** | **OEM Gateways & Telemetry**| `packages/oem-contracts/`, `backend/wallet/src/adapters/`, `oem-telemetry*` | `npm run test:oem`, `npm run test:smart-metering` |
 | **`@frontend-apps-specialist`** | **Frontend Portals & Tokens**| `apps/admin/`, `apps/vendor/`, `apps/customer/`, `apps/wallet-landing/`, `packages/tokens/`, `src/` | `npm run test:browser`, `npm run flow:audit` |
-| **`@support-centre-specialist`**| **Support & Disputes** | `apps/support-centre/` (`@beverly/support-centre-app`) | `npm run test:support-centre` |
 | **`@database-migrations-specialist`**| **PostgreSQL & RLS** | `supabase/migrations/`, `supabase/rollbacks/` | `node tests/supabase-migrations.test.cjs`, `npm run database:capacity` |
 | **`@qa-verification-specialist`** | **Hermetic QA & Audits** | `tests/`, `tools/`, `.github/workflows/` | `npm run typecheck && npm run hardening:audit` |
 

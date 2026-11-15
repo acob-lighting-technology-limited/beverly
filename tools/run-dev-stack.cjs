@@ -3,21 +3,22 @@
 /**
  * Beverly dev stack runner.
  *
- *   npm run dev                  → starts everything (CRM + wallet backend + admin + vendor + customer + landing + battery + support + reference API)
- *   SKIP_WALLET=1 npm run dev    → starts only the legacy CRM + reference API
- *   ONLY=support npm run dev     → starts only the named service
- *                                  (admin | vendor | customer | landing | battery | support | wallet | crm)
+ *   npm run dev                  → starts everything (CRM + wallet backend + admin + vendor + customer + landing + PUE + reference API)
+ *   SKIP_WALLET=1 npm run dev    → starts only the CRM + reference API
+ *   ONLY=pue npm run dev         → starts only the named service
+ *                                  (admin | vendor | customer | landing | pue | wallet | crm; "battery" still aliases pue)
  *
  * Ports:
- *   9310  reference API proxy (mock data for legacy CRM)
- *   9311  legacy CRM (Vue 2)
+ *   9310  reference API proxy (api/reference.js facade)
+ *   9311  CRM                (root Vue 3 SPA in src/)
  *   4000  wallet Fastify backend
  *   5173  customer PWA       (Vue 3)
  *   5174  vendor portal      (Vue 3)
  *   5175  wallet admin       (Vue 3)
  *   5176  wallet landing     (Vue 3)
- *   5177  battery swap       (Vue 3)
- *   5178  support centre     (Vue 3)
+ *   5177  Beverly PUE        (Vue 3, apps/battery-swap)
+ *
+ * Beverly Call (call centre) lives in its own project folder, not this repo.
  */
 
 const { spawn } = require("child_process");
@@ -85,8 +86,7 @@ const colors = {
   vendor:   "\x1b[33m",
   customer: "\x1b[34m",
   landing:  "\x1b[95m",
-  battery:  "\x1b[92m",
-  support:  "\x1b[96m",
+  pue:      "\x1b[92m",
 };
 const RESET = "\x1b[0m";
 
@@ -168,25 +168,18 @@ const services = [
     walletGroup: true,
   },
   {
-    name: "battery",
+    name: "pue",
+    aliases: ["battery"],
     cmd: isWin ? "npx.cmd" : "npx",
     args: ["vite", "--port", "5177", "--host", "0.0.0.0"],
     cwd: path.join(root, "apps/battery-swap"),
     url: "http://localhost:5177",
     walletGroup: true,
   },
-  {
-    name: "support",
-    cmd: isWin ? "npx.cmd" : "npx",
-    args: ["vite", "--port", "5178", "--host", "0.0.0.0"],
-    cwd: path.join(root, "apps/support-centre"),
-    url: "http://localhost:5178",
-    walletGroup: true,
-  },
 ];
 
 const selected = services.filter((s) => {
-  if (ONLY) return s.name === ONLY;
+  if (ONLY) return s.name === ONLY || (s.aliases || []).includes(ONLY);
   if (s.walletGroup && SKIP_WALLET) return false;
   // Only start a wallet-group service if its workspace dir exists and has a package.json.
   if (s.walletGroup && !fs.existsSync(path.join(s.cwd, "package.json"))) {

@@ -101,7 +101,7 @@ export interface BuiltAcobotContext {
 
 export async function buildAcobotContext(
     actor: Actor,
-    portal: 'admin' | 'crm' | 'customer' | 'vendor' | 'battery-swap' | 'support-centre',
+    portal: 'admin' | 'crm' | 'customer' | 'vendor' | 'battery-swap',
     userPrompt: string,
     currentPath?: string | null,
 ): Promise<BuiltAcobotContext> {

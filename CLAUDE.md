@@ -27,7 +27,7 @@ The sections that matter most day to day:
 
 ## Verification Workflow — Fast Checks First
 
-A full `npm run build` runs builds across all 6 monorepo apps plus the wallet backend and root bundler.
+A full `npm run build` runs builds across all 5 monorepo apps plus the wallet backend and root bundler.
 Running the full build for trivial edits can be slow. For quick turn verification, run the fast targeted checks:
 
 ```powershell
@@ -46,7 +46,6 @@ npm run test:wallet           # wallet ledger, vending, payments
 npm run test:security         # RLS, authz, secret boundaries
 npm run test:oem              # SparkMeter, Calinmeter, OEM contracts
 npm run test:smart-metering   # AMR ingestion, consumption reconciliation
-npm run test:support-centre   # Call centre, dispute pipeline
 npm run test:browser          # Playwright E2E browser tests
 ```
 
