@@ -43,6 +43,8 @@ export const CRM_ADMIN_INTENT_PERMISSIONS: Record<string, { permission: string; 
     adminFraud: { permission: 'wallet.fraud.review', label: 'Review fraud alerts & velocity triggers' },
     adminKycReview: { permission: 'wallet.customers.view', label: 'Review customer KYC documents & compliance' },
     adminOemConfig: { permission: 'wallet.dashboard.view', label: 'View and diagnose OEM meter integrations' },
+    batterySwapFleet: { permission: 'wallet.dashboard.view', label: 'Inspect battery swap fleet, cell voltages & locker racks' },
+    supportDisputes: { permission: 'wallet.disputes.manage', label: 'View and manage dispute tickets & call centre activity' },
 };
 
 export const VENDOR_INTENTS = new Set([
