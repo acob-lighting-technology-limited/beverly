@@ -1,8 +1,8 @@
 /**
- * Beverly AI Routes (`backend/wallet/src/routes/acobot.ts`)
+ * Beverly Bot Routes (`backend/wallet/src/routes/acobot.ts`)
  *
  * Fastify plugin handling chat completions, intent resolution, audio transcription,
- * and security audit logs for Beverly AI across CRM Admin and Wallet portals.
+ * and security audit logs for Beverly Bot across CRM Admin, Battery Swap, Support Centre, Customer, and Wallet portals.
  */
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -15,8 +15,9 @@ import { roleHasPermission } from '../services/rbac.js';
 
 const ChatBodySchema = z.object({
     prompt: z.string().min(1).max(2000),
-    portal: z.enum(['admin', 'crm', 'customer', 'vendor']).default('admin'),
+    portal: z.enum(['admin', 'crm', 'customer', 'vendor', 'battery-swap', 'support-centre']).default('admin'),
     stream: z.boolean().default(false),
+    currentPath: z.string().max(500).nullable().optional(),
 });
 
 const acobotRoutes: FastifyPluginAsync = async (fastify) => {
@@ -38,15 +39,15 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
             return reply.code(400).send({ error: 'invalid_body', details: parseResult.error.format() });
         }
 
-        const { prompt, portal } = parseResult.data;
+        const { prompt, portal, currentPath } = parseResult.data;
 
         // 1. Build permission-safe context block
-        const contextBuild = await buildAcobotContext(actor, portal, prompt);
+        const contextBuild = await buildAcobotContext(actor, portal, prompt, currentPath);
 
         // 2. Generate System Prompt with Identity & RBAC boundaries
-        const systemPrompt = buildBeverlySystemPrompt(actor, portal);
+        const systemPrompt = buildBeverlySystemPrompt(actor, portal, currentPath);
 
-        // 3. Multi-Provider LLM generation logic (NVIDIA NGC, Groq, OpenAI)
+        // 3. Multi-Provider LLM generation logic (Groq LPU, NVIDIA NIM, OpenAI)
         const nvidiaApiKey = process.env.NVIDIA_API_KEY || process.env.NGC_API_KEY;
         const groqApiKey = process.env.GROQ_API_KEY;
         const openAiApiKey = process.env.OPENAI_API_KEY;
@@ -67,39 +68,52 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         try {
-            // 1st Priority: Groq LPU API (Main / Primary Ultra-Low Latency Inference)
+            // 1st Priority: Groq LPU API with resilient candidate model fallback
             if (!botResponse && groqApiKey) {
-                const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${groqApiKey}`,
-                        'Content-Type': 'application/json',
-                    },
-                    signal: AbortSignal.timeout(10000),
-                    body: JSON.stringify({
-                        model: 'llama-3.3-70b-versatile',
-                        messages: [
-                            { role: 'system', content: systemPrompt },
-                            { role: 'system', content: `[SESSION CONTEXT]\n${contextBuild.contextText}` },
-                            { role: 'user', content: prompt },
-                        ],
-                        temperature: 0.3,
-                        max_tokens: 1024,
-                    }),
-                }).catch((err: any) => {
-                    req.log.warn({ err: err?.message }, '[ACOBOT] Groq fetch timeout/error');
-                    return null;
-                });
+                const groqCandidateModels = [
+                    'openai/gpt-oss-120b',
+                    'llama-3.3-70b-versatile',
+                    'llama-3.1-70b-versatile',
+                    'llama3-70b-8192',
+                ];
 
-                if (groqRes && groqRes.ok) {
-                    const data = await groqRes.json() as any;
-                    botResponse = data.choices?.[0]?.message?.content ?? '';
-                    modelUsed = 'llama-3.3-70b-versatile';
-                    promptTokens = data.usage?.prompt_tokens ?? 0;
-                    completionTokens = data.usage?.completion_tokens ?? 0;
-                } else if (groqRes) {
-                    const errBody = await groqRes.text().catch(() => '');
-                    req.log.warn({ status: groqRes.status, body: errBody }, '[ACOBOT] Groq API call failed');
+                for (const candidateModel of groqCandidateModels) {
+                    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${groqApiKey}`,
+                            'Content-Type': 'application/json',
+                        },
+                        signal: AbortSignal.timeout(10000),
+                        body: JSON.stringify({
+                            model: candidateModel,
+                            messages: [
+                                { role: 'system', content: systemPrompt },
+                                { role: 'system', content: `[SESSION CONTEXT]\n${contextBuild.contextText}` },
+                                { role: 'user', content: prompt },
+                            ],
+                            temperature: 0.3,
+                            max_tokens: 1024,
+                        }),
+                    }).catch((err: any) => {
+                        req.log.warn({ err: err?.message, model: candidateModel }, '[BEVERLY-BOT] Groq fetch timeout/error');
+                        return null;
+                    });
+
+                    if (groqRes && groqRes.ok) {
+                        const data = await groqRes.json() as any;
+                        const text = data.choices?.[0]?.message?.content ?? '';
+                        if (text) {
+                            botResponse = text;
+                            modelUsed = candidateModel;
+                            promptTokens = data.usage?.prompt_tokens ?? 0;
+                            completionTokens = data.usage?.completion_tokens ?? 0;
+                            break;
+                        }
+                    } else if (groqRes) {
+                        const errBody = await groqRes.text().catch(() => '');
+                        req.log.warn({ status: groqRes.status, body: errBody, model: candidateModel }, '[BEVERLY-BOT] Groq model candidate failed, trying next');
+                    }
                 }
             }
 
@@ -123,7 +137,7 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
                         max_tokens: 1024,
                     }),
                 }).catch((err: any) => {
-                    req.log.warn({ err: err?.message }, '[ACOBOT] NVIDIA NIM fetch timeout/error');
+                    req.log.warn({ err: err?.message }, '[BEVERLY-BOT] NVIDIA NIM fetch timeout/error');
                     return null;
                 });
 
@@ -135,10 +149,10 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
                     completionTokens = data.usage?.completion_tokens ?? 0;
                 } else if (nvidiaRes) {
                     const errBody = await nvidiaRes.text().catch(() => '');
-                    req.log.warn({ status: nvidiaRes.status, body: errBody }, '[ACOBOT] NVIDIA NIM API call failed');
+                    req.log.warn({ status: nvidiaRes.status, body: errBody }, '[BEVERLY-BOT] NVIDIA NIM API call failed');
                 }
             } else if (!botResponse && nvidiaApiKey) {
-                req.log.info('[ACOBOT] NVIDIA key detected as NGC legacy — skipping NIM API fallback');
+                req.log.info('[BEVERLY-BOT] NVIDIA key detected as NGC legacy — skipping NIM API fallback');
             }
 
             if (!botResponse && openAiApiKey) {
@@ -159,7 +173,7 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
                         temperature: 0.3,
                     }),
                 }).catch((err: any) => {
-                    req.log.warn({ err: err?.message }, '[ACOBOT] OpenAI fetch timeout/error');
+                    req.log.warn({ err: err?.message }, '[BEVERLY-BOT] OpenAI fetch timeout/error');
                     return null;
                 });
 
@@ -171,7 +185,7 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
                     completionTokens = data.usage?.completion_tokens ?? 0;
                 } else if (openAiRes) {
                     const errBody = await openAiRes.text().catch(() => '');
-                    req.log.warn({ status: openAiRes.status, body: errBody }, '[ACOBOT] OpenAI API call failed');
+                    req.log.warn({ status: openAiRes.status, body: errBody }, '[BEVERLY-BOT] OpenAI API call failed');
                 }
             }
 
@@ -183,17 +197,17 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
                     botResponse = formatOfflineContextAnswer(contextBuild.contextText);
                 } else {
                     botResponse =
-                        `Hi! I'm Beverly AI. I can help you with wallet operations, customer management, vendor data, and system metrics.\n\n` +
+                        `Hi! I'm Beverly Bot (Beverly AI). I can help you with wallet operations, customer management, battery swap fleet telemetry, meter operations, and support.\n\n` +
                         `Try asking:\n` +
                         (actor.type === 'staff'
-                            ? `- "What is the current funding queue?"\n- "Show pending meter approvals"\n- "Daily settlement summary"`
+                            ? `- "What is the current funding queue?"\n- "Show pending meter approvals"\n- "Check battery swap fleet status"\n- "Daily settlement summary"`
                             : actor.type === 'vendor_user'
                             ? `- "What is my float balance?"\n- "Show my settlement history"`
                             : `- "What is my wallet balance?"\n- "Show my last meter order"`);
                 }
             }
         } catch (err: any) {
-            req.log.error(err, '[ACOBOT-ROUTE] Chat completion failed');
+            req.log.error(err, '[BEVERLY-BOT-ROUTE] Chat completion failed');
             botResponse = `Something went wrong while processing your request. Please try again.`;
         }
 
@@ -216,7 +230,7 @@ const acobotRoutes: FastifyPluginAsync = async (fastify) => {
                 model_name: modelUsed,
             });
         } catch (logErr) {
-            req.log.warn(logErr, '[ACOBOT-ROUTE] Audit log insertion failed');
+            req.log.warn(logErr, '[BEVERLY-BOT-ROUTE] Audit log insertion failed');
         }
 
         return reply.send({

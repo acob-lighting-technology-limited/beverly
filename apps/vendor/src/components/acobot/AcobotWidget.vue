@@ -1,5 +1,29 @@
 <template>
   <div class="beverly-ai-widget-wrapper">
+    <!-- Discovery Nudge: sits next to trigger button, auto-appears after 5s if not seen -->
+    <transition name="beverly-nudge">
+      <div v-if="!isOpen && showNudge" class="beverly-ai-nudge-bubble" role="status">
+        <button
+          type="button"
+          class="beverly-ai-nudge-btn"
+          @click="openFromNudge"
+        >
+          👋 Hi <strong>{{ userFirstName }}</strong> — need help with float or vending tokens? Ask <strong>Beverly AI</strong>.
+        </button>
+        <button
+          type="button"
+          class="beverly-ai-nudge-dismiss"
+          @click="dismissNudge"
+          aria-label="Dismiss Beverly AI tip"
+        >
+          <svg class="beverly-svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </transition>
+
     <!-- Responsive Floating Trigger Button with Extensive Outline Bot Head & Signal Ring SVG -->
     <button
       type="button"
@@ -117,7 +141,7 @@
       </header>
 
       <template v-if="!isMinimized">
-        <div ref="messageContainer" class="beverly-ai-messages">
+        <div ref="messageContainer" class="beverly-ai-messages" @click="handleContainerClick">
           <div v-if="messages.length === 0" class="beverly-ai-welcome">
             <!-- Pop-up Greeting Card (Matches reference screenshot) -->
             <div class="beverly-ai-popup-greeting">
@@ -262,11 +286,62 @@
 <script setup lang="ts">
 import { formatAiMessage } from '@beverly/tokens/ai-message';
 import { useAssistantVoice } from '@beverly/tokens/use-assistant-voice';
-import { ref, nextTick, computed, onMounted } from 'vue';
+import { ref, nextTick, computed, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { api } from '../../lib/api';
 import { useVendorAuthStore } from '../../stores/auth';
 
 const auth = useVendorAuthStore();
+const router = useRouter();
+const route = useRoute();
+
+const NUDGE_STORAGE_KEY = 'beverly-ai:nudge-seen';
+const showNudge = ref(false);
+let nudgeTimer: number | null = null;
+
+function dismissNudge() {
+  showNudge.value = false;
+  try {
+    localStorage.setItem(NUDGE_STORAGE_KEY, '1');
+  } catch {}
+}
+
+function openFromNudge() {
+  dismissNudge();
+  isOpen.value = true;
+  scrollToBottom();
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && isOpen.value) {
+    closeWidget();
+  }
+}
+
+function handleContainerClick(event: MouseEvent) {
+  const target = (event.target as HTMLElement)?.closest?.('.beverly-ai-route-link') as HTMLElement | null;
+  if (!target) return;
+  const routePath = target.getAttribute('data-route') || target.getAttribute('href');
+  if (!routePath) return;
+
+  event.preventDefault();
+  closeWidget();
+
+  if (routePath.startsWith('#') || routePath.startsWith('/#')) {
+    window.location.hash = routePath.startsWith('/#') ? routePath.substring(1) : routePath;
+    return;
+  }
+
+  try {
+    const resolved = router.resolve(routePath);
+    if (resolved && resolved.matched.length > 0) {
+      router.push(routePath);
+      return;
+    }
+  } catch {}
+  window.location.href = routePath;
+}
+
 const userFirstName = computed(() => {
   const name = auth.user?.full_name?.trim();
   if (!name) return 'there';
@@ -332,6 +407,23 @@ onMounted(() => {
     const activeDOM = document.documentElement.getAttribute('data-theme') as 'dark' | 'light' | 'executive';
     if (activeDOM) currentTheme.value = activeDOM;
   }
+
+  try {
+    const seen = localStorage.getItem(NUDGE_STORAGE_KEY) === '1';
+    if (!seen) {
+      nudgeTimer = window.setTimeout(() => {
+        if (!isOpen.value) {
+          showNudge.value = true;
+        }
+      }, 5000);
+    }
+  } catch {}
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onBeforeUnmount(() => {
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  window.removeEventListener('keydown', handleKeydown);
 });
 
 function cycleTheme() {
@@ -393,9 +485,11 @@ async function sendPrompt(prompt: string) {
   isThinking.value = true;
 
   try {
+    const currentPath = route?.fullPath || window.location.pathname;
     const data = await api.post<ChatResponse>('/api/v1/acobot/chat', {
       prompt,
       portal: 'vendor',
+      currentPath,
     });
 
     messages.value.push({
@@ -463,6 +557,70 @@ async function sendPrompt(prompt: string) {
   height: 14px;
   stroke: var(--brand-400);
   animation: pulseSparkle 1.5s ease-in-out infinite;
+}
+
+/* Discovery Nudge Bubble (from ACOB ERP) */
+.beverly-ai-nudge-bubble {
+  position: absolute;
+  right: calc(100% + 12px);
+  bottom: 4px;
+  background: var(--surface-2, #1e293b);
+  color: var(--text, #f8fafc);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  max-width: 320px;
+  white-space: normal;
+}
+
+.beverly-ai-nudge-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.beverly-ai-nudge-btn strong {
+  color: var(--brand-400, #10b981);
+}
+
+.beverly-ai-nudge-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #94a3b8);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.beverly-ai-nudge-dismiss:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text, #f8fafc);
+}
+
+.beverly-nudge-enter-active,
+.beverly-nudge-leave-active {
+  transition: all 0.25s ease-out;
+}
+
+.beverly-nudge-enter-from,
+.beverly-nudge-leave-to {
+  opacity: 0;
+  transform: translateX(10px) scale(0.95);
 }
 
 /* Floating Trigger with Beverly Glass & Brand Tokens */
@@ -992,5 +1150,56 @@ async function sendPrompt(prompt: string) {
 @keyframes pulseSparkle {
   0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.8; }
   50% { transform: scale(1.15) rotate(90deg); opacity: 1; }
+}
+
+/* Route Links & Rich Markdown Formatting (from ACOB ERP) */
+:deep(.beverly-ai-route-link) {
+  color: var(--brand-400, #10b981);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+:deep(.beverly-ai-route-link:hover) {
+  opacity: 0.8;
+}
+
+:deep(.beverly-ai-inline-code) {
+  background: var(--surface-3, #334155);
+  color: var(--text, #f8fafc);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+:deep(.beverly-ai-code-block) {
+  background: #090d16;
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 12px;
+  font-family: monospace;
+  margin: 6px 0;
+}
+
+:deep(.beverly-ai-action-card-box) {
+  background: color-mix(in srgb, var(--surface-2, #1e293b) 80%, var(--brand-500, #10b981) 20%);
+  border: 1px solid var(--brand-400, #10b981);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+:deep(.beverly-ai-action-badge) {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--brand-400, #10b981);
+  margin-bottom: 4px;
 }
 </style>

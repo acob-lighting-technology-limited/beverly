@@ -30,6 +30,8 @@ export interface DetectedIntents {
     adminSupport?: boolean;
     adminKycReview?: boolean;
     adminOemConfig?: boolean;
+    batterySwapFleet?: boolean;
+    supportDisputes?: boolean;
     
     // Vendor Intents
     vendorFloatBalance?: boolean;
@@ -69,6 +71,8 @@ export function detectIntentsFromPrompt(prompt: string): DetectedIntents {
         adminSupport: has('support ticket', 'helpdesk', 'live chat', 'support desk'),
         adminKycReview: has('kyc', 'compliance', 'document review', 'identity verification'),
         adminOemConfig: has('oem', 'sparkmeter', 'calinmeter', 'ihemeter', 'hexing', 'conlog', 'sanxing', 'oem credentials', 'meter manufacturer', 'oem endpoints'),
+        batterySwapFleet: has('battery', 'batteries', 'swap', 'soc', '15s', 'cell voltage', 'locker', 'cabinet', 'charging rack', 'immobilizer', 'bike'),
+        supportDisputes: has('dispute', 'ticket', 'support call', 'africa talking', 'call centre', 'caller', 'complaint'),
 
         // Vendor
         vendorFloatBalance: has('my float', 'merchant balance', 'vendor balance', 'organization balance'),
@@ -97,8 +101,9 @@ export interface BuiltAcobotContext {
 
 export async function buildAcobotContext(
     actor: Actor,
-    portal: 'admin' | 'crm' | 'customer' | 'vendor',
+    portal: 'admin' | 'crm' | 'customer' | 'vendor' | 'battery-swap' | 'support-centre',
     userPrompt: string,
+    currentPath?: string | null,
 ): Promise<BuiltAcobotContext> {
     const detectedFlags = detectIntentsFromPrompt(userPrompt);
     const detectedIntents: string[] = [];
@@ -107,10 +112,11 @@ export async function buildAcobotContext(
 
     // Actor Identity Banner
     contextSections.push(
-        `[USER IDENTITY]\n` +
+        `[USER IDENTITY & SESSION]\n` +
         `- Actor Type: ${actor.type}\n` +
         `- User Role: ${actor.role}\n` +
         `- Target Portal: ${portal.toUpperCase()}\n` +
+        (currentPath ? `- Current Active Route: ${currentPath}\n` : '') +
         `- Actor ID: ${actor.actorId}\n` +
         (actor.vendorOrganizationId ? `- Vendor Org ID: ${actor.vendorOrganizationId}\n` : '') +
         (actor.customerId ? `- Customer ID: ${actor.customerId}\n` : '')
@@ -185,9 +191,19 @@ export async function buildAcobotContext(
                 );
             }
 
-            if (portal === 'crm' && intentKey === 'adminDisputes') {
+            if (intentKey === 'adminDisputes' || intentKey === 'supportDisputes') {
                 const { count } = await adminClient.from('disputes').select('id', { count: 'exact', head: true }).eq('status', 'open');
-                contextSections.push(`[DATA: BEVERLY CRM OPEN DISPUTES]\n- Open Disputes Count: ${count ?? 0}`);
+                contextSections.push(`[DATA: BEVERLY CRM & SUPPORT OPEN DISPUTES]\n- Open Disputes Count: ${count ?? 0}\n- Escalation Channel: Africa's Talking WebRTC/SIP Call Centre Integration.`);
+            }
+
+            if (intentKey === 'batterySwapFleet') {
+                contextSections.push(
+                    `[DATA: BATTERY SWAP FLEET & STATIONS]\n` +
+                    `- Operations: Delivery bike fleet with Yunhe smart BMS 15S LiFePO4 batteries.\n` +
+                    `- Active Hubs: Ikeja Central Swap Hub, Victoria Island Hub, Yaba/Surulere Rack.\n` +
+                    `- Monitoring: Real-time 15S cell voltages (nominal 3.2V, max 3.65V), BMS temperature, GPRS GPS tracking, and automated locker cabinet bays.\n` +
+                    `- Immobilizer: Vehicle motor lock/unlock via IoT command for authorized lease enforcement.`
+                );
             }
 
             // ── 3. Vendor Merchant Domain Data & KYC ──
@@ -248,17 +264,11 @@ export async function buildAcobotContext(
                 }
             }
 
-            if (intentKey === 'customerMeterRelayControl' && actor.customerId) {
-                const { data: meters } = await adminClient
-                    .from('meters')
-                    .select('id, meter_number, oem_brand, is_active')
-                    .eq('customer_id', actor.customerId);
-
+            if (intentKey === 'customerMeterRelayControl') {
                 contextSections.push(
-                    `[DATA: CUSTOMER METER RELAY CONTROL]\n` +
-                    `- Linked Smart Meters: ${JSON.stringify(meters ?? [], null, 2)}\n` +
-                    `- Security Policy: Customers ARE PERMITTED to turn off/on their OWN smart meters.\n` +
-                    `- Action Proposal Card Required: Output structured action-card with action "METER_RELAY_OFF" or "METER_RELAY_ON" and meterNumber parameter. User confirms via Vend PIN in UI.`
+                    `[PERMISSION DENIED: customerMeterRelayControl]\n` +
+                    `- Policy: Remote relay control (disconnect/reconnect) is restricted exclusively to authorized utility operations staff.\n` +
+                    `- Enforcement: Customers and vendors are strictly prohibited from switching off or tripping meter relays.`
                 );
             }
 

@@ -1,5 +1,29 @@
 <template>
   <div ref="widgetWrapper" class="beverly-ai-widget-wrapper" :class="{ dragging: isDragging }" :style="widgetPositionStyle">
+    <!-- Discovery Nudge: sits next to trigger button, auto-appears after 5s if not seen -->
+    <transition name="beverly-nudge">
+      <div v-if="!isOpen && showNudge" class="beverly-ai-nudge-bubble" role="status">
+        <button
+          type="button"
+          class="beverly-ai-nudge-btn"
+          @click="openFromNudge"
+        >
+          👋 Hi <strong>{{ userFirstName }}</strong> — need help navigating or troubleshooting? Ask <strong>Beverly AI</strong>.
+        </button>
+        <button
+          type="button"
+          class="beverly-ai-nudge-dismiss"
+          @click="dismissNudge"
+          aria-label="Dismiss Beverly AI tip"
+        >
+          <svg class="beverly-svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </transition>
+
     <!-- Responsive Floating Trigger Button with Extensive Outline Bot Head & Signal Ring SVG -->
     <button
       type="button"
@@ -121,7 +145,7 @@
       </header>
 
       <template v-if="!isMinimized">
-        <div ref="messageContainer" class="beverly-ai-messages">
+        <div ref="messageContainer" class="beverly-ai-messages" @click="handleContainerClick">
           <div v-if="messages.length === 0" class="beverly-ai-welcome">
             <!-- Pop-up Greeting Card (Matches reference screenshot) -->
             <div class="beverly-ai-popup-greeting">
@@ -143,7 +167,7 @@
               <span class="beverly-ai-try-asking-title">Try asking</span>
               <div class="beverly-ai-chip-grid-2x2">
                 <button
-                  v-for="chip in quickChips"
+                  v-for="chip in activeChips"
                   :key="chip.label"
                   type="button"
                   class="beverly-ai-chip-card"
@@ -281,12 +305,63 @@
 
 <script setup lang="ts">
 import { ref, nextTick, computed, onBeforeUnmount, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { api } from '../../lib/api';
 import { useStaffAuthStore } from '../../stores/auth';
 import { formatAiMessage } from '@beverly/tokens/ai-message';
 import { useAssistantVoice } from '@beverly/tokens/use-assistant-voice';
 
 const auth = useStaffAuthStore();
+const router = useRouter();
+const route = useRoute();
+
+const NUDGE_STORAGE_KEY = 'beverly-ai:nudge-seen';
+const showNudge = ref(false);
+let nudgeTimer: number | null = null;
+
+function dismissNudge() {
+  showNudge.value = false;
+  try {
+    localStorage.setItem(NUDGE_STORAGE_KEY, '1');
+  } catch {}
+}
+
+function openFromNudge() {
+  dismissNudge();
+  isOpen.value = true;
+  scrollToBottom();
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && isOpen.value) {
+    closeWidget();
+  }
+}
+
+function handleContainerClick(event: MouseEvent) {
+  const target = (event.target as HTMLElement)?.closest?.('.beverly-ai-route-link') as HTMLElement | null;
+  if (!target) return;
+  const routePath = target.getAttribute('data-route') || target.getAttribute('href');
+  if (!routePath) return;
+
+  event.preventDefault();
+  closeWidget();
+
+  if (routePath.startsWith('#') || routePath.startsWith('/#')) {
+    window.location.hash = routePath.startsWith('/#') ? routePath.substring(1) : routePath;
+    return;
+  }
+
+  try {
+    const resolved = router.resolve(routePath);
+    if (resolved && resolved.matched.length > 0) {
+      router.push(routePath);
+      return;
+    }
+  } catch {}
+  window.location.href = routePath;
+}
+
 const userFirstName = computed(() => {
   const name = auth.user?.full_name?.trim();
   if (!name) return 'there';
@@ -354,9 +429,25 @@ onMounted(() => {
   }
   restoreWidgetPosition();
   window.addEventListener('resize', clampWidgetPosition);
+
+  try {
+    const seen = localStorage.getItem(NUDGE_STORAGE_KEY) === '1';
+    if (!seen) {
+      nudgeTimer = window.setTimeout(() => {
+        if (!isOpen.value) {
+          showNudge.value = true;
+        }
+      }, 5000);
+    }
+  } catch {}
+  window.addEventListener('keydown', handleKeydown);
 });
 
-onBeforeUnmount(() => window.removeEventListener('resize', clampWidgetPosition));
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', clampWidgetPosition);
+  if (nudgeTimer) clearTimeout(nudgeTimer);
+  window.removeEventListener('keydown', handleKeydown);
+});
 
 function clampPosition(x: number, y: number) {
   const rect = widgetWrapper.value?.getBoundingClientRect();
@@ -533,6 +624,72 @@ const quickChips = computed(() => {
   ];
 });
 
+// Dynamic context-aware chips based on active route
+const activeChips = computed(() => {
+  const path = (route?.fullPath || '').toLowerCase();
+  if (path.includes('battery') || path.includes('swap')) {
+    return [
+      {
+        label: 'Battery Swap Queue',
+        iconPath: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+      },
+      {
+        label: 'Check 15S Cell Voltages',
+        iconPath: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z',
+      },
+      {
+        label: 'Locker Cabinet Bay Status',
+        iconPath: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 4h16M4 12h16M4 16h16',
+      },
+      {
+        label: 'Pending Approvals',
+        iconPath: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+      },
+    ];
+  }
+  if (path.includes('meter') || path.includes('amr') || path.includes('consumption')) {
+    return [
+      {
+        label: 'Meter Approvals Queue',
+        iconPath: 'M19 11H5m14 0a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2m14 0V9a2 2 0 0 0-2-2M5 11V9a2 2 0 0 1 2-2m0 0V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2M7 7h10',
+      },
+      {
+        label: 'AMR Telemetry Ingestion',
+        iconPath: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
+      },
+      {
+        label: 'Fix Meter Error 02',
+        iconPath: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
+      },
+      {
+        label: 'Operations Exceptions',
+        iconPath: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+      },
+    ];
+  }
+  if (path.includes('settlement') || path.includes('float') || path.includes('wallet') || path.includes('funding')) {
+    return [
+      {
+        label: 'Float Liquidity Report',
+        iconPath: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+      },
+      {
+        label: 'Daily Settlement Rollup',
+        iconPath: 'M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+      },
+      {
+        label: 'Operations Exceptions',
+        iconPath: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+      },
+      {
+        label: 'Reconcile Discrepancy',
+        iconPath: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
+      },
+    ];
+  }
+  return quickChips.value;
+});
+
 function toggleWidget() {
   isOpen.value = !isOpen.value;
   if (isOpen.value) scrollToBottom();
@@ -576,9 +733,11 @@ async function sendPrompt(prompt: string) {
   isThinking.value = true;
 
   try {
+    const currentPath = route?.fullPath || window.location.pathname;
     const data = await api.post<ChatResponse>('/api/v1/acobot/chat', {
       prompt,
       portal: props.portal,
+      currentPath,
     });
 
     messages.value.push({
@@ -668,6 +827,70 @@ onMounted(() => {
   height: 14px;
   stroke: var(--brand-400);
   animation: pulseSparkle 1.5s ease-in-out infinite;
+}
+
+/* Discovery Nudge Bubble (from ACOB ERP) */
+.beverly-ai-nudge-bubble {
+  position: absolute;
+  right: calc(100% + 12px);
+  bottom: 4px;
+  background: var(--surface-2, #1e293b);
+  color: var(--text, #f8fafc);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  max-width: 320px;
+  white-space: normal;
+}
+
+.beverly-ai-nudge-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.beverly-ai-nudge-btn strong {
+  color: var(--brand-400, #10b981);
+}
+
+.beverly-ai-nudge-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #94a3b8);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.beverly-ai-nudge-dismiss:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text, #f8fafc);
+}
+
+.beverly-nudge-enter-active,
+.beverly-nudge-leave-active {
+  transition: all 0.25s ease-out;
+}
+
+.beverly-nudge-enter-from,
+.beverly-nudge-leave-to {
+  opacity: 0;
+  transform: translateX(10px) scale(0.95);
 }
 
 /* Floating Trigger with Beverly Glass & Brand Tokens */
@@ -1202,5 +1425,56 @@ onMounted(() => {
 @keyframes pulseSparkle {
   0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.8; }
   50% { transform: scale(1.15) rotate(90deg); opacity: 1; }
+}
+
+/* Route Links & Rich Markdown Formatting (from ACOB ERP) */
+:deep(.beverly-ai-route-link) {
+  color: var(--brand-400, #10b981);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+:deep(.beverly-ai-route-link:hover) {
+  opacity: 0.8;
+}
+
+:deep(.beverly-ai-inline-code) {
+  background: var(--surface-3, #334155);
+  color: var(--text, #f8fafc);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+:deep(.beverly-ai-code-block) {
+  background: #090d16;
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 12px;
+  font-family: monospace;
+  margin: 6px 0;
+}
+
+:deep(.beverly-ai-action-card-box) {
+  background: color-mix(in srgb, var(--surface-2, #1e293b) 80%, var(--brand-500, #10b981) 20%);
+  border: 1px solid var(--brand-400, #10b981);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+:deep(.beverly-ai-action-badge) {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--brand-400, #10b981);
+  margin-bottom: 4px;
 }
 </style>

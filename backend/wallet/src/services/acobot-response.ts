@@ -31,7 +31,7 @@ export function formatOfflineContextAnswer(contextText: string): string {
     const answer = contextText
         .split(/\n{2,}/)
         .map((section) => section.trim())
-        .filter((section) => section && !section.startsWith('[USER IDENTITY]'))
+        .filter((section) => section && !section.startsWith('[USER IDENTITY'))
         .map((section) => {
             if (/^\[DATA:/i.test(section)) return formatDataSection(section);
             return section

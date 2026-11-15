@@ -1,5 +1,29 @@
 <template>
   <div class="beverly-ai-widget-wrapper">
+    <!-- Discovery Nudge: sits next to trigger button, auto-appears after 5s if not seen -->
+    <transition name="beverly-nudge">
+      <div v-if="!isOpen && showNudge" class="beverly-ai-nudge-bubble" role="status">
+        <button
+          type="button"
+          class="beverly-ai-nudge-btn"
+          @click="openFromNudge"
+        >
+          👋 Hi <strong>{{ userFirstName }}</strong> — need to find something? Ask <strong>Beverly AI</strong>.
+        </button>
+        <button
+          type="button"
+          class="beverly-ai-nudge-dismiss"
+          @click="dismissNudge"
+          aria-label="Dismiss Beverly AI tip"
+        >
+          <svg class="beverly-svg-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </transition>
+
     <!-- Responsive Floating Trigger Button with Bot Head & Orbital Antenna -->
     <BaseButton
       class="beverly-ai-trigger-btn"
@@ -58,7 +82,7 @@
       </header>
 
       <template v-if="!isMinimized">
-        <div ref="messageContainer" class="beverly-ai-messages">
+        <div ref="messageContainer" class="beverly-ai-messages" @click="handleContainerClick">
           <div v-if="messages.length === 0" class="beverly-ai-welcome">
             <!-- Pop-up Greeting Card -->
             <div class="beverly-ai-popup-greeting">
@@ -75,12 +99,12 @@
               </div>
             </div>
 
-            <!-- "Try asking" 2x2 Grid -->
+            <!-- Context-Aware Dynamic "Try asking" 2x2 Grid -->
             <div class="beverly-ai-try-asking-section">
               <span class="beverly-ai-try-asking-title">Try asking</span>
               <div class="beverly-ai-chip-grid-2x2">
                 <button
-                  v-for="chip in quickChips"
+                  v-for="chip in activeChips"
                   :key="chip.label"
                   type="button"
                   class="beverly-ai-chip-card"
@@ -181,6 +205,7 @@
             </button>
 
             <input
+              ref="chatInput"
               v-model="inputPrompt"
               type="text"
               class="beverly-ai-input"
@@ -213,6 +238,8 @@ import { currentUserInfo } from "../../services/api";
 import BaseButton from "../base/BaseButton.vue";
 import { formatAiMessage } from "@beverly/tokens/ai-message";
 
+const NUDGE_STORAGE_KEY = "beverly-ai:nudge-seen";
+
 export default {
   name: "AcobotWidget",
   components: { BaseButton },
@@ -220,6 +247,8 @@ export default {
     return {
       isOpen: false,
       isMinimized: false,
+      showNudge: false,
+      nudgeTimer: null,
       inputPrompt: "",
       isThinking: false,
       isListening: false,
@@ -252,14 +281,76 @@ export default {
       if (!name.trim()) return "Operator";
       return name.trim().split(" ")[0];
     },
+    activeChips() {
+      const hash = (window.location.hash || window.location.pathname || "").toLowerCase();
+      if (hash.includes("battery") || hash.includes("fleet") || hash.includes("station") || hash.includes("rack") || hash.includes("crm")) {
+        return [
+          { label: "15S Cell Diagnostics", iconPath: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+          { label: "Station Locker Status", iconPath: "M4 6h16M4 12h16M4 18h16" },
+          { label: "Live GPS Tracker Map", iconPath: "M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8z" },
+          { label: "Rider Lease CRM", iconPath: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" },
+        ];
+      }
+      if (hash.includes("wallet") || hash.includes("funding") || hash.includes("settlement") || hash.includes("vending")) {
+        return [
+          { label: "Current Funding Queue", iconPath: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V6m0 12v-2" },
+          { label: "Daily Settlement Summary", iconPath: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+          { label: "STS Tariffs & VAT 7.5%", iconPath: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+          { label: "Reconciliation Audit", iconPath: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
+        ];
+      }
+      if (hash.includes("meter") || hash.includes("daily-data") || hash.includes("consumption")) {
+        return [
+          { label: "Interval AMR Readings", iconPath: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18M12 7v5l3 2" },
+          { label: "Station Consumption Trends", iconPath: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+          { label: "Abnormal Tamper Alarms", iconPath: "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+          { label: "SparkMeter Koios Sandbox", iconPath: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
+        ];
+      }
+      return this.quickChips;
+    },
   },
   mounted() {
     window.addEventListener("beverly-ai-open-prompt", this.onGlobalPromptEvent);
+    window.addEventListener("keydown", this.onKeydown);
+
+    // One-time discovery nudge (ACOB ERP feature): appears after 5s if never seen
+    try {
+      const seen = window.localStorage.getItem(NUDGE_STORAGE_KEY) === "1";
+      if (!seen) {
+        this.nudgeTimer = setTimeout(() => {
+          if (!this.isOpen) {
+            this.showNudge = true;
+          }
+        }, 5000);
+      }
+    } catch (e) {
+      // Storage unavailable in private modes
+    }
   },
   beforeUnmount() {
     window.removeEventListener("beverly-ai-open-prompt", this.onGlobalPromptEvent);
+    window.removeEventListener("keydown", this.onKeydown);
+    if (this.nudgeTimer) clearTimeout(this.nudgeTimer);
   },
   methods: {
+    onKeydown(e) {
+      if (e.key === "Escape" && this.isOpen) {
+        this.closeWidget();
+      }
+    },
+    dismissNudge() {
+      this.showNudge = false;
+      try {
+        window.localStorage.setItem(NUDGE_STORAGE_KEY, "1");
+      } catch (e) {}
+    },
+    openFromNudge() {
+      this.dismissNudge();
+      this.isOpen = true;
+      this.scrollToBottom();
+      this.focusInput();
+    },
     onGlobalPromptEvent(e) {
       const promptText = e.detail?.prompt;
       if (promptText) {
@@ -269,11 +360,22 @@ export default {
       }
     },
     toggleWidget() {
+      this.dismissNudge();
       this.isOpen = !this.isOpen;
-      if (this.isOpen) this.scrollToBottom();
+      if (this.isOpen) {
+        this.scrollToBottom();
+        this.focusInput();
+      }
     },
     closeWidget() {
       this.isOpen = false;
+    },
+    focusInput() {
+      this.$nextTick(() => {
+        if (this.$refs.chatInput) {
+          this.$refs.chatInput.focus();
+        }
+      });
     },
     scrollToBottom() {
       this.$nextTick(() => {
@@ -284,6 +386,23 @@ export default {
     },
     formatMessage(text) {
       return formatAiMessage(text);
+    },
+    handleContainerClick(e) {
+      const link = e.target.closest(".beverly-ai-route-link");
+      if (!link) return;
+      const route = link.getAttribute("data-route") || link.getAttribute("href");
+      if (!route) return;
+
+      if (route.startsWith("#") || route.startsWith("/")) {
+        e.preventDefault();
+        if (this.$router) {
+          const target = route.startsWith("#") ? route.slice(1) : route;
+          this.$router.push(target).catch(() => {});
+        } else {
+          window.location.hash = route.startsWith("#") ? route : `#${route}`;
+        }
+        this.closeWidget();
+      }
     },
     copyText(text) {
       navigator.clipboard.writeText(text);
@@ -338,9 +457,11 @@ export default {
       this.isThinking = true;
 
       try {
+        const currentPath = window.location.hash || window.location.pathname;
         const res = await apiClient.post("/v1/acobot/chat", {
           prompt,
           portal: "crm",
+          currentPath,
         });
         const data = res.data || {};
         this.messages.push({
@@ -374,10 +495,72 @@ export default {
 <style scoped>
 .beverly-ai-widget-wrapper {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  right: 16px;
   z-index: 9999;
   font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+/* Discovery Nudge Bubble (from ACOB ERP) */
+.beverly-ai-nudge-bubble {
+  position: absolute;
+  right: calc(100% + 12px);
+  bottom: 4px;
+  background: var(--surface-2, #1e293b);
+  color: var(--text, #f8fafc);
+  border: 1px solid var(--brand-glow, rgba(16, 185, 129, 0.4));
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 12px;
+  max-width: 280px;
+  white-space: normal;
+  z-index: 9998;
+}
+
+.beverly-ai-nudge-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.beverly-ai-nudge-btn strong {
+  color: var(--primary, #10b981);
+}
+
+.beverly-ai-nudge-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #94a3b8);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.beverly-ai-nudge-dismiss:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text, #f8fafc);
+}
+
+.beverly-nudge-enter-active,
+.beverly-nudge-leave-active {
+  transition: all 0.25s ease-out;
+}
+
+.beverly-nudge-enter-from,
+.beverly-nudge-leave-to {
+  opacity: 0;
+  transform: translateX(10px) scale(0.95);
 }
 
 .beverly-ai-trigger-btn {
@@ -411,15 +594,13 @@ export default {
 
 .beverly-ai-modal {
   position: fixed;
-  bottom: 84px;
-  right: 24px;
-  width: 380px;
-  height: 560px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 100px);
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  right: 12px;
+  width: min(380px, calc(100vw - 24px));
+  height: min(530px, calc(100dvh - 100px));
   border-radius: 16px;
   background: var(--surface, #0f172a);
-  border: 1px solid var(--border-strong, #334155);
+  border: 1px solid var(--border-color, #334155);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
@@ -434,9 +615,9 @@ export default {
 }
 
 .beverly-ai-header {
-  padding: 14px 16px;
+  padding: 10px 14px;
   background: var(--surface-2, #1e293b);
-  border-bottom: 1px solid var(--border-strong, #334155);
+  border-bottom: 1px solid var(--border-color, #334155);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -458,7 +639,8 @@ export default {
   width: 100%;
   height: 100%;
   border-radius: 50%;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: var(--brand-mark-url, url('/brand/beverly-mark.png')) center / contain no-repeat var(--surface-2, #1e293b);
+  border: 1px solid var(--primary, #16a34a);
 }
 
 .beverly-ai-status-dot {
@@ -468,7 +650,7 @@ export default {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #10b981;
+  background: var(--primary, #16a34a);
   border: 2px solid #0f172a;
 }
 
@@ -508,9 +690,14 @@ export default {
   height: 16px;
 }
 
+.beverly-svg-icon-xs {
+  width: 12px;
+  height: 12px;
+}
+
 .beverly-ai-messages {
   flex: 1;
-  padding: 16px;
+  padding: 12px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -519,117 +706,117 @@ export default {
 
 .beverly-ai-popup-greeting {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  margin-bottom: 16px;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2, #1e293b) 90%, var(--primary, #16a34a));
+  border: 1px solid color-mix(in srgb, var(--primary, #16a34a) 32%, transparent);
 }
 
 .beverly-ai-popup-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #1e293b;
-  display: grid;
-  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--primary, #16a34a);
   flex-shrink: 0;
-  color: #34d399;
-  border: 1px solid #10b981;
-}
-
-.beverly-ai-popup-avatar svg {
-  width: 18px;
-  height: 18px;
+  margin-top: 2px;
 }
 
 .beverly-ai-popup-body p {
   margin: 0;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.4;
   color: var(--text, #f8fafc);
 }
 
+.beverly-ai-try-asking-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .beverly-ai-try-asking-title {
-  display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
+  text-transform: uppercase;
   color: var(--text-dim, #94a3b8);
-  margin-bottom: 10px;
+  letter-spacing: 0.05em;
 }
 
 .beverly-ai-chip-grid-2x2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 8px;
 }
 
 .beverly-ai-chip-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 9px;
   border-radius: 10px;
   background: var(--surface-2, #1e293b);
-  border: 1px solid var(--border-strong, #334155);
+  border: 1px solid var(--border-color, #334155);
   color: var(--text, #f8fafc);
   font-size: 12px;
-  font-weight: 600;
   cursor: pointer;
   text-align: left;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .beverly-ai-chip-card:hover {
-  background: #334155;
-  border-color: #10b981;
-  color: #34d399;
-  transform: translateY(-2px);
+  background: var(--surface-3, #334155);
+  border-color: var(--primary, #16a34a);
+  color: var(--primary, #16a34a);
 }
 
 .beverly-chip-icon-box {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: #0f172a;
-  display: grid;
-  place-items: center;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  color: #10b981;
 }
 
 .beverly-chip-icon-box svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
 }
 
 .beverly-ai-msg-row {
   display: flex;
-  flex-direction: column;
+  width: 100%;
 }
 
-.user-row { align-items: flex-end; }
-.bot-row { align-items: flex-start; }
+.beverly-ai-msg-row.user-row {
+  justify-content: flex-end;
+}
+
+.beverly-ai-msg-row.bot-row {
+  justify-content: flex-start;
+}
 
 .beverly-ai-msg-bubble {
   max-width: 85%;
-  padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: 14px;
+  padding: 10px 12px;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.45;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .user-row .beverly-ai-msg-bubble {
-  background: #10b981;
+  background: var(--primary, #10b981);
   color: #ffffff;
+  border-bottom-right-radius: 4px;
 }
 
 .bot-row .beverly-ai-msg-bubble {
   background: var(--surface-2, #1e293b);
+  border: 1px solid var(--border-color, #334155);
   color: var(--text, #f8fafc);
-  border: 1px solid var(--border-strong, #334155);
+  border-bottom-left-radius: 4px;
 }
 
 .beverly-ai-msg-sender {
@@ -637,9 +824,9 @@ export default {
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   margin-bottom: 4px;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .beverly-ai-sender-tag {
@@ -648,52 +835,62 @@ export default {
   gap: 4px;
 }
 
-.beverly-svg-icon-xs {
-  width: 14px;
-  height: 14px;
-}
-
 .beverly-copy-btn {
   background: transparent;
   border: none;
   color: inherit;
   cursor: pointer;
-  opacity: 0.7;
+  padding: 2px;
+  border-radius: 4px;
 }
 
-.beverly-copy-btn:hover { opacity: 1; }
+.beverly-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.beverly-ai-denied-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 600;
+}
 
 .beverly-ai-retry-wrapper {
   margin-top: 8px;
-  display: flex;
 }
 
 .beverly-ai-retry-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: #334155;
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  color: #34d399;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
   font-size: 12px;
-  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .beverly-ai-retry-btn:hover {
-  background: #10b981;
-  color: #ffffff;
+  background: rgba(239, 68, 68, 0.35);
 }
 
 .beverly-ai-thinking {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
   color: var(--text-dim, #94a3b8);
+  font-size: 12px;
+  padding: 4px 8px;
 }
 
 .beverly-svg-sparkle {
@@ -709,9 +906,9 @@ export default {
 }
 
 .beverly-ai-footer {
-  padding: 12px 16px;
+  padding: 9px 12px;
   background: var(--surface-2, #1e293b);
-  border-top: 1px solid var(--border-strong, #334155);
+  border-top: 1px solid var(--border-color, #334155);
 }
 
 .beverly-ai-input-wrap {
@@ -719,9 +916,14 @@ export default {
   align-items: center;
   gap: 8px;
   background: var(--surface, #0f172a);
-  border: 1px solid var(--border-strong, #334155);
+  border: 1px solid var(--border-color, #334155);
   border-radius: 10px;
   padding: 4px 8px;
+  transition: border-color 0.15s ease;
+}
+
+.beverly-ai-input-wrap:focus-within {
+  border-color: var(--primary, #16a34a);
 }
 
 .beverly-ai-input {
@@ -751,46 +953,64 @@ export default {
   cursor: not-allowed;
 }
 
-/* Match the wallet assistant's surfaces and keep the console usable on phones. */
-.beverly-ai-widget-wrapper {
-  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  right: 16px;
+/* Route Links & Rich Markdown Formatting (from ACOB ERP) */
+:deep(.beverly-ai-route-link) {
+  color: var(--primary, #10b981);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: opacity 0.15s;
 }
-.beverly-ai-modal {
-  width: min(380px, calc(100vw - 24px));
-  height: min(520px, calc(100dvh - 112px));
-  max-width: none;
-  max-height: none;
-  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
-  right: 12px;
-  background: var(--surface);
-  border-color: var(--border-color, var(--border-strong));
-  color: var(--text-main, var(--text));
+
+:deep(.beverly-ai-route-link:hover) {
+  opacity: 0.8;
 }
-.beverly-ai-header,
-.beverly-ai-footer { background: var(--surface-2); border-color: var(--border-color, var(--border-strong)); }
-.beverly-ai-header { padding: 10px 12px; }
-.beverly-ai-avatar {
-  background: var(--brand-mark-url, url('/brand/beverly-mark.png')) center / contain no-repeat var(--surface-2);
-  border: 1px solid var(--primary, #16a34a);
+
+:deep(.beverly-ai-inline-code) {
+  background: var(--surface-3, #334155);
+  color: var(--text, #f8fafc);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
 }
-.beverly-ai-status-dot { background: var(--primary, #16a34a); }
-.beverly-ai-messages { padding: 12px; }
-.beverly-ai-popup-greeting {
+
+:deep(.beverly-ai-code-block) {
+  background: #090d16;
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 8px;
   padding: 10px 12px;
-  margin-bottom: 10px;
-  background: color-mix(in srgb, var(--surface-2) 90%, var(--primary, #16a34a));
-  border-color: color-mix(in srgb, var(--primary, #16a34a) 32%, transparent);
+  overflow-x: auto;
+  font-size: 12px;
+  font-family: monospace;
+  margin: 6px 0;
 }
-.beverly-ai-chip-grid-2x2 { gap: 8px; }
-.beverly-ai-chip-card { padding: 9px; background: var(--surface-2); border-color: var(--border-color, var(--border-strong)); }
-.beverly-ai-chip-card:hover { background: var(--surface-3, var(--surface-2)); color: var(--primary, #16a34a); }
-.beverly-ai-footer { padding: 9px 12px; }
-.beverly-ai-input-wrap { border-color: var(--border-color, var(--border-strong)); }
-.beverly-ai-input-wrap:focus-within { border-color: var(--primary, #16a34a); }
+
+:deep(.beverly-ai-action-card-box) {
+  background: color-mix(in srgb, var(--surface-2, #1e293b) 80%, var(--primary, #10b981) 20%);
+  border: 1px solid var(--primary, #10b981);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+:deep(.beverly-ai-action-badge) {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--primary, #10b981);
+  margin-bottom: 4px;
+}
 
 @media (max-width: 600px) {
   .beverly-ai-widget-wrapper { right: 12px; }
+  .beverly-ai-nudge-bubble {
+    right: 0;
+    bottom: 58px;
+    max-width: calc(100vw - 32px);
+  }
   .beverly-ai-modal {
     width: calc(100vw - 16px);
     height: min(510px, calc(100dvh - 96px));
@@ -808,6 +1028,7 @@ export default {
 @media (prefers-reduced-motion: reduce) {
   .beverly-ai-modal,
   .beverly-ai-trigger-btn,
-  .beverly-ai-chip-card { animation: none; transition: none; }
+  .beverly-ai-chip-card,
+  .beverly-ai-nudge-bubble { animation: none; transition: none; }
 }
 </style>
