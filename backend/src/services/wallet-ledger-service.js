@@ -1,5 +1,14 @@
 "use strict";
 
+/**
+ * Legacy local-facade wallet ledger.
+ *
+ * Backs api/reference.js against the file-based local-database only. The
+ * canonical production ledger is backend/wallet/src/services/ledger.ts.
+ * Tech debt: retire this module once the reference facade no longer serves
+ * wallet demo routes. Do not add new money features here.
+ */
+
 const crypto = require("crypto");
 const { ensureDatabase } = require("./local-database");
 

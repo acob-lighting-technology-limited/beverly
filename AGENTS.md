@@ -29,11 +29,10 @@ npm run test:wallet           # wallet ledger, vending, quota circuits
 npm run test:security         # RLS, authz, secret boundaries
 npm run test:oem              # SparkMeter Koios v2, Calinmeter, OEM contracts
 npm run test:smart-metering   # AMR ingestion, consumption reconciliation
-npm run test:support-centre   # Call centre UX, dispute pipeline
 npm run test:browser          # Playwright E2E browser tests
 ```
 
-- **Full monorepo build**: `npm run build` compiles all 6 monorepo applications, backend, and root Vite. Use targeted package builds during development; run `npm run build` or `npm test` before concluding major multi-package initiatives.
+- **Full monorepo build**: `npm run build` compiles all 5 monorepo applications, backend, and root Vite. Use targeted package builds during development; run `npm run build` or `npm test` before concluding major multi-package initiatives.
 - **Commit only when the user says a piece is done.** Leave changes uncommitted while the user is reviewing or asking for tweaks. When they say a feature or request is done, make one commit for it, following the [Commit Grouping Strategy](#6-commit-grouping-strategy--mandatory-before-any-commit). Do **not** commit each tweak as it lands, half-done work, exploratory edits, or "WIP".
 - **Database Migration Execution**: If any `.sql` migrations were created or modified under `supabase/migrations/`:
   - **Always run `npx supabase migration list` to determine actual deployment status.** This is the sole source of truth — not `git status`.
@@ -74,9 +73,9 @@ The same honesty applies to `AGENTS.md`. It is written by people and agents, and
 ### Monorepo Boundaries & File Organization
 The Beverly repository is organized as a pnpm monorepo:
 - `apps/admin/` (`@beverly/admin-app`): Vue 3 operations and CRM back-office.
-- `apps/battery-swap/` (`@beverly/battery-swap-app`): Yunhe OEM battery operations, 15S cell telemetry inspector, locker cabinet controllers, site inventory, and CRM IoT immobilizer controls.
+- `apps/battery-swap/` (`@beverly/battery-swap-app`): **Beverly PUE** portal. Sign-in lands on the PUE Hub (`/hub`), which opens Battery Swap Stations (Yunhe OEM battery operations, 15S cell telemetry inspector, locker cabinet controllers, site inventory, CRM IoT immobilizer) or Electronic Appliances (not built yet). Directory and package names keep `battery-swap` so build and deploy paths stay stable.
 - `apps/customer/` (`@beverly/customer-app`): Customer self-service portal.
-- `apps/support-centre/` (`@beverly/support-centre-app`): Call centre operations, Africa's Talking compatibility, and ticket/dispute management.
+- Beverly Call (call centre) is a separate project in its own folder, not part of this monorepo. It signs staff in against the shared Supabase `users` table and must honour `users.portal_access` (`call`).
 - `apps/vendor/` (`@beverly/vendor-app`): Vendor vending, STS tokens, and wallet workflows.
 - `apps/wallet-landing/` (`@beverly/landing-app`): Public portal routing and authentication landing.
 - `packages/oem-contracts/` (`@beverly/oem-contracts`): Shared canonical OEM gateway types and runtime schema validation.

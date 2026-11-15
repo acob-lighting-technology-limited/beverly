@@ -53,7 +53,7 @@ flowchart TD
 | :---: | :--- | :--- | :--- |
 | **P0** | **Critical Ledger / Security Failure** | Append-only ledger violation, un-idempotent vend, RLS bypass, or leaked service credentials. | `npm run test:wallet`, `npm run test:security`, `node tests/api-authz.test.cjs` |
 | **P1** | **Telemetry / Hardware Disruption** | AMR meter drop, SparkMeter quarantine stall, Yunhe battery communication drop, or unverified IoT immobilizer state. | `npm run test:smart-metering`, `npm run test:oem`, `node scripts/test-battery-swap-full-trace.js` |
-| **P2** | **App & Portal Functional Delivery** | Battery swap fleet view, customer portal onboarding, support centre call routing, table pagination. | `npm run test:browser`, `npm run test:support-centre`, `npm run build` |
+| **P2** | **App & Portal Functional Delivery** | Battery swap fleet view, customer portal onboarding, table pagination. | `npm run test:browser`, `npm run build` |
 | **P3** | **Design Token & Style Hygiene** | Token mapping in `@beverly/tokens`, contrast adjustments, component cleanups. | `npm run hardening:audit`, `npm run flow:audit` |
 
 ---
@@ -68,7 +68,6 @@ Tasks must only be routed to specialists owning the actual directories and servi
 | **Battery Swap Operations** | `@battery-swap-specialist` | `apps/battery-swap/` | `node scripts/test-battery-swap-full-trace.js` |
 | **Canonical Wallet Backend** | `@wallet-backend-specialist` | `backend/wallet/`, `backend/src/services/wallet*` | `npm run test:wallet` |
 | **OEM Gateways & Adapters** | `@oem-gateway-specialist` | `packages/oem-contracts/`, `backend/wallet/src/adapters/` | `npm run test:oem` |
-| **Support Centre & Disputes** | `@support-centre-specialist`| `apps/support-centre/`, `docs/SUPPORT_CENTRE*` | `npm run test:support-centre` |
 | **Frontend Portals & Tokens** | `@frontend-apps-specialist` | `apps/admin/`, `apps/vendor/`, `apps/customer/`, `packages/tokens/` | `npm run test:browser` |
 | **Supabase Migrations & RLS** | `@database-migrations-specialist` | `supabase/migrations/`, `supabase/rollbacks/` | `node tests/supabase-migrations.test.cjs` |
 | **QA, Hardening & Preflight** | `@qa-verification-specialist` | `tests/`, `tools/`, `.github/workflows/` | `npm run typecheck && npm run hardening:audit` |
@@ -80,13 +79,11 @@ Tasks must only be routed to specialists owning the actual directories and servi
 1. **Yunhe OEM Battery Swap Pipeline**:
    - Complete 15S cell inspector telemetry, site locker distribution, and IoT immobilizer controls in `apps/battery-swap`.
    - Maintain Vite dev server port 5177 with safe host binding.
-2. **Support Centre Africa's Talking Integration**:
-   - Ticket escalation and dispute pipeline integration in `apps/support-centre`.
-3. **Multi-OEM Contract Integrity**:
+2. **Multi-OEM Contract Integrity**:
    - Maintain runtime contracts in `packages/oem-contracts` for SparkMeter Koios v2 and Calinmeter v1.
-4. **Hermetic Test Suite Enforcement**:
+3. **Hermetic Test Suite Enforcement**:
    - Prevent default test runs from making unauthorized outbound calls or assuming live network state.
-5. **Beverly Bot Alignment & Zero-Hallucination Integrity**:
+4. **Beverly Bot Alignment & Zero-Hallucination Integrity**:
    - Ensure Beverly Bot (Beverly AI) operates strictly under Beverly ecosystem identity with zero references to external bot brands (never "AcoBot").
    - Enforce grounded policies: relay control blocked for customers/vendors, tamper reset token generation prohibited for all roles via AI, zero measurement/telemetry spoofing, resilient Groq cascade (`openai/gpt-oss-120b` fallback) with offline structured context answering.
 6. **WhatsApp-Grade PWA Web Push & Background Delivery**:

@@ -22,7 +22,6 @@ You are the **Boss Agent** and Chief Technical Orchestrator for the Beverly proj
    - `apps/battery-swap/` -> `@battery-swap-specialist`
    - `backend/wallet/` & financial services -> `@wallet-backend-specialist`
    - `packages/oem-contracts/` & adapters -> `@oem-gateway-specialist`
-   - `apps/support-centre/` & dispute flows -> `@support-centre-specialist`
    - `apps/admin/`, `apps/vendor/`, `apps/customer/`, `@beverly/tokens` -> `@frontend-apps-specialist`
    - `supabase/migrations/` & RLS policies -> `@database-migrations-specialist`
    - Test suites, audits & smoke tools -> `@qa-verification-specialist`
@@ -30,4 +29,4 @@ You are the **Boss Agent** and Chief Technical Orchestrator for the Beverly proj
    - `npm run typecheck`
    - `npm run build`
    - `npm run hardening:audit`
-   - Domain-specific tests (`test:wallet`, `test:oem`, `test:smart-metering`, `test:support-centre`, `test:browser`)
+   - Domain-specific tests (`test:wallet`, `test:oem`, `test:smart-metering`, `test:browser`)
