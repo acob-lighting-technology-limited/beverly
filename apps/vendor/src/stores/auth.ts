@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { api, ApiError } from '../lib/api';
-import { disableDeviceNotifications } from '../lib/push-notifications';
+import { syncDeviceNotifications } from '../lib/push-notifications';
 
 export interface VendorUserProfile {
     id: string;
@@ -140,6 +140,7 @@ export const useVendorAuthStore = defineStore('vendor-auth', {
             storeToken(token, remember, tokenOptions);
             const storage = remember ? localStorage : sessionStorage;
             storage.setItem(USER_KEY, JSON.stringify(user));
+            syncDeviceNotifications().catch(() => undefined);
         },
         rotateSession(token: string, tokenOptions: VendorTokenOptions = {}) {
             const remember = (() => {
@@ -162,7 +163,6 @@ export const useVendorAuthStore = defineStore('vendor-auth', {
             return me;
         },
         async logout() {
-            try { await disableDeviceNotifications(); } catch { /* noop */ }
             try { await api.post('/api/v1/vendor/logout', {}); } catch { /* noop */ }
             this.accessToken = null;
             this.user = null;
