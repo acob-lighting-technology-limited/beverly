@@ -12,7 +12,7 @@
           />
         </div>
         <div class="login-badge-wrap">
-          <span class="bsv-brand-tag">BATTERY SWAP PORTAL</span>
+          <span class="bsv-brand-tag">BEVERLY PUE</span>
         </div>
         <p class="bw-muted login-sub">
           {{ step === 'challenge' ? 'Two-Factor Authentication' : 'Your Smart Power Partner.' }}
@@ -132,7 +132,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useBatterySwapAuthStore } from '../stores/auth';
+import { PUE_PORTAL_HEADERS, useBatterySwapAuthStore } from '../stores/auth';
 
 const REMEMBERED_EMAIL_KEY = 'beverly.battery_swap.remembered_email';
 const base = import.meta.env.BASE_URL || '/';
@@ -171,7 +171,7 @@ const redirectTarget = computed(() => {
   if (typeof raw === 'string' && raw.startsWith('/') && !raw.startsWith('//')) {
     return raw;
   }
-  return '/stations';
+  return '/hub';
 });
 
 function playLoginVoice() {
@@ -194,8 +194,9 @@ async function signIn() {
   try {
     const res = await fetch('/api/v1/admin/auth/password-login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: normalizedEmail, password: password.value })
+      headers: { 'Content-Type': 'application/json', ...PUE_PORTAL_HEADERS },
+      // The backend checks users.portal_access includes 'pue'.
+      body: JSON.stringify({ email: normalizedEmail, password: password.value, portal: 'pue' })
     });
 
     const data = await res.json().catch(() => ({}));
@@ -219,7 +220,8 @@ async function signIn() {
       email: data.user?.email || normalizedEmail,
       full_name: data.user?.full_name || 'Operations Officer',
       role: data.user?.role || 'operations-officer',
-      station_id: data.user?.station_id || null
+      station_id: data.user?.station_id || null,
+      portal_access: Array.isArray(data.user?.portal_access) ? data.user.portal_access : []
     });
 
     if (rememberEmail.value) {
@@ -231,19 +233,10 @@ async function signIn() {
     playLoginVoice();
     await router.push(redirectTarget.value);
   } catch (err: any) {
-    // Graceful offline/demo fallback when running without backend API service
-    if (err.message && /failed to fetch|network error|404/i.test(err.message)) {
-      auth.setSession('demo-battery-swap-token', {
-        id: 'demo-officer',
-        email: normalizedEmail,
-        full_name: 'Operations Officer',
-        role: 'operations-officer'
-      });
-      playLoginVoice();
-      await router.push(redirectTarget.value);
-      return;
-    }
-    error.value = err.message || 'Authentication failed. Please verify credentials.';
+    // No offline fallback session: a network failure must never sign anyone in.
+    error.value = err instanceof TypeError
+      ? 'Cannot reach the Beverly sign-in service. Check your connection and try again.'
+      : err.message || 'Authentication failed. Please verify credentials.';
   } finally {
     loading.value = false;
   }
@@ -263,6 +256,7 @@ async function verifyChallenge() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...PUE_PORTAL_HEADERS,
         Authorization: `Bearer ${auth.accessToken}`
       },
       body: JSON.stringify({ code: challengeCode.value.trim() })

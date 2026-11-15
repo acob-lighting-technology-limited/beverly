@@ -7,10 +7,18 @@ import BsvDiagnosticsPage from '../components/BsvDiagnosticsPage.vue';
 import LoginView from '../views/LoginView.vue';
 import ForgotPasswordView from '../views/ForgotPasswordView.vue';
 import ResetPasswordView from '../views/ResetPasswordView.vue';
+import PueHubView from '../views/PueHubView.vue';
 import { useBatterySwapAuthStore } from '../stores/auth';
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/stations' },
+  { path: '/', redirect: '/hub' },
+  {
+    // First screen after sign-in: pick Battery Swap Stations or Electronic Appliances.
+    path: '/hub',
+    name: 'hub',
+    component: PueHubView,
+    meta: { title: 'PUE Hub', standalone: true }
+  },
   {
     path: '/login',
     name: 'login',
@@ -59,7 +67,7 @@ const routes: RouteRecordRaw[] = [
     component: BsvDiagnosticsPage,
     meta: { title: 'Battery Diagnostics Lab', icon: 'activity', group: 'Infrastructure' }
   },
-  { path: '/:pathMatch(.*)*', redirect: '/stations' }
+  { path: '/:pathMatch(.*)*', redirect: '/hub' }
 ];
 
 export const router = createRouter({
@@ -72,7 +80,7 @@ export const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   if (to.meta?.title) {
-    document.title = `${to.meta.title} · Beverly Battery Swap`;
+    document.title = `${to.meta.title} · Beverly PUE`;
   }
 
   const auth = useBatterySwapAuthStore();
@@ -88,7 +96,7 @@ router.beforeEach((to, _from, next) => {
   }
 
   if (to.path === '/login' && auth.isAuthenticated) {
-    return next({ path: '/stations' });
+    return next({ path: '/hub' });
   }
 
   next();
