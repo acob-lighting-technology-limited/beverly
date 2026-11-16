@@ -59,6 +59,7 @@ import { getKycTierPolicy, KycTierPolicyError, updateKycTierPolicy } from '../se
 import { replaceStaffPassword, StaffPasswordChangeError } from '../services/staff-password-change.js';
 import { provisionStaff, sendStaffPasswordSetup, updateStaff, StaffProvisioningError } from '../services/staff-provisioning.js';
 import { effectivePortalAccess, isMissingPortalAccessColumn, STAFF_PORTALS } from '../services/staff-portal-access.js';
+import { adminRelativePath } from '../services/admin-route-path.js';
 import { applyPurchasePageCursor, purchasePageCursor } from './purchase-pagination.js';
 import { pagedAmountTotal } from './paged-amount-total.js';
 import { ledgerFundingSummary } from '../services/ledger-funding-summary.js';
@@ -671,7 +672,7 @@ const ADMIN_ROUTE_PERMISSIONS: Record<string, string> = {
     'POST /dev/oem/:slug/credentials': 'dev.console',
 };
 function adminRouteKey(req: FastifyRequest): string {
-    const routeUrl = (req.routeOptions?.url ?? req.url.split('?')[0] ?? '').replace(/^\/api\/v1\/admin/, '') || '/';
+    const routeUrl = adminRelativePath(req.routeOptions?.url ?? req.url);
     return `${req.method.toUpperCase()} ${routeUrl}`;
 }
 
@@ -804,7 +805,9 @@ async function enforceResourceStation(req: FastifyRequest, reply: FastifyReply):
         return false;
     }
 
-    const routeUrl = req.routeOptions?.url ?? '';
+    // Admin-relative: the registered route carries the /api/v1/admin prefix, which
+    // made every startsWith('/customers/:id') style check below fail and skip station scoping.
+    const routeUrl = adminRelativePath(req.routeOptions?.url);
     const id = (req.params as { id?: string })?.id;
     if (!id) return true;
 
@@ -922,7 +925,7 @@ const route: FastifyPluginAsync = async (fastify) => {
     fastify.addHook('preHandler', fastify.requireStaff());
     fastify.addHook('preHandler', async (req, reply) => {
         if (reply.sent) return undefined;
-        const pathname = req.routeOptions?.url ?? req.url.split('?')[0] ?? '';
+        const pathname = adminRelativePath(req.routeOptions?.url ?? req.url);
         if (pathname.startsWith('/dev/')) {
             if (!env.DEV_CONSOLE_ENABLED) {
                 return reply.code(404).send({ error: 'not_found', message: 'Route not found.' });

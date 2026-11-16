@@ -84,6 +84,7 @@ Keep write safety strict.
 - `supabase/migrations/20260918200000_oem_api_key_pair.sql` adds the dual-header installation credential strategy required by official Koios v1 authentication.
 - OEM integration remains disabled for production until installation identity, tenant authorization, command durability, reconciliation, telemetry isolation, conformance, and rollback gates pass.
 - `api/reference.js` fronts all backend calls.
+- `backend/wallet/src/services/admin-route-path.ts` owns admin route path normalisation and the staff setup route allowlists. `requireStaff`, the admin permission key, station scoping and the developer-console gate all compare admin-relative paths through it. Staff added in Roles & Team are invited by email (`provisionStaff`), receive a Supabase recovery link to `STAFF_PORTAL_URL/setup-account`, and set their password with `POST /api/v1/admin/account-setup` while `password_reset_required` is true. No temporary password exists.
 - `api/reference.js` proxies `/api/v1/*` only.
 - Canonical gateway responses set `Cache-Control: no-store`, including installation inventory and wallet errors.
 - `backend/wallet/` owns canonical wallet writes.

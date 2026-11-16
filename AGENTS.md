@@ -108,6 +108,7 @@ The Beverly repository is organized as a pnpm monorepo:
 ### Backend / API & Serverless Gateway
 - **All mutating writes happen server-side.** Client-side code never executes raw mutations directly against Supabase tables holding financial, user, or telemetry records.
 - **Vercel Serverless Gateway**: `api/reference.js` fronts backend routes and proxies `/api/v1/*`. Maintain lowercase routing conventions (`/api/wallet/*`, `/api/vendor/*`).
+- **Route path comparisons**: Fastify reports `req.routeOptions.url` with its plugin prefix (`/api/v1/admin/account-setup`). Never compare it to a bare path; use `adminRelativePath()` from `backend/wallet/src/services/admin-route-path.ts`. Tests for guards must register routes under the production prefix, or they pass while production fails.
 - **Response Headers**: Canonical gateway responses must set `Cache-Control: no-store` on installation inventory, wallet mutations, and error payloads.
 - **Never expose raw database errors to the client.** Log full error objects server-side; return structured JSON error payloads with sanitized codes and safe messages.
 

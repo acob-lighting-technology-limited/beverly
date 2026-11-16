@@ -55,6 +55,8 @@ export async function notifyStaffInvitation(opts: {
     setupUrl: string;
     permissionLabels: string[];
     stationScope: string;
+    /** Beverly portals the invitee may sign in to, by display name. */
+    portalLabels?: string[];
     idempotencyKey: string;
 }): Promise<{ status: 'sent' | 'not_sent'; messageId?: string; messageIds?: string[]; reason?: 'disabled' | 'not_configured' | 'provider_error' }> {
     try {
@@ -67,6 +69,7 @@ export async function notifyStaffInvitation(opts: {
             setupUrl: opts.setupUrl,
             permissionLabels: opts.permissionLabels,
             stationScope: opts.stationScope,
+            portalLabels: opts.portalLabels,
         });
         const results = await sendBatch([
             { to: opts.email, subject: content.subject, html: content.html, text: content.text, tag: 'staff-invitation' },

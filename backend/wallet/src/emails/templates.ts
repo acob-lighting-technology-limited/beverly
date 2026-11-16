@@ -424,13 +424,14 @@ export function vendorOnboardingEmail(opts: {
 
 export function staffInvitationEmail(opts: {
     fullName: string; loginEmail: string; roleLabel: string; setupUrl: string;
-    permissionLabels?: string[]; stationScope?: string;
+    permissionLabels?: string[]; stationScope?: string; portalLabels?: string[];
 }): EmailContent {
     const name = firstName(opts.fullName);
     const heading = 'You’ve been added to Beverly';
     const body = `<p>Hi ${esc(name)},</p>
         <p>You have been invited to the Beverly admin portal with <strong>${esc(opts.roleLabel)}</strong> access. Use the secure link below to create your password and activate your account.</p>
         ${opts.stationScope ? `<p><strong>Station scope:</strong> ${esc(opts.stationScope)}</p>` : ''}
+        ${opts.portalLabels?.length ? `<p><strong>You can sign in to:</strong> ${esc(opts.portalLabels.join(', '))}</p>` : ''}
         ${opts.permissionLabels?.length ? `<p><strong>Your access includes:</strong></p><ul style="margin:0 0 18px;padding-left:22px;">${opts.permissionLabels.map((label) => `<li style="margin:0 0 7px;">${esc(label)}</li>`).join('')}</ul>` : ''}`;
     const highlight = `<span style="display:block;font-size:12px;font-weight:600;color:${MUTED};text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Your work email</span>
         <span style="display:block;font-size:14px;color:${INK};"><strong>${esc(opts.loginEmail)}</strong></span>`;
@@ -446,7 +447,7 @@ export function staffInvitationEmail(opts: {
             ctaUrl: opts.setupUrl,
             footerNote: 'Welcome to the team.',
         }),
-        text: `Hi ${name},\n\nYou have been invited to the Beverly admin portal with ${opts.roleLabel} access.\n${opts.stationScope ? `\nStation scope: ${opts.stationScope}\n` : ''}${opts.permissionLabels?.length ? `\nYour access includes:\n${opts.permissionLabels.map((label) => `- ${label}`).join('\n')}\n` : ''}\nWork email: ${opts.loginEmail}\n\nCreate your password and activate your account: ${opts.setupUrl}\n\nWelcome to the team.\n\n— The Beverly Team\n\nNeed help? info@acoblighting.com · infoacob@gmail.com · +234 704 920 2634 · +234 803 290 2825 · www.acoblighting.com`,
+        text: `Hi ${name},\n\nYou have been invited to the Beverly admin portal with ${opts.roleLabel} access.\n${opts.stationScope ? `\nStation scope: ${opts.stationScope}\n` : ''}${opts.portalLabels?.length ? `\nYou can sign in to: ${opts.portalLabels.join(', ')}\n` : ''}${opts.permissionLabels?.length ? `\nYour access includes:\n${opts.permissionLabels.map((label) => `- ${label}`).join('\n')}\n` : ''}\nWork email: ${opts.loginEmail}\n\nCreate your password and activate your account: ${opts.setupUrl}\n\nWelcome to the team.\n\n— The Beverly Team\n\nNeed help? info@acoblighting.com · infoacob@gmail.com · +234 704 920 2634 · +234 803 290 2825 · www.acoblighting.com`,
     };
 }
 

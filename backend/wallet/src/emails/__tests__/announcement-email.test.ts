@@ -71,4 +71,20 @@ describe('staff invitation email', () => {
         expect(email.text).toContain('https://example.com/setup-account');
         expect(email.text).not.toContain('Temporary password');
     });
+
+    it('lists the portals the invitee can sign in to, and escapes them', () => {
+        const email = staffInvitationEmail({
+            fullName: 'Ada Okonkwo', loginEmail: 'ada@acoblighting.com', roleLabel: 'Account', setupUrl: 'https://example.com/setup-account',
+            portalLabels: ['Beverly CRM', 'Beverly <PUE>'],
+        });
+        expect(email.html).toContain('You can sign in to:');
+        expect(email.html).toContain('Beverly CRM, Beverly &lt;PUE&gt;');
+        expect(email.text).toContain('You can sign in to: Beverly CRM, Beverly <PUE>');
+    });
+
+    it('omits the portal line when none are given', () => {
+        const email = staffInvitationEmail({ fullName: 'Ada', loginEmail: 'ada@acoblighting.com', roleLabel: 'Account', setupUrl: 'https://example.com/s' });
+        expect(email.html).not.toContain('You can sign in to:');
+        expect(email.text).not.toContain('You can sign in to:');
+    });
 });

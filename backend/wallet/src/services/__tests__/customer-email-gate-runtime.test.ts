@@ -55,5 +55,6 @@ describe('customer email verification gate', () => {
         expect(blocked.json()).toMatchObject({ error: 'email_verification_required' });
         expect(allowed.statusCode).toBe(200);
         await app.close();
-    });
+        // Imports the whole auth plugin graph; 4-8s alone, so give it room when the full suite runs in parallel.
+    }, 60_000);
 });
