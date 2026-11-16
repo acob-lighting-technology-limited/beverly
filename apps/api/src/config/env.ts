@@ -11,6 +11,8 @@ const envSchema = z.object({
   BEVERLY_AUTH_ANON_KEY: z.string().min(1),
   /** Beverly admin API base, called with each agent's own bearer token. */
   BEVERLY_API_URL: z.string().url(),
+  /** Where Beverly data is read from: the read-only database views (default) or Beverly's admin API with the agent's token. */
+  BEVERLY_READ_MODE: z.enum(['db', 'api']).default('db'),
   /** PEM file (path) or inline PEM that signs the database server certificate. Verification stays on. Supabase: certs/supabase-ca.pem. */
   DATABASE_SSL_CA: z.string().min(1).optional(),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),

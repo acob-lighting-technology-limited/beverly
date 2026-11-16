@@ -3,7 +3,8 @@ import { outagesSchema, transferSchema, noteSchema, wrapUpSchema, languageSchema
 import type { AppDeps } from '../app.js'
 import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
-import { BeverlyError, fetchCustomers, fetchMeters, phoneTail } from '../beverly/beverly-api.js'
+import { BeverlyError, phoneTail } from '../beverly/beverly-api.js'
+import { beverlyData } from '../beverly/beverly-data.js'
 import { africasTalking, ProviderUnavailable } from '../telephony/provider.js'
 import { clientNameFor } from './presence-routes.js'
 import { notify, webPushSender } from '../notify/notify.js'
@@ -40,10 +41,11 @@ export const callRoutes = ({ env, pool, fetchImpl, provider, push }: AppDeps): F
     if (!ctx) {
       let found: CustomerCtx | null = null
       try {
-        const hit = (await fetchCustomers(env, req.session!.beverlyToken, phoneTail(call.caller_number), fetchImpl, 5)).find((c) => phoneTail(c.phone) === phoneTail(call.caller_number))
+        const data = beverlyData({ env, pool, fetchImpl }, req.session!)
+        const hit = (await data.customers(phoneTail(call.caller_number), 5)).find((c) => phoneTail(c.phone) === phoneTail(call.caller_number))
         if (hit) {
-          const meters = await fetchMeters(env, req.session!.beverlyToken, hit.id, fetchImpl).catch(() => [] as string[])
-          found = { id: hit.id, name: hit.name, meter: meters[0] ?? '', area: hit.area, balance: hit.balance }
+          const meter = hit.meter || (await data.meters(hit.id).catch(() => [] as string[]))[0] || ''
+          found = { id: hit.id, name: hit.name, meter, area: hit.area, balance: hit.balance }
           await pool.query('update call_centre.calls set customer_ref = $2, meter_number = $3, customer_name = $4 where id = $1', [call.id, found.id, found.meter, found.name])
         }
       } catch (e) { if (!(e instanceof BeverlyError)) throw e }

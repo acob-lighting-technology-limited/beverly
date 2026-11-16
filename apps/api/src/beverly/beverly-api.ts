@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Customer } from '@beverly-call/shared'
+import type { Customer, WalletInfo } from '@beverly-call/shared'
 import type { Env } from '../config/env.js'
 import type { FetchLike } from './beverly-auth.js'
 
@@ -58,6 +58,13 @@ export async function fetchMeters(env: Env, token: string, customerId: string, f
 export async function fetchPurchases(env: Env, token: string, customerId: string, f: FetchLike = fetch): Promise<Record<string, unknown>[]> {
   const raw = (await get(env, token, `/api/v1/admin/customers/${encodeURIComponent(customerId)}/purchases?limit=10`, f)) as { purchases?: Record<string, unknown>[] }
   return Array.isArray(raw.purchases) ? raw.purchases : []
+}
+
+/** Wallet for a customer from Beverly's API (GET /customers/:id/wallet). Money in kobo there, naira here. */
+export async function fetchWallet(env: Env, token: string, customerId: string, f: FetchLike = fetch): Promise<WalletInfo | null> {
+  const raw = (await get(env, token, `/api/v1/admin/customers/${encodeURIComponent(customerId)}/wallet`, f).catch((e: unknown) => { if (e instanceof BeverlyError && e.status === 502) return null; throw e })) as { wallet?: { status?: string; currency?: string }; balance_minor?: number; holds_minor?: number; available_minor?: number } | null
+  if (!raw?.wallet) return null
+  return { status: raw.wallet.status ?? 'unknown', currency: raw.wallet.currency ?? 'NGN', balance: Number(raw.balance_minor ?? 0) / 100, holds: Number(raw.holds_minor ?? 0) / 100, available: Number(raw.available_minor ?? 0) / 100 }
 }
 
 /** Last ten digits of a phone, which matches +234803..., 0803... and spaced formats alike. */

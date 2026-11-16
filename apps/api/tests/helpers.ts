@@ -22,7 +22,7 @@ export const WEBHOOK_SECRET = 'webhook-secret-1234'
 export const testEnv = (over: Record<string, string> = {}): Env => loadEnv({
   NODE_ENV: 'test', DATABASE_URL: 'postgres://u:p@localhost:5432/db', BEVERLY_AUTH_URL: 'https://auth.test',
   BEVERLY_AUTH_ANON_KEY: 'anon', BEVERLY_API_URL: 'https://api.test', SESSION_SECRET: 'x'.repeat(40), ALLOWED_ORIGIN: ORIGIN,
-  AT_WEBHOOK_SECRET: WEBHOOK_SECRET, AT_VIRTUAL_NUMBER: '+2347000000000', API_PUBLIC_URL: 'https://api.call.test', LOGIN_RATE_LIMIT: '9999', ...over,
+  AT_WEBHOOK_SECRET: WEBHOOK_SECRET, AT_VIRTUAL_NUMBER: '+2347000000000', API_PUBLIC_URL: 'https://api.call.test', LOGIN_RATE_LIMIT: '9999', BEVERLY_READ_MODE: 'api', ...over,
 })
 
 /** email prefix picks the role: agent1@, agent2@, sup@, admin@ */

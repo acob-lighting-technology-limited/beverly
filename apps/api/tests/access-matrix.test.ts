@@ -21,7 +21,7 @@ const MATRIX: Record<string, R[] | null> = {
   'POST /api/callbacks/:id/reschedule': AGENT, 'POST /api/callbacks/:id/start': AGENT, 'POST /api/callbacks/:id/complete': AGENT,
   'GET /api/cases': LEAD, 'GET /api/cases/mine': STAFF, 'POST /api/cases': STAFF, 'POST /api/cases/:id/assign': LEAD,
   'POST /api/cases/:id/resolve': STAFF, 'POST /api/cases/:id/comments': STAFF,
-  'GET /api/customers': STAFF, 'GET /api/customers/:id/detail': STAFF, 'GET /api/customers/:id/full': STAFF,
+  'GET /api/customers': STAFF, 'GET /api/customers/:id/detail': STAFF, 'GET /api/customers/:id/full': STAFF, 'GET /api/customers/:id/wallet': STAFF,
   'POST /api/customers/:id/notes': STAFF, 'POST /api/customers/sms': STAFF, 'POST /api/customers/:id/token-reveal': STAFF,
   'GET /api/notifications': STAFF, 'POST /api/notifications/read': STAFF, 'GET /api/handover': STAFF, 'POST /api/handover': STAFF,
   'GET /api/replies': STAFF, 'GET /api/outages': STAFF, 'GET /api/push/key': STAFF, 'POST /api/push/subscribe': STAFF, 'POST /api/push/unsubscribe': STAFF,
@@ -30,7 +30,7 @@ const MATRIX: Record<string, R[] | null> = {
   'GET /api/coaching': LEAD, 'POST /api/coaching': LEAD, 'GET /api/coaching/inbox': AGENT, 'POST /api/monitor': LEAD,
   'GET /api/qa/sample': LEAD, 'POST /api/qa/:callId': LEAD,
   'GET /api/admin/settings/:key': LEAD, 'PUT /api/admin/settings/:key': ADMIN, 'GET /api/admin/retention': ADMIN,
-  'GET /api/admin/audit/verify': ADMIN, 'GET /api/admin/number': ADMIN, 'GET /api/admin/connections': ADMIN, 'GET /api/admin/users': ADMIN,
+  'GET /api/admin/audit/verify': ADMIN, 'GET /api/admin/number': ADMIN, 'GET /api/admin/connections': ADMIN, 'GET /api/admin/users': ADMIN, 'GET /api/admin/roles': ADMIN,
 }
 let ipN = 0
 const nextIp = (): string => `10.0.${Math.floor(++ipN / 250)}.${ipN % 250 + 1}`

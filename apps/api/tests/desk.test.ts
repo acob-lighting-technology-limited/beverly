@@ -320,7 +320,7 @@ describe('admin', () => {
     expect(c.find((x) => x.name === 'Carrier webhooks')!.ok).toBe(false)           // no events yet
     await hook(h, '/api/webhooks/at/voice', { sessionId: 'H', isActive: '0', callerNumber: '0803' })
     expect(((await h.get('/api/admin/connections', adm)).json as { name: string; ok: boolean }[]).find((x) => x.name === 'Carrier webhooks')!.ok).toBe(true)
-    expect((await h.get('/api/admin/users', adm)).json).toEqual([{ id: A1, name: 'Aisha Bello', role: 'custom-call-centre-agent', active: true, lastLogin: null }])
+    expect((await h.get('/api/admin/users', adm)).json).toEqual([{ id: A1, name: 'Aisha Bello', role: 'custom-call-centre-agent', roleLabel: null, active: true, lastLogin: null }])
     expect((await h.get('/api/admin/number', adm)).json).toEqual({ virtualNumber: '+2347000000000', retentionDays: 90 })
     for (const u of ['/api/admin/users', '/api/admin/connections', '/api/admin/number', '/api/admin/audit/verify']) expect((await h.get(u, a)).status).toBe(403)
   })

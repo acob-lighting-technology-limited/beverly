@@ -149,6 +149,11 @@ export type ReportExtras = z.infer<typeof reportExtrasSchema>
 /* ---- Admin ---- */
 export const connectionSchema = z.object({ name: z.string(), ok: z.boolean(), detail: z.string() })
 export type Connection = z.infer<typeof connectionSchema>
-export const staffUserSchema = z.object({ id: z.string(), name: z.string(), role: z.string(), active: z.boolean(), lastLogin: z.string().nullable() })
+export const staffUserSchema = z.object({ id: z.string(), name: z.string(), role: z.string(), roleLabel: z.string().nullable(), active: z.boolean(), lastLogin: z.string().nullable() })
 export type StaffUser = z.infer<typeof staffUserSchema>
 export const numberInfoSchema = z.object({ virtualNumber: z.string().nullable(), retentionDays: z.number().int() })
+
+export const walletInfoSchema = z.object({ status: z.string(), currency: z.string(), balance: z.number(), holds: z.number(), available: z.number() })
+export type WalletInfo = z.infer<typeof walletInfoSchema>
+export const roleSummarySchema = z.object({ roleKey: z.string(), label: z.string(), description: z.string().nullable(), people: z.number().int(), permissions: z.number().int() })
+export type RoleSummary = z.infer<typeof roleSummarySchema>
