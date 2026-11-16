@@ -17,6 +17,7 @@ const deleteProfile = vi.fn();
 const updateProfile = vi.fn();
 let profileToRead: any = null;
 let profileByEmail: any = null;
+let lookupError: any = null;
 
 vi.mock('../../config/env.js', () => ({ env: { STAFF_PORTAL_URL: 'https://staff.example.test/wallet-admin' } }));
 vi.mock('../audit.js', () => ({ logAction }));
@@ -30,7 +31,7 @@ vi.mock('../../db/supabase.js', () => ({
             if (table === 'users') return {
                 upsert: upsertProfile,
                 select: () => ({
-                    eq: () => ({ maybeSingle: async () => ({ data: profileByEmail, error: null }) }),
+                    eq: () => ({ maybeSingle: async () => ({ data: profileByEmail, error: lookupError }) }),
                     or: () => ({ maybeSingle: async () => ({ data: profileToRead, error: null }) }),
                 }),
                 update: updateProfile,
@@ -61,6 +62,7 @@ describe('staff provisioning pipeline', () => {
         logAction.mockResolvedValue(undefined);
         profileToRead = null;
         profileByEmail = null;
+        lookupError = null;
     });
 
     it('completes an orphaned profile instead of inserting a duplicate email', async () => {
@@ -114,6 +116,12 @@ describe('staff provisioning pipeline', () => {
         }));
         expect(upsertProfile).toHaveBeenCalledWith(expect.objectContaining({ email: 'ada@acoblighting.com', user_name: 'Ada Lovelace', station_ids: ['STATION-1'], portal_access: ['crm', 'call'] }), { onConflict: 'user_id' });
         expect(notifyStaffInvitation).toHaveBeenCalledOnce();
+        // The email carries the real recovery link and the portals the invitee was given, in catalog order.
+        expect(notifyStaffInvitation).toHaveBeenCalledWith(expect.objectContaining({
+            setupUrl: 'https://verify.example.test',
+            portalLabels: ['Beverly CRM', 'Beverly Call'],
+            idempotencyKey: 'staff-invite-staff-1',
+        }));
         expect(logAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'access.user.create', targetId: 'staff-1' }));
     });
 
@@ -151,6 +159,23 @@ describe('staff provisioning pipeline', () => {
         });
         expect(updateProfile).toHaveBeenCalledWith(expect.objectContaining({ role_key: 'super-admin', station_id: null, station_ids: ['*'] }));
         expect(updateUserById).toHaveBeenCalledWith('staff-1', expect.objectContaining({ user_metadata: expect.objectContaining({ role_key: 'super-admin', station_ids: ['*'], all_stations: true }) }));
+    });
+
+    it('says the migration is missing instead of a vague lookup error, and creates nothing', async () => {
+        lookupError = { message: "Could not find the 'portal_access' column of 'users' in the schema cache" };
+        const { provisionStaff } = await import('../staff-provisioning.js');
+        await expect(provisionStaff({
+            email: 'ada@acoblighting.com', fullName: 'Ada Lovelace', roleKey: 'account', stationIds: [], allStations: true, portalAccess: ['call'],
+        }, { userId: 'admin-1' }, { error: vi.fn() })).rejects.toMatchObject({ code: 'portal_access_unavailable', statusCode: 503 });
+        expect(createUser).not.toHaveBeenCalled();
+    });
+
+    it('shows every portal to an invited super admin whatever list was sent', async () => {
+        const { provisionStaff } = await import('../staff-provisioning.js');
+        await provisionStaff({
+            email: 'sa@acoblighting.com', fullName: 'Sam Admin', roleKey: 'super-admin', stationIds: [], allStations: true, portalAccess: ['call'],
+        }, { userId: 'admin-1' }, { error: vi.fn() });
+        expect(notifyStaffInvitation).toHaveBeenCalledWith(expect.objectContaining({ portalLabels: ['Beverly CRM', 'Beverly Staff Wallet', 'Beverly Call', 'Beverly PUE'] }));
     });
 
     it('rejects staff creation without any portal', async () => {

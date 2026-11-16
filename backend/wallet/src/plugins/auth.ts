@@ -29,6 +29,7 @@ import {
     effectivePortalAccess, isMissingPortalAccessColumn, portalLabel, requestedBackendPortal,
     STAFF_PORTAL_HEADER, type StaffPortalKey,
 } from '../services/staff-portal-access.js';
+import { adminRelativePath, PASSWORD_SETUP_ROUTES, PORTAL_EXEMPT_ROUTES } from '../services/admin-route-path.js';
 
 export type ActorType = 'staff' | 'vendor_user' | 'customer';
 
@@ -282,25 +283,27 @@ const plugin: FastifyPluginAsync = async (fastify) => {
             if (req.actor?.type !== 'staff') {
                 return reply.code(403).send({ error: 'forbidden', message: 'Staff role required.' });
             }
-            const routeUrl = req.routeOptions?.url ?? '';
+            // Fastify reports the route WITH its /api/v1/admin prefix, so compare
+            // the admin-relative path (see services/admin-route-path.ts).
+            const adminPath = adminRelativePath(req.routeOptions?.url);
+            // Invited or reset staff may only set their password, read their
+            // profile, and sign out until the account is active.
+            if (req.actor.passwordResetRequired && !PASSWORD_SETUP_ROUTES.has(adminPath)) {
+                return reply.code(403).send({
+                    error: 'password_reset_required',
+                    message: 'Set your account password before continuing.',
+                });
+            }
             // Portal gate. Account setup and sign-out stay reachable so invited
             // staff can set a password even without Staff Wallet access.
             // Limitation: the header is client-supplied. It picks which portal
             // gate applies; role permissions still guard every action.
             const portal = requestedBackendPortal(req.headers[STAFF_PORTAL_HEADER]);
-            const adminPath = routeUrl.replace(/^\/api\/v1\/admin/, '') || '/';
-            if (!['/password-change', '/account-setup', '/logout'].includes(adminPath)
-                && !(req.actor.portalAccess ?? []).includes(portal)) {
+            if (!PORTAL_EXEMPT_ROUTES.has(adminPath) && !(req.actor.portalAccess ?? []).includes(portal)) {
                 return reply.code(403).send({
                     error: 'portal_access_denied',
                     message: `This account is not allowed to use ${portalLabel(portal)}.`,
                     portal,
-                });
-            }
-            if (req.actor.passwordResetRequired && !['/me', '/password-change', '/account-setup', '/logout'].includes(routeUrl)) {
-                return reply.code(403).send({
-                    error: 'password_reset_required',
-                    message: 'Change your temporary password before continuing.',
                 });
             }
             // MFA is opt-in until an active authenticator factor exists.

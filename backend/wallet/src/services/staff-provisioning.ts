@@ -7,7 +7,20 @@ import { logAction } from './audit.js';
 import { isCorporateStaffEmail } from './email-validation.js';
 import { notifyRoleAssignment, notifyStaffInvitation, notifyStationAssignment, notifyStaffAccountChange, staffInvitationReadiness } from './admin-notifications.js';
 import { ALL_STATIONS_SCOPE, normalizeStaffStationIds } from './staff-station-scope.js';
-import { normalizePortalAccess, portalLabel, staffPortalKeySchema, STAFF_PORTAL_KEYS, type StaffPortalKey } from './staff-portal-access.js';
+import {
+    effectivePortalAccess, isMissingPortalAccessColumn, normalizePortalAccess, portalLabel,
+    staffPortalKeySchema, STAFF_PORTAL_KEYS, type StaffPortalKey,
+} from './staff-portal-access.js';
+
+/**
+ * Portal access is stored in users.portal_access. When that column is missing the
+ * database migration has not been applied; say so instead of a vague lookup error.
+ */
+function portalAccessMigrationError(error: unknown): StaffProvisioningError | null {
+    return isMissingPortalAccessColumn(error as { message?: string } | null)
+        ? new StaffProvisioningError('portal_access_unavailable', 'Portal access needs the latest database migration (20261115120000_staff_portal_access). Contact a developer.', 503)
+        : null;
+}
 
 /* At least one portal: an account with none could never sign in anywhere. */
 const portalAccessSchema = z.array(staffPortalKeySchema).min(1, 'Choose at least one portal this staff member can sign in to.').max(STAFF_PORTAL_KEYS.length);
@@ -86,7 +99,7 @@ export async function provisionStaff(rawInput: unknown, actor: ProvisioningActor
     const { data: existingProfile, error: existingProfileError } = await adminClient.from('users')
         .select('id, auth_user_id, user_id, user_name, role_key, station_id, station_ids, portal_access, password_reset_required, password_changed_at, password_session_id, updated_at')
         .eq('email', input.email).maybeSingle();
-    if (existingProfileError) throw new StaffProvisioningError('staff_lookup_failed', 'The staff account could not be checked. Try again.', 503);
+    if (existingProfileError) throw portalAccessMigrationError(existingProfileError) ?? new StaffProvisioningError('staff_lookup_failed', 'The staff account could not be checked. Try again.', 503);
     if (existingProfile) {
         const linkedUserId = (existingProfile as any).auth_user_id || (existingProfile as any).user_id;
         if (linkedUserId) {
@@ -178,6 +191,7 @@ export async function provisionStaff(rawInput: unknown, actor: ProvisioningActor
         setupUrl: actionLink,
         permissionLabels: PERMISSION_CATALOG.filter((item) => granted.has(item.key)).map((item) => item.label),
         stationScope: input.allStations ? 'All current and future stations' : stationIds.join(', '),
+        portalLabels: effectivePortalAccess(input.roleKey, portalAccess).map(portalLabel),
         idempotencyKey: `staff-invite-${userId}`,
     });
     if (invitationDelivery.status !== 'sent') {
@@ -207,7 +221,8 @@ export async function updateStaff(userId: string, rawInput: unknown, actor: Prov
     if (!assignedRole) throw new StaffProvisioningError('role_not_found', 'Choose an existing role.', 400);
     const { data: before, error: readError } = await adminClient.from('users')
         .select('email, user_name, role_key, station_id, station_ids, portal_access').or(`auth_user_id.eq.${userId},user_id.eq.${userId}`).maybeSingle();
-    if (readError || !before) throw new StaffProvisioningError('staff_not_found', 'Staff account was not found.', 404);
+    if (readError) throw portalAccessMigrationError(readError) ?? new StaffProvisioningError('staff_not_found', 'Staff account was not found.', 404);
+    if (!before) throw new StaffProvisioningError('staff_not_found', 'Staff account was not found.', 404);
     const primaryStationId = input.allStations ? null : stationIds[0];
     const previousPortals = normalizePortalAccess((before as any).portal_access);
     const portalAccess: StaffPortalKey[] = input.portalAccess ? normalizePortalAccess(input.portalAccess) : previousPortals;
@@ -250,9 +265,16 @@ export async function updateStaff(userId: string, rawInput: unknown, actor: Prov
 }
 
 export async function sendStaffPasswordSetup(userId: string, actor: ProvisioningActor, logger: ProvisioningLogger) {
-    const { data: staff, error: staffError } = await adminClient.from('users')
-        .select('email, user_name, role_key, station_ids, password_reset_required, password_changed_at, password_session_id')
+    // Read-only here, so fall back to the legacy role rules when the column is not deployed.
+    let staffLookup = await adminClient.from('users')
+        .select('email, user_name, role_key, station_ids, portal_access, password_reset_required, password_changed_at, password_session_id')
         .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`).maybeSingle();
+    if (staffLookup.error && isMissingPortalAccessColumn(staffLookup.error)) {
+        staffLookup = await adminClient.from('users')
+            .select('email, user_name, role_key, station_ids, password_reset_required, password_changed_at, password_session_id')
+            .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`).maybeSingle() as typeof staffLookup;
+    }
+    const { data: staff, error: staffError } = staffLookup;
     if (staffError || !staff?.email) throw new StaffProvisioningError('staff_not_found', 'Staff account was not found.', 404);
     const readiness = await staffInvitationReadiness();
     if (!readiness.ready) throw new StaffProvisioningError('staff_invitation_unavailable', 'Password setup emails are temporarily unavailable.', 503);
@@ -276,6 +298,7 @@ export async function sendStaffPasswordSetup(userId: string, actor: Provisioning
         roleLabel: (role as any)?.label ?? (role as any)?.role_name ?? staff.role_key,
         permissionLabels: PERMISSION_CATALOG.filter((item) => granted.has(item.key)).map((item) => item.label),
         stationScope: (staff.station_ids as string[] | null)?.includes(ALL_STATIONS_SCOPE) ? 'All current and future stations' : (staff.station_ids as string[] | null)?.join(', ') || 'Unassigned',
+        portalLabels: effectivePortalAccess(staff.role_key, 'portal_access' in staff ? (staff as { portal_access?: unknown }).portal_access : undefined).map(portalLabel),
         idempotencyKey: `staff-password-setup-${userId}-${changedAt}`,
     });
     if (delivery.status !== 'sent') {
