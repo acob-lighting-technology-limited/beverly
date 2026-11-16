@@ -101,6 +101,8 @@ describe('the call desk', () => {
     await h.pool.query(`insert into call_centre.tickets (ticket_ref, customer_ref, category, sla_due_at) values ('EX-1','c1','other', now() + interval '1 hour')`)
     const adm = await h.as('admin1@x.test')
     await h.send('PUT', '/api/admin/settings/outages', adm, [{ area: 'Kano North', message: 'Planned outage', until: '14:00' }])
+    await h.get('/api/calls/active', a)
+    // later polls keep the balance and the outage banner (context is cached, not lost after the first match)
     const r = await h.get('/api/calls/active', a)
     expect(r.json).toMatchObject({ name: 'Musa Garba', number: '+2348035550142', customer: { id: 'c1', meter: '4201 8837 112', balance: 3200 }, openTickets: 1, outage: 'Planned outage until 14:00', language: 'en' })
   })

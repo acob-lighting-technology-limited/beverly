@@ -28,11 +28,15 @@ export const testEnv = (over: Record<string, string> = {}): Env => loadEnv({
 /** email prefix picks the role: agent1@, agent2@, sup@, admin@ */
 const ROLE_OF = (email: string) => (email.startsWith('agent') ? 'custom-call-centre-agent' : email.startsWith('sup') ? 'custom-call-centre-supervisor' : email.startsWith('nocall') ? 'custom-call-centre-agent' : 'super-admin')
 
+/** Shapes copied from Beverly's admin API (backend/wallet/src/routes/admin.ts): money in kobo, search by q on name/phone/email. */
 export const CUSTOMERS = [
-  { id: 'c1', name: 'Musa Garba', meter_number: '4201 8837 112', phone: '0803 555 0142', area: 'Kano North', account_type: 'Prepaid', wallet_balance: 3200 },
-  { id: 'c2', name: 'Tope Bello', meter_number: '4188 2043 771', phone: '0902 555 0121', area: 'Ikeja', account_type: 'Postpaid', wallet_balance: null },
+  { id: 'c1', full_name: 'Musa Garba', phone: '08035550142', email: 'musa@x.test', status: 'active', balance_minor: 320000, available_minor: 320000, station_ids: ['KANO NORTH'] },
+  { id: 'c2', full_name: 'Tope Bello', phone: '+2349025550121', email: null, status: 'active', balance_minor: 0, available_minor: 0, station_ids: ['IKEJA'] },
 ]
-export const PURCHASES = [{ id: 'p1', created_at: '2026-11-14T09:12:00Z', amount: 5000, status: 'success', token: '3891 2207 5561 0000 4455' }]
+export const METERS: Record<string, { meter_id: string; status: string }[]> = {
+  c1: [{ meter_id: '4201 8837 112', status: 'approved' }], c2: [{ meter_id: '4188 2043 771', status: 'pending' }],
+}
+export const PURCHASES = [{ id: 'p1', created_at: '2026-11-14T09:12:00Z', amount_minor: 500000, status: 'delivered', token: '3891 2207 5561 0000 4455', meter_id: '4201 8837 112' }]
 
 export interface Fakes {
   provider: CommunicationsProvider & { sms: { to: string; text: string }[]; calls: { from: string; to: string }[] }
@@ -77,13 +81,15 @@ export function beverlyFetch(): ReturnType<typeof vi.fn> {
       const email = NAME_OF.get(/auth_user_id=eq\.([^&]+)/.exec(url)?.[1] ?? '') ?? ''
       return json([{ role_key: ROLE_OF(email), portal_access: email.startsWith('nocall') ? ['crm'] : ['call'] }])
     }
-    if (url.includes('/purchases')) return json({ data: PURCHASES })
+    if (url.includes('/purchases')) return json({ purchases: PURCHASES, nextCursor: null })
+    const meters = /customers\/([^/?]+)\/meters/.exec(url)
+    if (meters) return json({ meters: METERS[meters[1]!] ?? [] })
     if (url.includes('/admin/customers')) {
-      const q = decodeURIComponent(/search=([^&]*)/.exec(url)?.[1] ?? '').toLowerCase()
-      const d = (s: string) => s.replace(/\D/g, '')
-      return json({ data: CUSTOMERS.filter((c) => !q || `${c.name} ${c.phone} ${c.meter_number}`.toLowerCase().includes(q) || (d(q).length >= 7 && d(c.phone).includes(d(q)))) })
+      // Beverly matches q against name, phone and email with ilike %q%.
+      const q = decodeURIComponent(/[?&]q=([^&]*)/.exec(url)?.[1] ?? '').toLowerCase()
+      return json({ customers: CUSTOMERS.filter((c) => !q || `${c.full_name} ${c.phone} ${c.email ?? ''}`.toLowerCase().includes(q)), nextCursor: null })
     }
-    if (url.includes('/admin/staff')) return json({ data: [{ id: A1, auth_user_id: A1, full_name: 'Aisha Bello', role_key: 'custom-call-centre-agent', is_active: true, portal_access: ['call'] }, { id: uid('x'), full_name: 'Crm Only', role_key: 'x', portal_access: ['crm'] }] })
+    if (url.includes('/admin/access/staff-status')) return json({ staff: [{ id: A1, auth_user_id: A1, user_name: 'Aisha Bello', email: 'aisha@x.test', role_key: 'custom-call-centre-agent', suspended: false, last_sign_in_at: null, portal_access: ['call'] }, { id: uid('x'), auth_user_id: uid('x'), user_name: 'Crm Only', role_key: 'x', suspended: false, portal_access: ['crm'] }] })
     return json({}, 404)
   })
 }

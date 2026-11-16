@@ -97,10 +97,12 @@ describe('callbacks', () => {
 describe('customers', () => {
   it('searches Beverly, audits searches and masks tokens in purchase history', async () => {
     const a = await h.as('agent1@x.test')
-    expect((await h.get('/api/customers?q=musa', a)).json).toMatchObject([{ id: 'c1', meter: '4201 8837 112' }])
-    expect((await h.pool.query(`select 1 from call_centre.audit_log where action = 'customer.search'`)).rowCount).toBe(1)
+    expect((await h.get('/api/customers?q=musa', a)).json).toMatchObject([{ id: 'c1', name: 'Musa Garba', balance: 3200, area: 'KANO NORTH', accountType: 'Prepaid' }])
+    expect((await h.get('/api/customers?q=nobody', a)).json).toEqual([])
+    expect((await h.pool.query(`select 1 from call_centre.audit_log where action = 'customer.search'`)).rowCount).toBe(2)
     const d = (await h.get('/api/customers/c1/detail', a)).json
-    expect(d.purchases[0]).toMatchObject({ id: 'p1', amount: 5000, tokenMasked: '•••• •••• •••• 4455' })
+    expect(d.meters).toEqual(['4201 8837 112'])
+    expect(d.purchases[0]).toMatchObject({ id: 'p1', amount: 5000, status: 'delivered', tokenMasked: '•••• •••• •••• 4455' })
     expect(JSON.stringify(d)).not.toContain('3891')
   })
 

@@ -1,6 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify'
 import type { ZodTypeAny } from 'zod'
-import { z } from 'zod'
 import {
   DEFAULT_ALERT_LIMITS, DEFAULT_CALL_FLOW, DEFAULT_SAVED_REPLIES, alertLimitsSchema, callFlowSchema, outagesSchema, savedRepliesSchema,
   type Connection, type RetentionStatus, type StaffUser,
@@ -10,6 +9,7 @@ import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
 import { verifyStoredChain } from '../audit/audit-log.js'
 import { africasTalking } from '../telephony/provider.js'
+import { fetchStaff } from '../beverly/staff-directory.js'
 
 const SETTINGS: Record<string, { schema: ZodTypeAny; fallback: unknown }> = {
   alert_limits: { schema: alertLimitsSchema, fallback: DEFAULT_ALERT_LIMITS },
@@ -18,14 +18,7 @@ const SETTINGS: Record<string, { schema: ZodTypeAny; fallback: unknown }> = {
   outages: { schema: outagesSchema, fallback: [] },
 }
 
-const staffRow = z.object({
-  id: z.union([z.string(), z.number()]).transform(String),
-  full_name: z.string().optional(), name: z.string().optional(), email: z.string().optional(),
-  role_key: z.string().optional(), role: z.string().optional(),
-  is_active: z.boolean().optional(), active: z.boolean().optional(),
-  last_login_at: z.string().nullable().optional(), last_sign_in_at: z.string().nullable().optional(),
-  portal_access: z.array(z.string()).optional(),
-}).passthrough()
+
 
 /** Admin configuration, health and evidence. Reads are open to supervisors where they need them; writes are admin only. */
 export const adminRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): FastifyPluginAsync => async (app) => {
@@ -92,16 +85,12 @@ export const adminRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fastif
 
   /**
    * Staff who can use Beverly Call. Identity is owned by Beverly (roles, portal access, activation, password resets are managed there),
-   * so this is read-only. TODO(debt): endpoint and field names assumed (GET /api/v1/admin/staff); confirm with the Beverly team.
+   * so this is read-only. Source: GET /api/v1/admin/access/staff-status (needs Beverly access-management permission).
    */
   app.get('/admin/users', { preHandler: admin }, async (req, reply): Promise<StaffUser[] | void> => {
-    const r = await f(`${env.BEVERLY_API_URL}/api/v1/admin/staff?limit=500`, { headers: { authorization: `Bearer ${req.session!.beverlyToken}` } })
-    if (!r.ok) return reply.code(502).send({ error: 'Beverly staff list is unavailable' })
-    const raw = (await r.json()) as { data?: unknown[] } | unknown[]
-    const list = z.array(staffRow).safeParse(Array.isArray(raw) ? raw : raw.data ?? [])
-    if (!list.success) return reply.code(502).send({ error: 'Unexpected staff response' })
-    return list.data
-      .filter((s) => !s.portal_access || s.portal_access.includes('call'))
-      .map((s) => ({ id: s.id, name: s.full_name ?? s.name ?? s.email ?? s.id, role: s.role_key ?? s.role ?? 'unknown', active: s.is_active ?? s.active ?? true, lastLogin: s.last_login_at ?? s.last_sign_in_at ?? null }))
-  })
-}
+    const rows = await fetchStaff(env, req.session!.beverlyToken, fetchImpl)
+    if (!rows.length) return reply.code(502).send({ error: 'Beverly staff list is unavailable. Your role may not be allowed to read it.' })
+    return rows
+      .filter((s) => s.portal_access?.includes('call'))
+      .map((s) => ({ id: s.auth_user_id ?? s.id ?? '', name: s.user_name ?? s.email ?? 'Staff user', role: s.role_key ?? 'unknown', active: !s.suspended, lastLogin: s.last_sign_in_at ?? null }))
+  })}

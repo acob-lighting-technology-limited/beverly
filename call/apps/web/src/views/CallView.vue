@@ -158,7 +158,7 @@ const onTouchEnd = (e: TouchEvent) => { if (touchY - e.changedTouches[0]!.client
       <template v-else-if="chip === 'wallet' && call?.customer">
         <div class="row"><span>{{ call.customer.balance === null ? 'Account' : 'Wallet balance' }}</span><b style="font-weight: 400">{{ call.customer.balance === null ? 'Bill account' : `NGN ${call.customer.balance.toLocaleString('en-US')}` }}</b></div>
         <p v-if="detailErr" role="alert" style="color: var(--badt)">{{ detailErr }}</p>
-        <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'success' || p.status === 'completed' ? 'ok' : 'ye'">{{ p.status }}</span></div>
+        <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'delivered' ? 'ok' : 'ye'">{{ p.status }}</span></div>
         <p v-if="detail && !detail.purchases.length" style="color: var(--mut)">No recent purchases.</p>
       </template>
       <template v-else-if="chip === 'ticket'">

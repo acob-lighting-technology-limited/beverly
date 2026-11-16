@@ -82,6 +82,7 @@ watch(() => route.query.open, (id) => { if (typeof id === 'string' && sel.value?
 const lastContacted = computed(() => (full.value?.lastContacted ? shortDate(full.value.lastContacted) : 'No contact yet'))
 const jump = (id: string): void => { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 const STAGES = computed(() => [['Reported', full.value?.stages.reported ?? 0, 100], ['Escalated', full.value?.stages.escalated ?? 0, 82], ['Working', full.value?.stages.working ?? 0, 64], ['Fixed', full.value?.stages.fixed ?? 0, 46]] as const)
+const meterNo = computed(() => detail.value?.meters[0] ?? sel.value?.meter ?? '—')
 const canSms = computed(() => !!sel.value)
 
 /* ---- actions ---- */
@@ -113,14 +114,14 @@ const canCall = computed(() => session.role === 'agent' || session.role === 'sup
       <div class="head"><div class="ht"><h1>Customers</h1></div>
         <div v-hover-scroll class="kp"><KpiTile icon="users" :value="pad2(list.length)" label="Customers" /><KpiTile icon="wallet" :value="pad2(lowCount)" label="Low wallet" dark /></div></div>
       <div class="cdh">
-        <label class="sch"><Icon name="users" /><input v-model="q" type="search" aria-label="Search customers" placeholder="Search by name, meter or phone" @input="onInput" /></label>
+        <label class="sch"><Icon name="users" /><input v-model="q" type="search" aria-label="Search customers" placeholder="Search by name, phone or email" @input="onInput" /></label>
         <FilterPopover v-model="extra" :groups="groups" /><ViewToggle :model-value="view" @update:model-value="setView" />
       </div>
       <div v-hover-scroll class="chs" role="group" aria-label="Quick filters">
         <button v-for="c in ([['all', 'All'], ['prepaid', 'Prepaid'], ['postpaid', 'Postpaid'], ['low', 'Low wallet']] as const)" :key="c[0]" :class="{ on: chip === c[0] }" @click="chip = c[0]">{{ c[1] }}</button></div>
       <div class="cnt" aria-live="polite" style="margin: 8px 2px">{{ shown.length }} of {{ list.length }} customers</div>
       <StateBanner :loading="loading" :error="error" what="customers" />
-      <div v-if="!loading && !error && !shown.length" class="ban">No customer found. Try a meter number, phone or name.</div>
+      <div v-if="!loading && !error && !shown.length" class="ban">No customer found. Try a name, phone or email.</div>
       <div v-if="view === 'cards'" class="cgrid">
         <button v-for="c in shown" :key="c.id" class="cc2" :aria-label="`Open ${c.name}`" @click="open(c)">
           <span class="cav" style="background: var(--yel)">{{ initials(c.name) }}</span><b>{{ c.name }}</b>
@@ -130,7 +131,7 @@ const canCall = computed(() => session.role === 'agent' || session.role === 'sup
       </div>
       <div v-else class="c"><div class="scroll"><table class="rt cust-t"><thead><tr><th>Customer</th><th>Meter</th><th>Phone</th><th>Area</th><th>Balance</th><th>Status</th></tr></thead>
         <tbody><tr v-for="c in shown" :key="c.id" tabindex="0" @click="open(c)" @keydown.enter="open(c)">
-          <td data-label="Customer"><span class="nmc"><span class="cav" style="background: var(--yel)">{{ initials(c.name) }}</span>{{ c.name }}</span></td><td data-label="Meter">{{ c.meter }}</td><td data-label="Phone">{{ show(c.phone) }}</td>
+          <td data-label="Customer"><span class="nmc"><span class="cav" style="background: var(--yel)">{{ initials(c.name) }}</span>{{ c.name }}</span></td><td data-label="Meter">{{ c.meter || '—' }}</td><td data-label="Phone">{{ show(c.phone) }}</td>
           <td data-label="Area">{{ c.area }}</td><td data-label="Balance">{{ money(c.balance) }}</td><td data-label="Status"><span class="pill" :class="isLow(c) ? 'ye' : 'vi'">{{ isLow(c) ? 'Low wallet' : 'All good' }}</span></td></tr></tbody></table></div></div>
     </div>
 
@@ -144,7 +145,7 @@ const canCall = computed(() => session.role === 'agent' || session.role === 'sup
             <button aria-label="SMS" title="Send SMS" :disabled="!canSms" @click="smsOpen = true"><Icon name="mail" /></button>
             <button aria-label="Add note" title="Add note" @click="noteOpen = true"><Icon name="plus" /></button></div></div>
         <div class="dr">
-          <div><Icon name="bolt" /><div class="tx"><small>Meter number</small><b>{{ sel.meter }}</b></div><button aria-label="Copy meter" @click="copy(sel.meter)"><Icon name="copy" /></button></div>
+          <div><Icon name="bolt" /><div class="tx"><small>Meter number</small><b>{{ meterNo }}</b></div><button aria-label="Copy meter" :disabled="!detail?.meters.length" @click="copy(meterNo)"><Icon name="copy" /></button></div>
           <div><Icon name="phone" /><div class="tx"><small>Phone</small><b>{{ show(sel.phone) }}</b></div><button aria-label="Copy phone" @click="copy(sel.phone)"><Icon name="copy" /></button></div>
           <div><Icon name="wallet" /><div class="tx"><small>{{ sel.balance === null ? 'Account type' : 'Wallet balance' }}</small><b>{{ money(sel.balance) }}</b></div></div>
           <div><Icon name="clock" /><div class="tx"><small>Last contacted</small><b>{{ lastContacted }}</b></div></div></div>
@@ -155,7 +156,7 @@ const canCall = computed(() => session.role === 'agent' || session.role === 'sup
       <StateBanner :loading="!detail && !detailError && !full" :error="detailError" what="history" />
       <div class="col s8 w2">
         <div id="sx-h" class="c fr"><div class="hd"><Icon name="wallet" /><b>Recent purchases</b></div>
-          <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'success' || p.status === 'completed' ? 'ok' : 'ye'">{{ p.status }}</span></div>
+          <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'delivered' ? 'ok' : 'ye'">{{ p.status }}</span></div>
           <p v-if="detail && !detail.purchases.length" style="color: var(--mut)">No purchases found.</p></div>
         <div id="sx-l" class="c fr"><div class="hd"><Icon name="clock" /><b>Timeline</b></div>
           <div v-for="(e, i) in full?.timeline ?? []" :key="i" class="row"><span>{{ shortDate(e.at) }} {{ e.text }}</span><span class="pill" :class="e.tone">{{ e.kind }}</span></div>

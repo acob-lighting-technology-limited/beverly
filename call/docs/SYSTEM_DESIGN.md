@@ -294,7 +294,7 @@ The browser calls `/api/*` on its own origin; Vercel rewrites to the API host so
 | D6 | Carrier behind an adapter | Carrier is replaceable |
 | D7 | Tests on real Postgres (PGlite) | Found bugs fakes could not |
 
-Open, need an owner outside this repo: confirm RLS lets staff read their own `users` row; confirm Beverly field names for customers, purchases, staff; verify Africa's Talking request shapes (SMS, voice call, WebRTC token, conferencing for listen/whisper/barge) on the sandbox; decide the real supervisor role key and who assigns it; create the `call-recordings` bucket and a bucket-scoped key.
+Confirmed from Beverly's code and live project: staff can read their own `public.users` row (policy "Staff read own profile"); the customers, meters, purchases and staff-directory response shapes (`backend/wallet/src/routes/admin.ts`, money in kobo, search by name, phone or email only); the shared Supabase project holds the `call_centre` migrations. Still open, need an owner outside this repo: Africa's Talking account and sandbox verification (Beverly itself uses Twilio for SMS, so decide whether the call centre carrier is Africa's Talking or Twilio); a bucket-scoped credential for `call-recordings` (Supabase has no per-bucket key, and the service role must not be used); the `beverly_call_api` database password; assigning the supervisor role to real staff; station assignment for every agent (Beverly refuses station-scoped reads for staff with none).
 
 ## 14. Roadmap in phases, with end-point goals
 

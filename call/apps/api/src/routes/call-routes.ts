@@ -3,13 +3,13 @@ import { outagesSchema, transferSchema, noteSchema, wrapUpSchema, languageSchema
 import type { AppDeps } from '../app.js'
 import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
-import { BeverlyError, fetchCustomers, phoneTail } from '../beverly/beverly-api.js'
+import { BeverlyError, fetchCustomers, fetchMeters, phoneTail } from '../beverly/beverly-api.js'
 import { africasTalking, ProviderUnavailable } from '../telephony/provider.js'
 import { clientNameFor } from './presence-routes.js'
 import { notify, webPushSender } from '../notify/notify.js'
 
-/** +2348035550142 -> 08035550142, the format Beverly stores customer phones in. */
-const localNumber = (n: string): string => `0${n.replace(/\D/g, '').slice(-10)}`
+interface CustomerCtx { id: string; name: string; meter: string; area: string; balance: number | null }
+const ctxCache = new Map<string, { at: number; found: CustomerCtx | null }>()
 
 interface CallRow { id: string; caller_number: string; started_at: Date; language: string; customer_ref: string | null; meter_number: string | null; customer_name: string | null; agent_crm_id: string | null }
 
@@ -33,21 +33,29 @@ export const callRoutes = ({ env, pool, fetchImpl, provider, push }: AppDeps): F
     const call = r.rows[0]
     if (!call) return null
 
-    // Match the caller to a Beverly customer once, then remember it on the call.
-    let area = ''
-    let balance: number | null = null
-    let customer: ActiveCall['customer'] = null
-    if (!call.customer_ref) {
+    // Match the caller to a Beverly customer, remember the match on the call, and keep balance and area fresh (cached 60 s per call
+    // so the 5-second screen poll does not hit Beverly each time; a failed lookup is retried after 15 s).
+    const cached = ctxCache.get(call.id)
+    let ctx = cached && Date.now() - cached.at < (cached.found ? 60_000 : 15_000) ? cached : undefined
+    if (!ctx) {
+      let found: CustomerCtx | null = null
       try {
-        const found = (await fetchCustomers(env, req.session!.beverlyToken, localNumber(call.caller_number), fetchImpl, 5)).find((c) => phoneTail(c.phone) === phoneTail(call.caller_number))
-        if (found) {
+        const hit = (await fetchCustomers(env, req.session!.beverlyToken, phoneTail(call.caller_number), fetchImpl, 5)).find((c) => phoneTail(c.phone) === phoneTail(call.caller_number))
+        if (hit) {
+          const meters = await fetchMeters(env, req.session!.beverlyToken, hit.id, fetchImpl).catch(() => [] as string[])
+          found = { id: hit.id, name: hit.name, meter: meters[0] ?? '', area: hit.area, balance: hit.balance }
           await pool.query('update call_centre.calls set customer_ref = $2, meter_number = $3, customer_name = $4 where id = $1', [call.id, found.id, found.meter, found.name])
-          Object.assign(call, { customer_ref: found.id, meter_number: found.meter, customer_name: found.name })
-          area = found.area; balance = found.balance
         }
       } catch (e) { if (!(e instanceof BeverlyError)) throw e }
+      ctx = { at: Date.now(), found }
+      ctxCache.set(call.id, ctx)
+      if (ctxCache.size > 500) ctxCache.delete(ctxCache.keys().next().value as string)
     }
-    if (call.customer_ref && call.customer_name) customer = { id: call.customer_ref, name: call.customer_name, meter: call.meter_number ?? '', balance }
+    const area = ctx.found?.area ?? ''
+    const customer: ActiveCall['customer'] = ctx.found
+      ? { id: ctx.found.id, name: ctx.found.name, meter: ctx.found.meter, balance: ctx.found.balance }
+      : call.customer_ref && call.customer_name ? { id: call.customer_ref, name: call.customer_name, meter: call.meter_number ?? '', balance: null } : null
+    if (customer) Object.assign(call, { customer_ref: customer.id, customer_name: customer.name })
 
     const tickets = call.customer_ref
       ? await pool.query<{ n: string }>(`select count(*) n from call_centre.tickets where customer_ref = $1 and status in ('OPEN','INVESTIGATING')`, [call.customer_ref])

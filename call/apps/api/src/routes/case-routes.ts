@@ -40,7 +40,7 @@ export const caseRoutes = ({ env, pool, fetchImpl, provider, push }: AppDeps): F
     if (!rows.length) return []
     const [c, names] = await Promise.all([
       pool.query<CommentRow>('select ticket_id, author_name, body, created_at from call_centre.ticket_comments where ticket_id = any($1::uuid[]) order by created_at', [rows.map((r) => r.id)]),
-      staffNames(env, token, fetchImpl),
+      staffNames(env, token, fetchImpl, pool),
     ])
     return rows.map((r) => toCase(r, c.rows, names))
   }
