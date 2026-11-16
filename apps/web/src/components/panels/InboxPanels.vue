@@ -37,7 +37,7 @@ async function loadReplies(): Promise<void> { try { replies.value = await api<st
 async function copy(t: string): Promise<void> { try { await navigator.clipboard.writeText(t); toast.show('Reply copied') } catch { toast.show('Copy is blocked in this browser') } }
 
 /* ---- Shortcuts ---- */
-const KEYS: [string, string][] = [['Mute', 'M'], ['Hold', 'H'], ['Keypad', 'K'], ['Transfer', 'T'], ['Notes', 'N'], ['Search', 'Ctrl K'], ['Shortcuts', '?'], ['Back', 'Alt Left']]
+const KEYS: [string, string][] = [['Mute', 'M'], ['Hold', 'H'], ['Keypad', 'K'], ['Transfer', 'T'], ['Notes', 'N'], ['Search', 'Ctrl K'], ['Shortcuts', '?'], ['Back', 'Alt Left'], ['Go to section', 'Alt 1 to 4']]
 
 /* ---- Profile ---- */
 const PHOTO = 'bc.photo'

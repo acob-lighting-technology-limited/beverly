@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { LANGUAGE_NAMES, type CallbackFull, type LanguageCode } from '@beverly-call/shared'
 import Icon from '@/components/Icon.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import KpiTile from '@/components/KpiTile.vue'
 import Modal from '@/components/Modal.vue'
 import StateBanner from '@/components/StateBanner.vue'
@@ -80,9 +81,9 @@ async function create(): Promise<void> {
 
 <template>
   <section>
-    <div class="head"><div class="ht"><h1>Callbacks</h1><button class="y" aria-label="New callback" title="New callback" @click="nw = true"><Icon name="plus" /></button></div>
+    <PageHeader title="Callbacks"><template #actions><button class="y" aria-label="New callback" title="New callback" @click="nw = true"><Icon name="plus" /></button></template>
       <div v-hover-scroll class="kp"><KpiTile icon="clock" :value="pad2(due)" label="Due now" /><KpiTile icon="alert" :value="pad2(late)" label="Overdue" dark /><KpiTile icon="phone" :value="pad2((list.data.value ?? []).length)" label="In queue" /></div>
-    </div>
+    </PageHeader>
     <StateBanner :loading="list.loading.value && !list.data.value" :error="list.error.value" what="callbacks" />
     <div v-if="list.data.value" class="bento">
       <div class="c s7 w2">

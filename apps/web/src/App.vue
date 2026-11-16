@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/Icon.vue'
+import AppNav from '@/components/shell/AppNav.vue'
+import SessionLock from '@/components/shell/SessionLock.vue'
 import NotificationsPanel from '@/components/panels/NotificationsPanel.vue'
 import SearchPanel from '@/components/panels/SearchPanel.vue'
 import SettingsPanel from '@/components/panels/SettingsPanel.vue'
@@ -13,7 +15,6 @@ import { usePresence } from '@/stores/presence'
 import { useToast } from '@/stores/toast'
 import { useUi } from '@/stores/ui'
 import { DEFAULT_SCREEN, GROUPS } from '@/lib/roles'
-import { groupLabel, screenTitle } from '@/lib/i18n'
 import { clock } from '@/lib/format'
 import { api } from '@/lib/api'
 import type { Role, ScreenId } from '@/types'
@@ -31,11 +32,6 @@ const ui = useUi()
 const showShell = computed(() => !route.meta.public && !!session.user)
 const current = computed(() => route.meta.screen as ScreenId | undefined)
 const inCall = computed(() => current.value === 'call')
-const groupIdx = computed(() => GROUPS.findIndex((g) => current.value && g.screens.includes(current.value)))
-const groups = computed(() => GROUPS.map((g, i) => ({ ...g, i, reachable: g.screens.filter((s) => session.screens.includes(s)) })).filter((g) => g.reachable.length))
-const subnav = computed(() => (groupIdx.value > 0 ? GROUPS[groupIdx.value]!.screens.filter((s) => session.screens.includes(s)) : []))
-/** Agents have only their own cases under Monitor, so the tab says so. */
-const navLabel = (i: number): string => (session.role === 'agent' && GROUPS[i]?.label === 'Monitor' ? 'Cases' : groupLabel(settings.p.lang, i))
 const themeIcon = computed(() => ({ light: 'sun', dark: 'moon', auto: 'auto' })[settings.p.theme])
 const mark = computed(() => (settings.isDark() ? '/brand/beverly-mark-light.png' : '/brand/beverly-mark.png'))
 const initials = computed(() => (session.user?.name ?? '').split(/\s+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase())
@@ -87,6 +83,12 @@ function unlock(): void { lastActive = Date.now(); locked.value = false }
 function onKey(e: KeyboardEvent): void {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ui.open('search'); return }
   if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); router.back(); return }
+  // Alt+1..4 jumps to a main section, using only screens this role can open
+  if (e.altKey && /^[1-9]$/.test(e.key)) {
+    const target = GROUPS.map((g) => g.screens.find((s) => session.screens.includes(s))).filter((s): s is ScreenId => !!s)[Number(e.key) - 1]
+    if (target) { e.preventDefault(); void router.push(`/${target}`) }
+    return
+  }
   if (e.key === 'Escape') { ui.close(); return }
   if (/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName) || e.ctrlKey || e.metaKey || e.altKey) return
   if (e.key === '?') ui.open('shortcuts')
@@ -119,6 +121,7 @@ const toggleMenu = () => ui.toggle('menu')
 <template>
   <RouterView v-if="!showShell" />
   <div v-else class="app" :class="{ incall: inCall }" @click="ui.panel === 'menu' || ui.panel === 'notifications' ? ui.close() : undefined">
+    <a class="skip" href="#main">Skip to content</a>
     <header class="tbar">
       <div class="br">
         <img class="bmark" :src="mark" alt="" width="30" height="30" />
@@ -153,16 +156,8 @@ const toggleMenu = () => ui.toggle('menu')
     <div class="mscrim" :class="{ on: ui.panel === 'menu' }" @click="ui.close"></div>
     <div v-if="offline" class="net on" role="status">You are offline. Showing the last known data.</div>
 
-    <nav aria-label="Main">
-      <img class="bmark rail-logo" :src="mark" alt="Beverly" />
-      <RouterLink v-for="g in groups" :key="g.label" :to="`/${g.reachable[0]}`" :class="{ on: g.i === groupIdx }" :title="navLabel(g.i)" :aria-label="navLabel(g.i)">
-        <Icon :name="g.icon" /><span>{{ navLabel(g.i) }}</span>
-      </RouterLink>
-    </nav>
-    <div class="subnav" :class="{ on: subnav.length > 1 }" aria-label="Section">
-      <RouterLink v-for="s in subnav" :key="s" :to="`/${s}`" :class="{ on: s === current }">{{ screenTitle(settings.p.lang, s) }}</RouterLink>
-    </div>
-    <div class="views"><RouterView v-slot="{ Component }"><component :is="Component" class="view on" /></RouterView></div>
+    <AppNav />
+    <main id="main" class="views" tabindex="-1"><RouterView v-slot="{ Component }"><component :is="Component" class="view on" /></RouterView></main>
 
     <button v-if="live && !inCall" id="pin" class="on" @click="router.push('/call')"><Icon name="phone" /><span>On call {{ clock(pillSecs) }}, {{ live.name }}</span></button>
   </div>
@@ -170,13 +165,12 @@ const toggleMenu = () => ui.toggle('menu')
   <SearchPanel /><SettingsPanel /><InboxPanels />
   <div class="tt" :class="{ on: !!toast.message }" role="status">{{ toast.message }}</div>
 
-  <div v-if="locked" id="lockov" class="on" role="alertdialog" aria-label="Session timed out">
-    <div class="lkc"><Icon name="lock" /><h2>Session timed out</h2><p>You were away for a while. Continue to pick up where you left off.</p>
-      <div class="btns"><button class="y" autofocus @click="unlock">Continue</button><button @click="signOut">Sign out</button></div></div>
-  </div>
+  <SessionLock v-if="locked" @continue="unlock" @sign-out="signOut" />
 </template>
 
 <style>
+.skip { position: absolute; left: 8px; top: -48px; z-index: var(--z-lock); background: var(--surface-inverse); color: var(--text-inverse); padding: 8px 14px; border-radius: var(--r-pill); }
+.skip:focus { top: 8px; }
 .avi { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--yel); color: var(--on-accent); font-size: 13px; line-height: 1; }
 .avw { position: relative; display: inline-grid; }
 .avb[data-st=available] .sd { background: var(--st-on); }

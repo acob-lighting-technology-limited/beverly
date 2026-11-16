@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import type { CaseState, PresenceRow, SupportCase } from '@beverly-call/shared'
 import Icon from '@/components/Icon.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import Pill from '@/components/Pill.vue'
 import KpiTile from '@/components/KpiTile.vue'
 import StateBanner from '@/components/StateBanner.vue'
 import FilterPopover, { type FilterGroup } from '@/components/FilterPopover.vue'
@@ -73,9 +75,9 @@ async function assign(agentId: string): Promise<void> {
 
 <template>
   <section>
-    <div class="head"><div class="ht"><h1>{{ isLead ? 'Escalations' : 'My cases' }}</h1></div>
+    <PageHeader :title="isLead ? 'Escalations' : 'My cases'">
       <div v-hover-scroll class="kp"><KpiTile icon="flag" :value="pad2(open)" label="Open" :metric="isLead ? 'open_cases' : undefined" /><KpiTile icon="clock" :value="pad2(overdue)" label="Overdue" dark :metric="isLead ? 'overdue_cases' : undefined" /><KpiTile icon="check" :value="pad2(fixed)" label="Fixed" /></div>
-    </div>
+    </PageHeader>
     <StateBanner :loading="res.loading.value && !res.data.value" :error="res.error.value" what="cases" />
     <div v-if="res.data.value" class="bento">
       <div class="c s8 w2">
@@ -87,8 +89,8 @@ async function assign(agentId: string): Promise<void> {
           <tbody>
             <tr v-for="c in visible" :key="c.id" tabindex="0" :class="{ sel: c.id === sel?.id }" @click="selId = c.id" @keydown.enter="selId = c.id">
               <td data-label="Case">{{ c.id }}</td><td data-label="Issue">{{ c.issue }}</td><td data-label="By">{{ c.by }}</td>
-              <td data-label="SLA"><span class="pill" :class="slaLabel(c.slaMinutes, c.state === 'Done').tone">{{ slaLabel(c.slaMinutes, c.state === 'Done').text }}</span></td>
-              <td data-label="State"><span class="pill" :class="tone[c.state]">{{ c.state }}</span></td></tr>
+              <td data-label="SLA"><Pill :tone="slaLabel(c.slaMinutes, c.state === 'Done').tone">{{ slaLabel(c.slaMinutes, c.state === 'Done').text }}</Pill></td>
+              <td data-label="State"><Pill :tone="tone[c.state]">{{ c.state }}</Pill></td></tr>
           </tbody></table></div>
         <div v-if="!visible.length" class="ban" style="background: var(--ok); color: var(--okt); margin-top: 8px"><Icon name="check" />{{ cases.length ? 'No cases match.' : 'No escalations here. Nice work.' }}</div>
       </div>
