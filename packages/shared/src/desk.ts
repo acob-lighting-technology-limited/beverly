@@ -157,3 +157,36 @@ export const walletInfoSchema = z.object({ status: z.string(), currency: z.strin
 export type WalletInfo = z.infer<typeof walletInfoSchema>
 export const roleSummarySchema = z.object({ roleKey: z.string(), label: z.string(), description: z.string().nullable(), people: z.number().int(), permissions: z.number().int() })
 export type RoleSummary = z.infer<typeof roleSummarySchema>
+
+/* ---- Interface languages: the same four locales Beverly uses (packages/tokens/i18n.js). Pidgin stays a SPOKEN language for calls only. ---- */
+export const INTERFACE_LOCALES = [
+  { code: 'en', label: 'English', nativeLabel: 'English', intl: 'en-NG' },
+  { code: 'yo', label: 'Yoruba', nativeLabel: 'Yorùbá', intl: 'yo-NG' },
+  { code: 'ha', label: 'Hausa', nativeLabel: 'Hausa', intl: 'ha-NG' },
+  { code: 'ig', label: 'Igbo', nativeLabel: 'Igbo', intl: 'ig-NG' },
+] as const
+export const interfaceLocaleSchema = z.enum(['en', 'yo', 'ha', 'ig'])
+export type InterfaceLocale = z.infer<typeof interfaceLocaleSchema>
+
+/* ---- Beverly support tickets (public.support_tickets), worked through Beverly's admin API so its side effects (customer notices, logging) run ---- */
+export const supportStatusSchema = z.enum(['open', 'pending', 'awaiting_customer', 'resolved', 'closed'])
+export type SupportStatus = z.infer<typeof supportStatusSchema>
+export const supportPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent'])
+export type SupportPriority = z.infer<typeof supportPrioritySchema>
+export const supportTicketSchema = z.object({
+  id: z.string(), reference: z.string(), subject: z.string(), category: z.string(), priority: supportPrioritySchema, status: supportStatusSchema,
+  requesterType: z.string(), requesterName: z.string(), customerId: z.string().nullable(), assignedTo: z.string().nullable(),
+  lastMessageAt: z.string(), createdAt: z.string(), meterContext: z.string().nullable(),
+})
+export type SupportTicket = z.infer<typeof supportTicketSchema>
+export const supportMessageSchema = z.object({ id: z.string(), sender: z.string(), senderType: z.string(), body: z.string(), internal: z.boolean(), at: z.string() })
+export type SupportMessage = z.infer<typeof supportMessageSchema>
+export const supportTicketDetailSchema = supportTicketSchema.extend({ messages: z.array(supportMessageSchema) })
+export type SupportTicketDetail = z.infer<typeof supportTicketDetailSchema>
+export const supportStatsSchema = z.object({ total: z.number().int(), open: z.number().int(), pending: z.number().int(), awaiting_customer: z.number().int(), resolved: z.number().int(), closed: z.number().int() })
+export type SupportStats = z.infer<typeof supportStatsSchema>
+export const supportPatchSchema = z.object({
+  status: supportStatusSchema.optional(), priority: supportPrioritySchema.optional(),
+  assignToMe: z.boolean().optional(), unassign: z.boolean().optional(),
+}).refine((v) => Object.keys(v).length > 0, { message: 'Nothing to change' })
+export const supportMessageInputSchema = z.object({ body: z.string().trim().min(1).max(4000), internal: z.boolean().default(false) })

@@ -88,8 +88,8 @@ describe('callbacks', () => {
     const a = await h.as('agent1@x.test')
     await h.send('POST', '/api/callbacks', a, { phone: '0902 555 0121', minutes: 0 })
     await h.send('POST', '/api/callbacks', a, { phone: '0902 555 0122', minutes: 0 })
-    const cal = (await h.get(`/api/callbacks/calendar?month=${new Date().toISOString().slice(0, 7)}`, a)).json
-    expect(cal[0]).toMatchObject({ day: new Date().getUTCDate(), count: 2 })
+    const cal = (await h.get(`/api/callbacks/calendar?month=${new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date()).slice(0, 7)}`, a)).json
+    expect(cal[0]).toMatchObject({ day: Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date()).slice(8, 10)), count: 2 })
     expect((await h.get('/api/callbacks/calendar?month=nope', a)).status).toBe(400)
   })
 })

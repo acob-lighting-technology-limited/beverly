@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { humanStatus, purchaseTone } from '@/lib/status'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ActiveCall, CustomerDetail, WalletInfo } from '@beverly-call/shared'
@@ -161,7 +162,7 @@ const onTouchEnd = (e: TouchEvent) => { if (touchY - e.changedTouches[0]!.client
         <div class="row"><span>{{ call.customer.balance === null ? 'Account' : 'Wallet balance' }}</span><b style="font-weight: 400">{{ call.customer.balance === null ? 'Bill account' : `NGN ${call.customer.balance.toLocaleString('en-US')}` }}</b></div>
         <template v-if="wallet"><div class="row"><span>On hold</span><span>NGN {{ wallet.holds.toLocaleString('en-US') }}</span></div><div class="row"><span>Available</span><span>NGN {{ wallet.available.toLocaleString('en-US') }}</span></div><div class="row"><span>Wallet status</span><span class="pill" :class="wallet.status === 'active' ? 'ok' : 'ye'">{{ wallet.status }}</span></div></template>
         <p v-if="detailErr" role="alert" style="color: var(--badt)">{{ detailErr }}</p>
-        <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'delivered' ? 'ok' : 'ye'">{{ p.status }}</span></div>
+        <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="purchaseTone(p.status)">{{ humanStatus(p.status) }}</span></div>
         <p v-if="detail && !detail.purchases.length" style="color: var(--mut)">No recent purchases.</p>
       </template>
       <template v-else-if="chip === 'ticket'">

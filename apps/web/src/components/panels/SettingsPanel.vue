@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { LANGUAGE_NAMES, type LanguageCode } from '@beverly-call/shared'
+import { INTERFACE_LOCALES } from '@beverly-call/shared'
 import SidePanel from '@/components/SidePanel.vue'
 import { api } from '@/lib/api'
 import { useSettings } from '@/stores/settings'
@@ -69,7 +69,8 @@ function setSounds(v: boolean): void { s.p.sounds = v; try { localStorage.setIte
     <label class="sw"><span>Reduce motion</span><input v-model="s.p.reduceMotion" type="checkbox" /></label>
 
     <h3>Language</h3>
-    <select v-model="s.p.lang" aria-label="Language"><option v-for="(n, k) in LANGUAGE_NAMES" :key="k" :value="(k as LanguageCode)">{{ n }}</option></select>
+    <select v-model="s.p.lang" aria-label="Language"><option v-for="l in INTERFACE_LOCALES" :key="l.code" :value="l.code">{{ l.nativeLabel }}{{ l.nativeLabel === l.label ? '' : ` (${l.label})` }}</option></select>
+    <p style="color: var(--mut); font-size: 12px; margin: 4px 0 0">Same languages as Beverly. Callers can still speak Pidgin: it is offered on the phone menu and used for routing.</p>
 
     <h3>Privacy and security</h3>
     <label class="sw"><span>Mask phone numbers</span><input v-model="s.p.mask" type="checkbox" /></label>

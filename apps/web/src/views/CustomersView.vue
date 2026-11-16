@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { humanStatus, purchaseTone } from '@/lib/status'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Customer, CustomerDetail, CustomerFull, WalletInfo } from '@beverly-call/shared'
@@ -158,7 +159,7 @@ const canCall = computed(() => session.role === 'agent' || session.role === 'sup
       <StateBanner :loading="!detail && !detailError && !full" :error="detailError" what="history" />
       <div class="col s8 w2">
         <div id="sx-h" class="c fr"><div class="hd"><Icon name="wallet" /><b>Recent purchases</b></div>
-          <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'delivered' ? 'ok' : 'ye'">{{ p.status }}</span></div>
+          <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="purchaseTone(p.status)">{{ humanStatus(p.status) }}</span></div>
           <p v-if="detail && !detail.purchases.length" style="color: var(--mut)">No purchases found.</p></div>
         <div id="sx-l" class="c fr"><div class="hd"><Icon name="clock" /><b>Timeline</b></div>
           <div v-for="(e, i) in full?.timeline ?? []" :key="i" class="row"><span>{{ shortDate(e.at) }} {{ e.text }}</span><span class="pill" :class="e.tone">{{ e.kind }}</span></div>

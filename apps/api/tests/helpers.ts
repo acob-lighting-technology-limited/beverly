@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { vi } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import type { Pool } from 'pg'
@@ -10,7 +11,7 @@ import type { PushSender } from '../src/notify/notify.js'
 import { resetStaffCache } from '../src/beverly/staff-directory.js'
 
 /** Beverly staff ids are Supabase auth UUIDs. Deterministic ones per name keep tests readable. */
-export const uid = (name: string): string => `00000000-0000-4000-8000-${Buffer.from(name).toString('hex').slice(0, 12).padStart(12, '0')}`
+export const uid = (name: string): string => `00000000-0000-4000-8000-${createHash('sha1').update(name).digest('hex').slice(0, 12)}`
 export const A1 = uid('agent1')
 export const A2 = uid('agent2')
 export const A9 = uid('agent9')
@@ -26,7 +27,8 @@ export const testEnv = (over: Record<string, string> = {}): Env => loadEnv({
 })
 
 /** email prefix picks the role: agent1@, agent2@, sup@, admin@ */
-const ROLE_OF = (email: string) => (email.startsWith('agent') ? 'custom-call-centre-agent' : email.startsWith('sup') ? 'custom-call-centre-supervisor' : email.startsWith('nocall') ? 'custom-call-centre-agent' : 'super-admin')
+const ROLE_OF = (name: string) => (name.startsWith('agent') ? 'custom-call-centre-agent' : name.startsWith('sup') ? 'custom-call-centre-supervisor' : name.startsWith('nocall') ? 'custom-call-centre-agent'
+  : name.startsWith('opsofficer') ? 'operations-officer' : name.startsWith('opsmanager') ? 'operations-manager' : name.startsWith('acct') ? 'account' : 'super-admin')
 
 /** Shapes copied from Beverly's admin API (backend/wallet/src/routes/admin.ts): money in kobo, search by q on name/phone/email. */
 export const CUSTOMERS = [
@@ -37,6 +39,17 @@ export const METERS: Record<string, { meter_id: string; status: string }[]> = {
   c1: [{ meter_id: '4201 8837 112', status: 'approved' }], c2: [{ meter_id: '4188 2043 771', status: 'pending' }],
 }
 export const PURCHASES = [{ id: 'p1', created_at: '2026-11-14T09:12:00Z', amount_minor: 500000, status: 'delivered', token: '3891 2207 5561 0000 4455', meter_id: '4201 8837 112' }]
+
+/** Beverly support tickets as the admin API returns them (public.support_tickets rows). */
+export const SUPPORT: Record<string, any>[] = []
+export const TICKET_ID = uid('tkt-1')
+export const MESSAGES: Record<string, unknown>[] = []
+export function resetSupport(): void {
+  SUPPORT.length = 0; MESSAGES.length = 0
+  SUPPORT.push({ id: TICKET_ID, reference: 'TKT-2026-00001', subject: 'Token not received', category: 'vending', priority: 'normal', status: 'open', requester_actor_type: 'customer', requester_name: 'Musa Garba', customer_id: uid('cust-musa'), assigned_to_user_id: null, last_message_at: '2026-11-16T09:00:00Z', created_at: '2026-11-16T08:00:00Z', meter_context: { meter_id: '4201 8837 112' } })
+  MESSAGES.push({ id: uid('m0'), ticket_id: TICKET_ID, sender_actor_type: 'customer', sender_name: 'Musa Garba', body: 'I paid but no token', is_internal: false, created_at: '2026-11-16T08:00:00Z' })
+}
+resetSupport()
 
 export interface Fakes {
   provider: CommunicationsProvider & { sms: { to: string; text: string }[]; calls: { from: string; to: string }[] }
@@ -90,6 +103,18 @@ export function beverlyFetch(): ReturnType<typeof vi.fn> {
       return json({ customers: CUSTOMERS.filter((c) => !q || `${c.full_name} ${c.phone} ${c.email ?? ''}`.toLowerCase().includes(q)), nextCursor: null })
     }
     if (url.includes('/admin/access/staff-status')) return json({ staff: [{ id: A1, auth_user_id: A1, user_name: 'Aisha Bello', email: 'aisha@x.test', role_key: 'custom-call-centre-agent', suspended: false, last_sign_in_at: null, portal_access: ['call'] }, { id: uid('x'), auth_user_id: uid('x'), user_name: 'Crm Only', role_key: 'x', suspended: false, portal_access: ['crm'] }] })
+    const sup = /admin\/support\/tickets(?:\/([^/?]+))?(\/messages)?/.exec(url)
+    if (sup) {
+      const method = init?.method ?? 'GET'
+      if (sup[1] === 'stats') return json({ total: SUPPORT.length, open: SUPPORT.filter((t) => t.status === 'open').length, pending: 0, awaiting_customer: 0, resolved: SUPPORT.filter((t) => t.status === 'resolved').length, closed: 0 })
+      if (!sup[1]) { const st = /[?&]status=([^&]*)/.exec(url)?.[1]; return json({ tickets: SUPPORT.filter((t) => !st || t.status === st) }) }
+      const t = SUPPORT.find((x) => x.id === sup[1])
+      if (!t) return json({ error: 'not_found' }, 404)
+      const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {}
+      if (method === 'PATCH') { if (body.status) t.status = String(body.status); if (body.priority) t.priority = String(body.priority); if (body.assign_to_me) t.assigned_to_user_id = A1; if (body.unassign) t.assigned_to_user_id = null; return json({ ok: true }) }
+      if (method === 'POST' && sup[2]) { MESSAGES.push({ id: uid(`m${MESSAGES.length}`), ticket_id: t.id, sender_actor_type: 'staff', sender_name: 'Staff', body: String(body.body), is_internal: Boolean(body.internal), created_at: new Date().toISOString() }); return json({ ok: true }) }
+      return json({ ...t, support_ticket_messages: MESSAGES.filter((m) => m.ticket_id === t.id) })
+    }
     return json({}, 404)
   })
 }
@@ -102,7 +127,7 @@ export interface Harness {
   /** Signs in and returns request headers carrying the session cookie and a valid Origin. */
   as(email: string): Promise<{ cookie: string; headers: Record<string, string> }>
   get(url: string, who: { cookie: string }): Promise<{ status: number; json: any }>
-  send(method: 'POST' | 'PUT' | 'DELETE', url: string, who: { headers: Record<string, string> }, payload?: unknown): Promise<{ status: number; json: any }>
+  send(method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, who: { headers: Record<string, string> }, payload?: unknown): Promise<{ status: number; json: any }>
   reset(): Promise<void>
 }
 
@@ -112,6 +137,11 @@ export async function boot(over: Record<string, string> = {}, configured = true)
   const fakes = makeFakes(configured)
   const env = testEnv(over)
   const send: PushSender = async (_s, payload) => { fakes.pushed.push(payload) }
+  // Beverly roles that are not call-centre roles, with the permissions Beverly gives them (see callRoleFor).
+  await pool.query(`insert into public.permissions (role_key, route_hash) values
+    ('operations-officer','wallet.support.manage'),('operations-officer','wallet.customers.view'),
+    ('operations-manager','wallet.support.manage'),('operations-manager','wallet.customers.view'),
+    ('account','wallet.customers.view') on conflict do nothing`)
   const app = await buildApp({ env, pool, fetchImpl: beverlyFetch() as never, storage: fakes.storage, provider: fakes.provider, push: send })
   const parse = (r: { statusCode: number; body: string }) => ({ status: r.statusCode, json: r.body ? (() => { try { return JSON.parse(r.body) } catch { return r.body } })() : null })
   return {
@@ -125,7 +155,7 @@ export async function boot(over: Record<string, string> = {}, configured = true)
     async get(url, who) { return parse(await app.inject({ url, headers: { cookie: who.cookie } })) },
     async send(method, url, who, payload) { return parse(await app.inject({ method, url, headers: who.headers, payload: payload as never })) },
     async reset() {
-      resetStaffCache()
+      resetStaffCache(); resetSupport()
       await pool.query(`truncate call_centre.calls, call_centre.tickets, call_centre.callbacks, call_centre.recordings, call_centre.agent_presence,
         call_centre.notifications, call_centre.notification_reads, call_centre.push_subscriptions, call_centre.sms_log, call_centre.settings,
         call_centre.retention_runs, call_centre.shift_handovers, call_centre.coaching_log, call_centre.customer_notes, call_centre.webhook_heartbeat restart identity cascade`)

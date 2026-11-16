@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import type { LanguageCode } from '@beverly-call/shared'
+import type { InterfaceLocale } from '@beverly-call/shared'
+import { resolveLocale, setLocale, storedLocale } from '@/lib/locale'
 import type { ThemeMode } from '@/types'
 
 const KEY = 'bc.prefs'
@@ -14,7 +15,7 @@ export interface Prefs {
   textSize: number
   highContrast: boolean
   reduceMotion: boolean
-  lang: LanguageCode
+  lang: InterfaceLocale        // interface language only. Pidgin is a spoken (call) language, not an interface one.
   sounds: boolean
   sessionTimeoutMin: number   // 0 = off
   mute: { esc: boolean; cb: boolean; sys: boolean }
@@ -28,7 +29,8 @@ const DEFAULTS: Prefs = {
 function load(): Prefs {
   try {
     const s = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Prefs>
-    return { ...DEFAULTS, ...s, mute: { ...DEFAULTS.mute, ...(s.mute ?? {}) } }
+    // Retired or unknown languages (such as the old 'pcm' interface option) become English; Beverly's own choice wins when present.
+    return { ...DEFAULTS, ...s, lang: storedLocale() ?? resolveLocale((s as { lang?: unknown }).lang), mute: { ...DEFAULTS.mute, ...(s.mute ?? {}) } }
   } catch { return { ...DEFAULTS, mute: { ...DEFAULTS.mute } } }
 }
 
@@ -48,7 +50,8 @@ export const useSettings = defineStore('settings', () => {
     if (p.value.highContrast) r.setAttribute('data-hc', ''); else r.removeAttribute('data-hc')
     if (p.value.reduceMotion) r.setAttribute('data-rm', ''); else r.removeAttribute('data-rm')
     r.style.setProperty('--tx', String(p.value.textSize / 100))
-    r.lang = p.value.lang === 'pcm' ? 'en' : p.value.lang
+    r.lang = p.value.lang
+    setLocale(p.value.lang)
   }
   watch(p, () => {
     apply()

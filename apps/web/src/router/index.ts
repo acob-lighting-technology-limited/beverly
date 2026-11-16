@@ -14,6 +14,7 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
     screen('call', () => import('../views/CallView.vue')),
     screen('cb', () => import('../views/CallbacksView.vue')),
+    screen('tix', () => import('../views/TicketsView.vue')),
     screen('cases', () => import('../views/CasesView.vue')),
     screen('cust', () => import('../views/CustomersView.vue')),
     screen('wall', () => import('../views/WallView.vue')),

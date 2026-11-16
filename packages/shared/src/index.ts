@@ -7,7 +7,7 @@ import { z } from 'zod'
 export const roleSchema = z.enum(['agent', 'supervisor', 'admin'])
 export type Role = z.infer<typeof roleSchema>
 
-export const screenIdSchema = z.enum(['call', 'cb', 'cust', 'wall', 'cases', 'rec', 'rep', 'admin'])
+export const screenIdSchema = z.enum(['call', 'cb', 'tix', 'cust', 'wall', 'cases', 'rec', 'rep', 'admin'])
 export type ScreenId = z.infer<typeof screenIdSchema>
 
 export const sessionUserSchema = z.object({ id: z.string().min(1), name: z.string().min(1), role: roleSchema })

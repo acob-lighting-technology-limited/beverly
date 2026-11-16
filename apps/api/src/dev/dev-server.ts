@@ -6,6 +6,7 @@
  * Sign in with any password. The email prefix picks the role: agent@..., sup@..., admin@...
  * No notifications are seeded: the bell only ever shows what the app itself raises from real events.
  */
+import { createHash } from 'node:crypto'
 import { buildApp } from '../app.js'
 import { loadEnv } from '../config/env.js'
 import { createCallCentreDb } from './pglite-pool.js'
@@ -15,13 +16,14 @@ import type { RecordingStorage } from '../storage/recording-storage.js'
 if (process.env.NODE_ENV === 'production') throw new Error('dev-server must not run in production')
 
 const env = loadEnv({
-  NODE_ENV: 'development', PORT: '8787', DATABASE_URL: 'postgres://dev:dev@localhost:5432/dev',
+  NODE_ENV: 'development', PORT: process.env.MOCK_PORT ?? '8787', DATABASE_URL: 'postgres://dev:dev@localhost:5432/dev',
   BEVERLY_AUTH_URL: 'https://beverly.dev.test', BEVERLY_AUTH_ANON_KEY: 'dev', BEVERLY_API_URL: 'https://beverly.dev.test',
-  SESSION_SECRET: 'dev-only-secret-dev-only-secret-dev-only', ALLOWED_ORIGIN: 'http://127.0.0.1:5173',
+  SESSION_SECRET: 'dev-only-secret-dev-only-secret-dev-only', ALLOWED_ORIGIN: process.env.MOCK_ORIGIN ?? 'http://127.0.0.1:5173',
   AT_WEBHOOK_SECRET: 'dev-webhook-secret-1234', AT_VIRTUAL_NUMBER: '+2347000000000', LOGIN_RATE_LIMIT: '200', BEVERLY_READ_MODE: 'db',
 })
 
-const uid = (name: string): string => `00000000-0000-4000-8000-${Buffer.from(name).toString('hex').slice(0, 12).padStart(12, '0')}`
+/** Deterministic UUID per name (hashed, so similar names never collide). */
+const uid = (name: string): string => `00000000-0000-4000-8000-${createHash('sha1').update(name).digest('hex').slice(0, 12)}`
 const SEED_AGENTS = [['chidi', 'Chidi Okafor', ['en', 'ig'], 'available'], ['tunde', 'Tunde Ade', ['en', 'yo', 'pcm'], 'acw'], ['ngozi', 'Ngozi Eze', ['en', 'ig'], 'available'], ['ibrahim', 'Ibrahim Sani', ['en', 'ha'], 'break'], ['sade', 'Sade Ola', ['en', 'yo'], 'busy']] as const
 
 const { pool } = await createCallCentreDb()
@@ -74,12 +76,34 @@ await pool.query(`insert into call_centre.agent_presence (agent_crm_id, name, cl
 setInterval(() => { void pool.query(`update call_centre.agent_presence set last_seen = now() where agent_crm_id = any($1::text[])`, [SEED_AGENTS.map((a) => uid(a[0]))]) }, 30_000)
 
 /* ---- stubbed Beverly sign-on, carrier and storage ---- */
+/** Beverly support tickets as its admin API returns them. In memory, so replies and status changes can be tried. */
+const TICKET = uid('tkt-1'); const TICKET2 = uid('tkt-2')
+const tickets: Record<string, any>[] = [
+  { id: TICKET, reference: 'TKT-2026-00001', subject: 'Paid for electricity but no token', category: 'vending', priority: 'high', status: 'open', requester_actor_type: 'customer', requester_name: 'Musa Garba', customer_id: MUSA, assigned_to_user_id: null, last_message_at: new Date(Date.now() - 36e5).toISOString(), created_at: new Date(Date.now() - 72e5).toISOString(), meter_context: { meter_id: '4201 8837 112' } },
+  { id: TICKET2, reference: 'TKT-2026-00002', subject: 'How do I link a second meter?', category: 'account', priority: 'normal', status: 'awaiting_customer', requester_actor_type: 'customer', requester_name: 'Ngozi Obi', customer_id: NGOZI, assigned_to_user_id: null, last_message_at: new Date(Date.now() - 864e5).toISOString(), created_at: new Date(Date.now() - 2 * 864e5).toISOString(), meter_context: null },
+]
+const messages: Record<string, any>[] = [
+  { id: uid('m1'), ticket_id: TICKET, sender_actor_type: 'customer', sender_name: 'Musa Garba', body: 'I paid NGN 5,000 this morning and no token came.', is_internal: false, created_at: new Date(Date.now() - 72e5).toISOString() },
+  { id: uid('m2'), ticket_id: TICKET2, sender_actor_type: 'customer', sender_name: 'Ngozi Obi', body: 'How do I link a second meter?', is_internal: false, created_at: new Date(Date.now() - 2 * 864e5).toISOString() },
+]
 const names = new Map<string, string>()
 const ROLE_KEY = (n: string) => (n.startsWith('agent') ? 'custom-call-centre-agent' : n.startsWith('sup') ? 'custom-call-centre-supervisor' : 'super-admin')
 const fetchImpl = async (url: string, init?: RequestInit): Promise<Response> => {
   const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 })
   if (url.includes('/auth/v1/token')) { const n = String((JSON.parse(String(init?.body)) as { email: string }).email).split('@')[0]!; names.set(uid(n), n); return json({ access_token: `dev-${n}`, user: { id: uid(n), user_metadata: { full_name: n } } }) }
   if (url.includes('/auth/v1/health')) return json({ ok: true })
+  const sup = /admin\/support\/tickets(?:\/([^/?]+))?(\/messages)?/.exec(url)
+  if (sup) {
+    const method = init?.method ?? 'GET'
+    if (sup[1] === 'stats') { const n = (st: string) => tickets.filter((t) => t.status === st).length; return json({ total: tickets.length, open: n('open'), pending: n('pending'), awaiting_customer: n('awaiting_customer'), resolved: n('resolved'), closed: n('closed') }) }
+    if (!sup[1]) { const st = /[?&]status=([^&]*)/.exec(url)?.[1]; const mine = /[?&]assigned=me/.test(url); return json({ tickets: tickets.filter((t) => (!st || t.status === st) && (!mine || t.assigned_to_user_id)) }) }
+    const t = tickets.find((x) => x.id === sup[1])
+    if (!t) return new Response('{}', { status: 404 })
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {}
+    if (method === 'PATCH') { if (body.status) t.status = body.status; if (body.priority) t.priority = body.priority; if (body.assign_to_me) t.assigned_to_user_id = uid('agent'); if (body.unassign) t.assigned_to_user_id = null; t.last_message_at = new Date().toISOString(); return json({ ok: true }) }
+    if (method === 'POST' && sup[2]) { messages.push({ id: uid(`m${messages.length + 1}`), ticket_id: t.id, sender_actor_type: 'staff', sender_name: 'Support', body: String(body.body), is_internal: Boolean(body.internal), created_at: new Date().toISOString() }); t.last_message_at = new Date().toISOString(); return json({ ok: true }) }
+    return json({ ...t, support_ticket_messages: messages.filter((m) => m.ticket_id === t.id) })
+  }
   if (url.includes('/rest/v1/users')) { const n = names.get(/auth_user_id=eq\.([^&]+)/.exec(url)?.[1] ?? '') ?? ''; return json([{ role_key: ROLE_KEY(n), portal_access: ['call'] }]) }
   return new Response('{}', { status: 404 })
 }
@@ -97,4 +121,4 @@ const storage: RecordingStorage = {
 
 const app = await buildApp({ env, pool, fetchImpl: fetchImpl as never, provider, storage, push: null })
 await app.listen({ port: env.PORT, host: '127.0.0.1' })
-console.log('Dev API on http://127.0.0.1:8787 (in-memory Postgres, sample data, Beverly data read through the views). Sign in as agent@x.test, sup@x.test or admin@x.test, any password.')
+console.log(`Dev API on http://127.0.0.1:${env.PORT} (in-memory Postgres, sample data, Beverly data read through the views). Sign in as agent@x.test, sup@x.test or admin@x.test, any password.`)

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
     "dev:mock": "tsx src/dev/dev-server.ts",
     "job": "tsx src/jobs/run-jobs.ts",
     "build": "tsc --noEmit -p tsconfig.json",

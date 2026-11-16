@@ -8,6 +8,7 @@ import { beverlyData } from '../beverly/beverly-data.js'
 import { africasTalking, ProviderUnavailable } from '../telephony/provider.js'
 import { clientNameFor } from './presence-routes.js'
 import { notify, webPushSender } from '../notify/notify.js'
+import { hm } from '../time.js'
 
 interface CustomerCtx { id: string; name: string; meter: string; area: string; balance: number | null }
 const ctxCache = new Map<string, { at: number; found: CustomerCtx | null }>()
@@ -114,7 +115,7 @@ export const callRoutes = ({ env, pool, fetchImpl, provider, push }: AppDeps): F
   app.get<{ Params: { id: string } }>('/calls/:id/notes', { preHandler: agent }, async (req, reply): Promise<CallNote[] | void> => {
     if (!(await owned(req.params.id, req.session!.user.id)) && req.session!.user.role === 'agent') return reply.code(404).send({ error: 'Call not found' })
     const r = await pool.query<{ author_name: string; body: string; created_at: Date }>('select author_name, body, created_at from call_centre.call_notes where call_id = $1 order by created_at', [req.params.id])
-    return r.rows.map((n) => ({ by: n.author_name, text: n.body, at: n.created_at.toISOString().slice(11, 16) }))
+    return r.rows.map((n) => ({ by: n.author_name, text: n.body, at: hm(n.created_at) }))
   })
 
   app.post<{ Params: { id: string } }>('/calls/:id/notes', { preHandler: agent }, async (req, reply) => {
