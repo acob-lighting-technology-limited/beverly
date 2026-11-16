@@ -127,7 +127,7 @@ function openCustomer(): void { if (props.call?.customer) { ui.close(); void rou
             <div class="btns"><button class="y" :disabled="!ready || !!token" @click="reveal">Reveal token</button></div></div>
           <div class="c"><div class="hd"><Icon name="wallet" /><b>{{ call.customer.balance === null ? 'Bill account' : `NGN ${call.customer.balance.toLocaleString('en-US')}` }}</b><span class="pill ye">Token hidden</span></div>
             <p v-if="err" role="alert" style="color: var(--badt)">{{ err }}</p>
-            <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'success' || p.status === 'completed' ? 'ok' : 'ye'">{{ p.status }}</span></div></div>
+            <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'delivered' ? 'ok' : 'ye'">{{ p.status }}</span></div></div>
         </template>
       </div>
 

@@ -116,6 +116,7 @@ export type Purchase = z.infer<typeof purchaseSchema>
 
 export const customerTicketSchema = z.object({ ref: z.string(), category: z.string(), status: z.string(), createdAt: z.string() })
 export const customerDetailSchema = z.object({
+  meters: z.array(z.string()),
   purchases: z.array(purchaseSchema), tickets: z.array(customerTicketSchema),
 })
 export type CustomerDetail = z.infer<typeof customerDetailSchema>

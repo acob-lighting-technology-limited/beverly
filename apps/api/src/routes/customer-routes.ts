@@ -4,7 +4,7 @@ import { customerSmsSchema, noteSchema, tokenRevealSchema } from '@beverly-call/
 import type { AppDeps } from '../app.js'
 import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
-import { BeverlyError, fetchCustomers, fetchPurchases } from '../beverly/beverly-api.js'
+import { BeverlyError, fetchCustomers, fetchMeters, fetchPurchases } from '../beverly/beverly-api.js'
 import { maskToken } from '../beverly/token-mask.js'
 import { africasTalking } from '../telephony/provider.js'
 import { sendLoggedSms } from '../notify/sms.js'
@@ -31,12 +31,17 @@ export const customerRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fas
   /** Purchases from Beverly (tokens masked here) plus our own cases for the customer. */
   app.get<{ Params: { id: string } }>('/customers/:id/detail', { preHandler: staff }, async (req, reply): Promise<CustomerDetail | void> => {
     try {
-      const list = await fetchPurchases(env, req.session!.beverlyToken, req.params.id, fetchImpl)
+      const [list, meters] = await Promise.all([
+        fetchPurchases(env, req.session!.beverlyToken, req.params.id, fetchImpl),
+        fetchMeters(env, req.session!.beverlyToken, req.params.id, fetchImpl).catch(() => [] as string[]),
+      ])
       const t = await pool.query<{ ticket_ref: string; category: string; status: string; created_at: Date }>(
         'select ticket_ref, category, status, created_at from call_centre.tickets where customer_ref = $1 order by created_at desc limit 10', [req.params.id])
       await auditAs(pool, req, 'customer.view', 'customer', req.params.id)
       return {
-        purchases: list.map((p) => ({ id: String(p.id ?? ''), at: String(p.created_at ?? p.at ?? ''), amount: Number(p.amount ?? 0), status: String(p.status ?? 'unknown'), tokenMasked: maskToken(p.token) })),
+        meters,
+        // Beverly stores money in minor units (kobo).
+        purchases: list.map((p) => ({ id: String(p.id ?? ''), at: String(p.created_at ?? ''), amount: Number(p.amount_minor ?? 0) / 100, status: String(p.status ?? 'unknown'), tokenMasked: maskToken(p.token) })),
         tickets: t.rows.map((x) => ({ ref: x.ticket_ref, category: x.category.replaceAll('_', ' '), status: x.status, createdAt: x.created_at.toISOString() })),
       }
     } catch (e) { return beverlyFail(reply, e) }

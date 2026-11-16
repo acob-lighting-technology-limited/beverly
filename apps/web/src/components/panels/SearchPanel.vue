@@ -42,15 +42,15 @@ const show = (p: string) => (settings.p.mask ? maskPhone(p) : p)
 
 <template>
   <SidePanel :open="ui.panel === 'search'" title="Search" @close="ui.close">
-    <input v-model="q" type="search" aria-label="Search customers" placeholder="Meter, phone or name" />
+    <input v-model="q" type="search" aria-label="Search customers" placeholder="Name, phone or email" />
     <div v-if="!q && recent.length" style="margin-top: 10px"><small class="hq">Recent</small>
       <button v-for="n in recent" :key="n" class="mi" @click="q = n"><Icon name="clock" />{{ n }}</button></div>
     <p v-if="busy" style="color: var(--mut)">Searching…</p>
     <p v-else-if="error" role="alert" style="color: var(--badt)">{{ error }}</p>
     <div style="margin-top: 8px">
       <button v-for="c in results" :key="c.id" class="mi" @click="go(c)"><Icon name="user" />
-        <span>{{ c.name }}<small style="display: block; color: var(--mut)">{{ c.meter }} · {{ show(c.phone) }}</small></span></button>
-      <p v-if="q && !busy && !error && !results.length" style="color: var(--mut)">No match. Try a meter number, phone or name.</p>
+        <span>{{ c.name }}<small style="display: block; color: var(--mut)">{{ c.area || 'No station' }} · {{ show(c.phone) }}</small></span></button>
+      <p v-if="q && !busy && !error && !results.length" style="color: var(--mut)">No match. Try a name, phone or email.</p>
     </div>
   </SidePanel>
 </template>

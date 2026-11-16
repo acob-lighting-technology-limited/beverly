@@ -56,21 +56,25 @@ setInterval(() => { void pool.query(`update call_centre.agent_presence set last_
 /* ---- stubbed Beverly, carrier and storage ---- */
 const names = new Map<string, string>()
 const ROLE_KEY = (n: string) => (n.startsWith('agent') ? 'custom-call-centre-agent' : n.startsWith('sup') ? 'custom-call-centre-supervisor' : 'super-admin')
+/** Shapes follow Beverly's admin API: money in kobo, search by q on name/phone/email, meters on their own route. */
 const CUSTOMERS = [
-  { id: 'c1', name: 'Musa Garba', meter_number: '4201 8837 112', phone: '0803 555 0142', area: 'Kano North', account_type: 'Prepaid', wallet_balance: 3200 },
-  { id: 'c2', name: 'Ngozi Obi', meter_number: '4201 7710 306', phone: '0706 555 0188', area: 'Enugu East', account_type: 'Prepaid', wallet_balance: 8400 },
-  { id: 'c3', name: 'Tope Bello', meter_number: '4188 2043 771', phone: '0902 555 0121', area: 'Ikeja', account_type: 'Postpaid', wallet_balance: null },
+  { id: 'c1', full_name: 'Musa Garba', phone: '08035550142', email: 'musa@example.test', status: 'active', balance_minor: 320000, station_ids: ['KANO NORTH'] },
+  { id: 'c2', full_name: 'Ngozi Obi', phone: '+2347065550188', email: null, status: 'active', balance_minor: 840000, station_ids: ['ENUGU EAST'] },
+  { id: 'c3', full_name: 'Tope Bello', phone: '09025550121', email: null, status: 'active', balance_minor: 40000, station_ids: ['IKEJA'] },
 ]
+const METERS: Record<string, string> = { c1: '4201 8837 112', c2: '4201 7710 306', c3: '4188 2043 771' }
 const fetchImpl = async (url: string, init?: RequestInit): Promise<Response> => {
   const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 })
   if (url.includes('/auth/v1/token')) { const n = String((JSON.parse(String(init?.body)) as { email: string }).email).split('@')[0]!; names.set(uid(n), n); return json({ access_token: `dev-${n}`, user: { id: uid(n), user_metadata: { full_name: n } } }) }
   if (url.includes('/auth/v1/health')) return json({ ok: true })
   if (url.includes('/rest/v1/users')) { const n = names.get(/auth_user_id=eq\.([^&]+)/.exec(url)?.[1] ?? '') ?? ''; return json([{ role_key: ROLE_KEY(n), portal_access: ['call'] }]) }
-  if (url.includes('/purchases')) return json({ data: [{ id: 'p1', created_at: new Date(Date.now() - 864e5).toISOString(), amount: 5000, status: 'success', token: '3891 2207 5561 0000 4455' }, { id: 'p2', created_at: new Date(Date.now() - 3 * 864e5).toISOString(), amount: 3000, status: 'success', token: '1122 3344 5566 7788 9900' }] })
-  if (url.includes('/admin/staff')) return json({ data: SEED_AGENTS.map(([id, name]) => ({ id: uid(id), auth_user_id: uid(id), full_name: name, role_key: 'custom-call-centre-agent', is_active: true, portal_access: ['call'] })) })
+  if (url.includes('/purchases')) return json({ purchases: [{ id: 'p1', created_at: new Date(Date.now() - 864e5).toISOString(), amount_minor: 500000, status: 'delivered', token: '3891 2207 5561 0000 4455' }, { id: 'p2', created_at: new Date(Date.now() - 3 * 864e5).toISOString(), amount_minor: 300000, status: 'delivered', token: '1122 3344 5566 7788 9900' }], nextCursor: null })
+  const meters = /customers\/([^/?]+)\/meters/.exec(url)
+  if (meters) return json({ meters: [{ meter_id: METERS[meters[1]!] ?? '', status: 'approved' }] })
+  if (url.includes('/admin/access/staff-status')) return json({ staff: SEED_AGENTS.map(([id, name]) => ({ id: uid(id), auth_user_id: uid(id), user_name: name, role_key: 'custom-call-centre-agent', suspended: false, last_sign_in_at: new Date(Date.now() - 36e5).toISOString(), portal_access: ['call'] })) })
   if (url.includes('/admin/customers')) {
-    const q = decodeURIComponent(/search=([^&]*)/.exec(url)?.[1] ?? '').toLowerCase(); const d = (s: string) => s.replace(/\D/g, '')
-    return json({ data: CUSTOMERS.filter((c) => !q || `${c.name} ${c.phone} ${c.meter_number}`.toLowerCase().includes(q) || (d(q).length >= 7 && d(c.phone).includes(d(q)))) })
+    const q = decodeURIComponent(/[?&]q=([^&]*)/.exec(url)?.[1] ?? '').toLowerCase()
+    return json({ customers: CUSTOMERS.filter((c) => !q || `${c.full_name} ${c.phone} ${c.email ?? ''}`.toLowerCase().includes(q)), nextCursor: null })
   }
   return new Response('{}', { status: 404 })
 }

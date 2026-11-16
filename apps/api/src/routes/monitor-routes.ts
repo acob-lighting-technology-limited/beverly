@@ -13,7 +13,7 @@ export const monitorRoutes = ({ env, pool, fetchImpl, storage }: AppDeps): Fasti
   const lead = requireRole('supervisor', 'admin')
 
   app.get('/wall', { preHandler: lead }, async (req): Promise<WallSnapshot> => {
-    const names = await staffNames(env, req.session!.beverlyToken, fetchImpl)
+    const names = await staffNames(env, req.session!.beverlyToken, fetchImpl, pool)
     const [calls, cb, cases, today, hourly, limitsRow] = await Promise.all([
       pool.query<{ id: string; agent_crm_id: string | null; caller_number: string; secs: string }>(
         `select id, agent_crm_id, caller_number, extract(epoch from now() - started_at)::int as secs
@@ -118,7 +118,7 @@ export const monitorRoutes = ({ env, pool, fetchImpl, storage }: AppDeps): Fasti
     const range = reportRangeSchema.safeParse(req.query.range ?? '7')
     if (!range.success) return reply.code(400).send({ error: 'range must be 1, 7 or 30' })
     const days = Number(range.data)
-    const names = await staffNames(env, req.session!.beverlyToken, fetchImpl)
+    const names = await staffNames(env, req.session!.beverlyToken, fetchImpl, pool)
     const [heat, kpi, board, langs] = await Promise.all([
       pool.query<{ dow: number; h: number; n: string }>(
         `select extract(isodow from started_at)::int dow, extract(hour from started_at)::int h, count(*) n from call_centre.calls
