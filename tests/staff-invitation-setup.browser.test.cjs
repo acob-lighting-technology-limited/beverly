@@ -73,7 +73,7 @@ function startServer() {
       localStorage.setItem("beverly.staff.access_token", "admin-test-token");
       localStorage.setItem("beverly.staff.user", JSON.stringify({ id: "admin-1", email: "admin@acoblighting.com", role: "super-admin", password_reset_required: false }));
     });
-    let staff = { auth_user_id: "staff-1", user_id: "staff-1", user_name: "Ada Okonkwo", email: "ada@acoblighting.com", role_key: "account", station_id: "TUNGA", station_ids: ["TUNGA"], last_sign_in_at: null, confirmed_at: "2026-10-01T00:00:00Z" };
+    let staff = { auth_user_id: "staff-1", user_id: "staff-1", user_name: "Ada Okonkwo", email: "ada@acoblighting.com", role_key: "account", station_id: "TUNGA", station_ids: ["TUNGA"], portal_access: ["staff_wallet"], last_sign_in_at: null, confirmed_at: "2026-10-01T00:00:00Z" };
     let createdStaffPayload = null;
     const savedEdits = [];
     let deletedWithConfirmation = false;
@@ -93,7 +93,7 @@ function startServer() {
       if (pathname.endsWith("/access/users/staff-1") && method === "PATCH") {
         const edit = route.request().postDataJSON();
         savedEdits.push(edit);
-        staff = { ...staff, role_key: edit.roleKey, station_id: edit.allStations ? null : edit.stationIds[0], station_ids: edit.allStations ? ["*"] : edit.stationIds };
+        staff = { ...staff, role_key: edit.roleKey, station_id: edit.allStations ? null : edit.stationIds[0], station_ids: edit.allStations ? ["*"] : edit.stationIds, portal_access: edit.portalAccess };
         return json({ ok: true });
       }
       if (pathname.endsWith("/access/users/staff-1") && method === "DELETE") {
@@ -109,17 +109,20 @@ function startServer() {
     await adminPage.getByPlaceholder("Ada Okonkwo").fill("Bola Yusuf");
     await adminPage.getByPlaceholder("ada@acoblighting.com").fill("bola@acoblighting.com");
     await adminPage.locator(".ac-invite .msel-all").getByRole("checkbox").check();
+    assert.equal(await adminPage.getByTestId("btn-staff-invite-send").isDisabled(), true, "Send Invite must stay disabled until a portal is chosen.");
+    await adminPage.getByTestId("invite-portal-access-call").check();
+    await adminPage.getByTestId("invite-portal-access-pue").check();
     await adminPage.getByRole("button", { name: "Send Invite" }).click();
-    assert.deepEqual(createdStaffPayload, { email: "bola@acoblighting.com", fullName: "Bola Yusuf", roleKey: "account", stationIds: [], allStations: true });
+    assert.deepEqual(createdStaffPayload, { email: "bola@acoblighting.com", fullName: "Bola Yusuf", roleKey: "account", stationIds: [], allStations: true, portalAccess: ["call", "pue"] });
     await adminPage.locator(".ac-staff-summary").filter({ hasText: "Ada Okonkwo" }).click();
     await adminPage.locator(".ac-staff-card select").selectOption("finance-checker");
     await adminPage.locator(".ac-staff-card .msel-row").filter({ hasText: "GARKI" }).getByRole("checkbox").check();
     await adminPage.locator(".ac-staff-card").getByRole("button", { name: "Save Changes" }).click();
-    assert.deepEqual(savedEdits[0], { roleKey: "finance-checker", stationIds: ["TUNGA", "GARKI"], allStations: false });
+    assert.deepEqual(savedEdits[0], { roleKey: "finance-checker", stationIds: ["TUNGA", "GARKI"], allStations: false, portalAccess: ["staff_wallet"] });
     await adminPage.getByRole("group", { name: "Staff view" }).getByRole("button", { name: "Table" }).click();
     await adminPage.locator(".ac-table-detail-row .msel-all").getByRole("checkbox").check();
     await adminPage.locator(".ac-table-detail-row").getByRole("button", { name: "Save Changes" }).click();
-    assert.deepEqual(savedEdits[1], { roleKey: "finance-checker", stationIds: [], allStations: true });
+    assert.deepEqual(savedEdits[1], { roleKey: "finance-checker", stationIds: [], allStations: true, portalAccess: ["staff_wallet"] });
     await adminPage.locator(".ac-table-detail-row").getByRole("button", { name: "Delete permanently" }).click();
     await adminPage.locator(".ac-dialog").getByRole("button", { name: "Delete permanently" }).click();
     assert.equal(deletedWithConfirmation, true, "Permanent deletion must send explicit confirmation.");
