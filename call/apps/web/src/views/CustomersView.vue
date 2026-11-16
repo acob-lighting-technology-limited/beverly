@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { humanStatus, purchaseTone } from '@/lib/status'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { Customer, CustomerDetail, CustomerFull } from '@beverly-call/shared'
+import type { Customer, CustomerDetail, CustomerFull, WalletInfo } from '@beverly-call/shared'
 import Icon from '@/components/Icon.vue'
 import KpiTile from '@/components/KpiTile.vue'
 import Modal from '@/components/Modal.vue'
@@ -60,15 +61,17 @@ const money = (n: number | null) => (n === null ? 'Bill account' : `NGN ${n.toLo
 const sel = ref<Customer | null>(null)
 const detail = ref<CustomerDetail | null>(null)
 const full = ref<CustomerFull | null>(null)
+const wallet = ref<WalletInfo | null>(null)
 const detailError = ref('')
 
 async function open(c: Customer): Promise<void> {
-  sel.value = c; detail.value = null; full.value = null; detailError.value = ''
+  sel.value = c; detail.value = null; full.value = null; wallet.value = null; detailError.value = ''
   if (route.query.open !== c.id) void router.replace({ path: '/cust', query: { open: c.id } })
   const id = encodeURIComponent(c.id)
-  const [d, f] = await Promise.allSettled([api<CustomerDetail>(`/customers/${id}/detail`), api<CustomerFull>(`/customers/${id}/full`)])
+  const [d, f, w] = await Promise.allSettled([api<CustomerDetail>(`/customers/${id}/detail`), api<CustomerFull>(`/customers/${id}/full`), api<WalletInfo>(`/customers/${id}/wallet`)])
   if (d.status === 'fulfilled') detail.value = d.value; else detailError.value = 'Purchase history could not be loaded.'
   if (f.status === 'fulfilled') full.value = f.value
+  if (w.status === 'fulfilled') wallet.value = w.value
 }
 function back(): void { sel.value = null; void router.replace({ path: '/cust' }) }
 async function openById(id: string): Promise<void> {
@@ -114,14 +117,14 @@ const canCall = computed(() => session.role === 'agent' || session.role === 'sup
       <div class="head"><div class="ht"><h1>Customers</h1></div>
         <div v-hover-scroll class="kp"><KpiTile icon="users" :value="pad2(list.length)" label="Customers" /><KpiTile icon="wallet" :value="pad2(lowCount)" label="Low wallet" dark /></div></div>
       <div class="cdh">
-        <label class="sch"><Icon name="users" /><input v-model="q" type="search" aria-label="Search customers" placeholder="Search by name, phone or email" @input="onInput" /></label>
+        <label class="sch"><Icon name="users" /><input v-model="q" type="search" aria-label="Search customers" placeholder="Search by name, phone, email or meter" @input="onInput" /></label>
         <FilterPopover v-model="extra" :groups="groups" /><ViewToggle :model-value="view" @update:model-value="setView" />
       </div>
       <div v-hover-scroll class="chs" role="group" aria-label="Quick filters">
         <button v-for="c in ([['all', 'All'], ['prepaid', 'Prepaid'], ['postpaid', 'Postpaid'], ['low', 'Low wallet']] as const)" :key="c[0]" :class="{ on: chip === c[0] }" @click="chip = c[0]">{{ c[1] }}</button></div>
       <div class="cnt" aria-live="polite" style="margin: 8px 2px">{{ shown.length }} of {{ list.length }} customers</div>
       <StateBanner :loading="loading" :error="error" what="customers" />
-      <div v-if="!loading && !error && !shown.length" class="ban">No customer found. Try a name, phone or email.</div>
+      <div v-if="!loading && !error && !shown.length" class="ban">No customer found. Try a name, phone, email or meter number.</div>
       <div v-if="view === 'cards'" class="cgrid">
         <button v-for="c in shown" :key="c.id" class="cc2" :aria-label="`Open ${c.name}`" @click="open(c)">
           <span class="cav" style="background: var(--yel)">{{ initials(c.name) }}</span><b>{{ c.name }}</b>
@@ -156,13 +159,17 @@ const canCall = computed(() => session.role === 'agent' || session.role === 'sup
       <StateBanner :loading="!detail && !detailError && !full" :error="detailError" what="history" />
       <div class="col s8 w2">
         <div id="sx-h" class="c fr"><div class="hd"><Icon name="wallet" /><b>Recent purchases</b></div>
-          <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'delivered' ? 'ok' : 'ye'">{{ p.status }}</span></div>
+          <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="purchaseTone(p.status)">{{ humanStatus(p.status) }}</span></div>
           <p v-if="detail && !detail.purchases.length" style="color: var(--mut)">No purchases found.</p></div>
         <div id="sx-l" class="c fr"><div class="hd"><Icon name="clock" /><b>Timeline</b></div>
           <div v-for="(e, i) in full?.timeline ?? []" :key="i" class="row"><span>{{ shortDate(e.at) }} {{ e.text }}</span><span class="pill" :class="e.tone">{{ e.kind }}</span></div>
           <p v-if="full && !full.timeline.length" style="color: var(--mut)">Nothing recorded for this customer yet.</p></div>
       </div>
       <div class="col s4 w2">
+        <div v-if="wallet" class="c fr"><div class="hd"><Icon name="wallet" /><b>Wallet</b><span class="pill" :class="wallet.status === 'active' ? 'ok' : 'ye'">{{ wallet.status }}</span></div>
+          <div class="row"><span>Balance</span><b style="font-weight: 400">NGN {{ wallet.balance.toLocaleString('en-US') }}</b></div>
+          <div class="row"><span>On hold</span><span>NGN {{ wallet.holds.toLocaleString('en-US') }}</span></div>
+          <div class="row"><span>Available</span><span>NGN {{ wallet.available.toLocaleString('en-US') }}</span></div></div>
         <div id="sx-t" class="c fr"><div class="hd"><Icon name="chart" /><b>Case stages</b></div>
           <div class="fn"><div v-for="s in STAGES" :key="s[0]" :style="{ width: `${s[2]}%` }"><span>{{ s[0] }}</span><b>{{ s[1] }}</b></div></div>
           <div v-for="t in detail?.tickets ?? []" :key="t.ref" class="row"><span>{{ t.ref }}<small style="display: block; color: var(--mut)">{{ t.category }}</small></span><span class="pill" :class="t.status === 'RESOLVED' || t.status === 'CLOSED' ? 'ok' : 'bad'">{{ t.status.toLowerCase() }}</span></div></div>

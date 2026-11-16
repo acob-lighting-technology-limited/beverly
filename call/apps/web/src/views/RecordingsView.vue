@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { Recording } from '@beverly-call/shared'
 import Icon from '@/components/Icon.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import KpiTile from '@/components/KpiTile.vue'
 import StateBanner from '@/components/StateBanner.vue'
 import { api } from '@/lib/api'
@@ -39,8 +40,8 @@ async function hold(r: Recording): Promise<void> {
 
 <template>
   <section>
-    <div class="head"><div class="ht"><h1>Recordings</h1></div>
-      <div v-if="recs.data.value" v-hover-scroll class="kp"><KpiTile icon="db" :value="recs.data.value.length" label="Recordings" /><KpiTile icon="lock" :value="held" label="Legal hold" dark /><KpiTile icon="clock" value="90d" label="Retention" /></div></div>
+    <PageHeader title="Recordings">
+      <div v-if="recs.data.value" v-hover-scroll class="kp"><KpiTile icon="db" :value="recs.data.value.length" label="Recordings" /><KpiTile icon="lock" :value="held" label="Legal hold" dark /><KpiTile icon="clock" value="90d" label="Retention" /></div></PageHeader>
     <StateBanner :loading="recs.loading.value" :error="recs.error.value" what="recordings" />
     <div v-if="recs.data.value" class="bento">
       <div class="c s7 w2">

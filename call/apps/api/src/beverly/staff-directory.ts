@@ -37,7 +37,10 @@ export async function staffNames(env: Env, token: string, f: FetchLike = fetch, 
     const p = await pool.query<{ agent_crm_id: string; name: string }>('select agent_crm_id, name from call_centre.agent_presence')
     for (const x of p.rows) names.set(x.agent_crm_id, x.name)
   }
-  for (const s of await fetchStaff(env, token, f)) {
+  const directory = env.BEVERLY_READ_MODE === 'db' && pool
+    ? (await pool.query<{ id: string; auth_user_id: string | null; user_name: string | null; email: string | null }>('select id, auth_user_id, user_name, email from call_centre_read.staff')).rows
+    : await fetchStaff(env, token, f)
+  for (const s of directory) {
     const n = s.user_name ?? s.email
     if (!n) continue
     if (s.auth_user_id) names.set(s.auth_user_id, n)

@@ -88,8 +88,8 @@ describe('callbacks', () => {
     const a = await h.as('agent1@x.test')
     await h.send('POST', '/api/callbacks', a, { phone: '0902 555 0121', minutes: 0 })
     await h.send('POST', '/api/callbacks', a, { phone: '0902 555 0122', minutes: 0 })
-    const cal = (await h.get(`/api/callbacks/calendar?month=${new Date().toISOString().slice(0, 7)}`, a)).json
-    expect(cal[0]).toMatchObject({ day: new Date().getUTCDate(), count: 2 })
+    const cal = (await h.get(`/api/callbacks/calendar?month=${new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date()).slice(0, 7)}`, a)).json
+    expect(cal[0]).toMatchObject({ day: Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date()).slice(8, 10)), count: 2 })
     expect((await h.get('/api/callbacks/calendar?month=nope', a)).status).toBe(400)
   })
 })
@@ -320,7 +320,7 @@ describe('admin', () => {
     expect(c.find((x) => x.name === 'Carrier webhooks')!.ok).toBe(false)           // no events yet
     await hook(h, '/api/webhooks/at/voice', { sessionId: 'H', isActive: '0', callerNumber: '0803' })
     expect(((await h.get('/api/admin/connections', adm)).json as { name: string; ok: boolean }[]).find((x) => x.name === 'Carrier webhooks')!.ok).toBe(true)
-    expect((await h.get('/api/admin/users', adm)).json).toEqual([{ id: A1, name: 'Aisha Bello', role: 'custom-call-centre-agent', active: true, lastLogin: null }])
+    expect((await h.get('/api/admin/users', adm)).json).toEqual([{ id: A1, name: 'Aisha Bello', role: 'custom-call-centre-agent', roleLabel: null, active: true, lastLogin: null }])
     expect((await h.get('/api/admin/number', adm)).json).toEqual({ virtualNumber: '+2347000000000', retentionDays: 90 })
     for (const u of ['/api/admin/users', '/api/admin/connections', '/api/admin/number', '/api/admin/audit/verify']) expect((await h.get(u, a)).status).toBe(403)
   })

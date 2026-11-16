@@ -9,7 +9,7 @@ import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
 import { verifyStoredChain } from '../audit/audit-log.js'
 import { africasTalking } from '../telephony/provider.js'
-import { fetchStaff } from '../beverly/staff-directory.js'
+import { beverlyData } from '../beverly/beverly-data.js'
 
 const SETTINGS: Record<string, { schema: ZodTypeAny; fallback: unknown }> = {
   alert_limits: { schema: alertLimitsSchema, fallback: DEFAULT_ALERT_LIMITS },
@@ -87,10 +87,13 @@ export const adminRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fastif
    * Staff who can use Beverly Call. Identity is owned by Beverly (roles, portal access, activation, password resets are managed there),
    * so this is read-only. Source: GET /api/v1/admin/access/staff-status (needs Beverly access-management permission).
    */
+  /** Beverly's roles with how many staff hold each and how many permissions each carries (read from the shared database). */
+  app.get('/admin/roles', { preHandler: admin }, async (req) => beverlyData({ env, pool, fetchImpl }, req.session!).roles())
+
   app.get('/admin/users', { preHandler: admin }, async (req, reply): Promise<StaffUser[] | void> => {
-    const rows = await fetchStaff(env, req.session!.beverlyToken, fetchImpl)
+    const rows = await beverlyData({ env, pool, fetchImpl }, req.session!).staff()
     if (!rows.length) return reply.code(502).send({ error: 'Beverly staff list is unavailable. Your role may not be allowed to read it.' })
     return rows
       .filter((s) => s.portal_access?.includes('call'))
-      .map((s) => ({ id: s.auth_user_id ?? s.id ?? '', name: s.user_name ?? s.email ?? 'Staff user', role: s.role_key ?? 'unknown', active: !s.suspended, lastLogin: s.last_sign_in_at ?? null }))
+      .map((s) => ({ id: s.auth_user_id ?? s.id ?? '', name: s.user_name ?? s.email ?? 'Staff user', role: s.role_key ?? 'unknown', roleLabel: s.role_label ?? null, active: !s.suspended, lastLogin: s.last_sign_in_at ?? null }))
   })}

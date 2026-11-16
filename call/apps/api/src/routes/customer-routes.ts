@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
-import type { Customer, CustomerDetail, CustomerFull, TimelineEvent } from '@beverly-call/shared'
+import type { Customer, CustomerDetail, CustomerFull, TimelineEvent, WalletInfo } from '@beverly-call/shared'
 import { customerSmsSchema, noteSchema, tokenRevealSchema } from '@beverly-call/shared'
 import type { AppDeps } from '../app.js'
 import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
-import { BeverlyError, fetchCustomers, fetchMeters, fetchPurchases } from '../beverly/beverly-api.js'
-import { maskToken } from '../beverly/token-mask.js'
+import { BeverlyError } from '../beverly/beverly-api.js'
+import { beverlyData } from '../beverly/beverly-data.js'
+import { maskLast4, maskToken } from '../beverly/token-mask.js'
 import { africasTalking } from '../telephony/provider.js'
 import { sendLoggedSms } from '../notify/sms.js'
 
@@ -22,7 +23,7 @@ export const customerRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fas
   app.get<{ Querystring: { q?: string } }>('/customers', { preHandler: staff }, async (req, reply): Promise<Customer[] | void> => {
     const q = (req.query.q ?? '').slice(0, 64)
     try {
-      const list = await fetchCustomers(env, req.session!.beverlyToken, q, fetchImpl)
+      const list = await beverlyData({ env, pool, fetchImpl }, req.session!).customers(q)
       if (q) await auditAs(pool, req, 'customer.search', 'customer', 'search')
       return list
     } catch (e) { return beverlyFail(reply, e) }
@@ -31,19 +32,25 @@ export const customerRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fas
   /** Purchases from Beverly (tokens masked here) plus our own cases for the customer. */
   app.get<{ Params: { id: string } }>('/customers/:id/detail', { preHandler: staff }, async (req, reply): Promise<CustomerDetail | void> => {
     try {
-      const [list, meters] = await Promise.all([
-        fetchPurchases(env, req.session!.beverlyToken, req.params.id, fetchImpl),
-        fetchMeters(env, req.session!.beverlyToken, req.params.id, fetchImpl).catch(() => [] as string[]),
-      ])
+      const data = beverlyData({ env, pool, fetchImpl }, req.session!)
+      const [list, meters] = await Promise.all([data.purchases(req.params.id), data.meters(req.params.id).catch((e) => { if (e instanceof BeverlyError && e.status === 403) throw e; return [] as string[] })])
       const t = await pool.query<{ ticket_ref: string; category: string; status: string; created_at: Date }>(
         'select ticket_ref, category, status, created_at from call_centre.tickets where customer_ref = $1 order by created_at desc limit 10', [req.params.id])
       await auditAs(pool, req, 'customer.view', 'customer', req.params.id)
       return {
         meters,
         // Beverly stores money in minor units (kobo).
-        purchases: list.map((p) => ({ id: String(p.id ?? ''), at: String(p.created_at ?? ''), amount: Number(p.amount_minor ?? 0) / 100, status: String(p.status ?? 'unknown'), tokenMasked: maskToken(p.token) })),
+        purchases: list.map((p) => ({ id: String(p.id ?? ''), at: String(p.created_at ?? ''), amount: Number(p.amount_minor ?? 0) / 100, status: String(p.status ?? 'unknown'), tokenMasked: p.token_last4 !== undefined ? maskLast4(p.token_last4) : maskToken(p.token) })),
         tickets: t.rows.map((x) => ({ ref: x.ticket_ref, category: x.category.replaceAll('_', ' '), status: x.status, createdAt: x.created_at.toISOString() })),
       }
+    } catch (e) { return beverlyFail(reply, e) }
+  })
+
+  /** Wallet balance, holds and available funds for a customer the staff member may see. */
+  app.get<{ Params: { id: string } }>('/customers/:id/wallet', { preHandler: staff }, async (req, reply): Promise<WalletInfo | void> => {
+    try {
+      const w = await beverlyData({ env, pool, fetchImpl }, req.session!).wallet(req.params.id)
+      return w ?? (reply.code(404).send({ error: 'No wallet for this customer' }) as unknown as void)
     } catch (e) { return beverlyFail(reply, e) }
   })
 
@@ -98,9 +105,7 @@ export const customerRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fas
     const body = tokenRevealSchema.safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'All three verification checks and a reason are required' })
     try {
-      const list = await fetchPurchases(env, req.session!.beverlyToken, req.params.id, fetchImpl)
-      const p = list.find((x) => String(x.id) === body.data.purchaseId)
-      const token = p && typeof p.token === 'string' ? p.token : null
+      const token = await beverlyData({ env, pool, fetchImpl }, req.session!).revealToken(req.params.id, body.data.purchaseId)
       if (!token) return reply.code(404).send({ error: 'No token on that purchase' })
       await auditAs(pool, req, 'token.reveal', 'purchase', body.data.purchaseId, { customer: req.params.id, reason: body.data.reason })
       return { token }

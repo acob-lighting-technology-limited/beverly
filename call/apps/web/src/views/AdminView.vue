@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { AlertLimits, AuditRow, CallFlowStep, Connection, Outage, RetentionStatus, StaffUser } from '@beverly-call/shared'
+import type { AlertLimits, AuditRow, CallFlowStep, Connection, Outage, RetentionStatus, RoleSummary, StaffUser } from '@beverly-call/shared'
 import Icon from '@/components/Icon.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import StateBanner from '@/components/StateBanner.vue'
 import { api } from '@/lib/api'
 import { useResource } from '@/lib/use-resource'
@@ -18,6 +19,7 @@ const audit = useResource(() => api<AuditRow[]>('/audit'))
 const retention = useResource(() => api<RetentionStatus>('/admin/retention'))
 const connections = useResource(() => api<Connection[]>('/admin/connections'))
 const users = useResource(() => api<StaffUser[]>('/admin/users'))
+const roles = useResource(() => api<RoleSummary[]>('/admin/roles'))
 const number = useResource(() => api<{ virtualNumber: string | null; retentionDays: number }>('/admin/number'))
 const limitsRes = useResource(() => api<AlertLimits>('/admin/settings/alert_limits'))
 const flowRes = useResource(() => api<CallFlowStep[]>('/admin/settings/call_flow'))
@@ -55,7 +57,7 @@ function reloadAll(): void { void connections.reload(); void retention.reload() 
 
 <template>
   <section>
-    <div class="head"><div class="ht"><h1>Admin</h1></div></div>
+    <PageHeader title="Admin" />
     <p v-if="!canEdit" class="ban" role="status">You are viewing settings read-only{{ session.viewAs ? ' while previewing another role' : '' }}.</p>
     <div class="bento">
       <div class="c s12 w2">
@@ -110,8 +112,13 @@ function reloadAll(): void { void connections.reload(); void retention.reload() 
       <div class="c s7 w2"><div class="hd"><Icon name="users" /><b>Staff with call access</b></div>
         <StateBanner :loading="users.loading.value" :error="users.error.value" what="staff" />
         <div class="scroll"><table class="rt"><thead><tr><th>Name</th><th>Role</th><th>Active</th><th>Last login</th></tr></thead>
-          <tbody><tr v-for="u in users.data.value ?? []" :key="u.id"><td data-label="Name">{{ u.name }}</td><td data-label="Role">{{ u.role.replace('custom-call-centre-', '') }}</td><td data-label="Active"><span class="pill" :class="u.active ? 'ok' : 'vi'">{{ u.active ? 'Active' : 'Off' }}</span></td><td data-label="Last login">{{ u.lastLogin ? shortDate(u.lastLogin) : 'Never' }}</td></tr></tbody></table></div>
+          <tbody><tr v-for="u in users.data.value ?? []" :key="u.id"><td data-label="Name">{{ u.name }}</td><td data-label="Role">{{ u.roleLabel ?? u.role.replace('custom-call-centre-', '') }}</td><td data-label="Active"><span class="pill" :class="u.active ? 'ok' : 'vi'">{{ u.active ? 'Active' : 'Off' }}</span></td><td data-label="Last login">{{ u.lastLogin ? shortDate(u.lastLogin) : 'Never' }}</td></tr></tbody></table></div>
         <p style="color: var(--mut); font-size: 12px; margin: 6px 0 0">Accounts, roles and portal access are managed in Beverly (Wallet Admin, Users): role Call Centre Agent or Supervisor, portal access “call”.</p></div>
+
+      <div class="c s12 w2"><div class="hd"><Icon name="lock" /><b>Beverly roles</b></div>
+        <StateBanner :loading="roles.loading.value" :error="roles.error.value" what="roles" />
+        <div class="scroll"><table class="rt"><thead><tr><th>Role</th><th>People</th><th>Permissions</th><th>Description</th></tr></thead>
+          <tbody><tr v-for="r in roles.data.value ?? []" :key="r.roleKey"><td data-label="Role">{{ r.label }}<small style="display: block; color: var(--mut)">{{ r.roleKey }}</small></td><td data-label="People">{{ r.people }}</td><td data-label="Permissions">{{ r.permissions }}</td><td data-label="Description" style="white-space: normal">{{ r.description ?? '' }}</td></tr></tbody></table></div></div>
 
       <div class="c s5 w2"><div class="hd"><Icon name="db" /><b>Audit log</b><span class="pill ok">Tamper-evident</span><button v-if="canEdit" aria-label="Verify audit chain" title="Verify the whole chain" style="height: 30px" @click="verify"><Icon name="check" /></button></div>
         <p v-if="verifyMsg" role="status" style="margin: 2px 0 6px">{{ verifyMsg }}</p>

@@ -4,6 +4,7 @@ import type { AppDeps } from '../app.js'
 import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
 import { africasTalking, ProviderUnavailable } from '../telephony/provider.js'
+import { TZ, hm, lagosDate } from '../time.js'
 
 interface CallbackRow { callback_ref: string; phone_number: string; language: string; scheduled_for: Date; reason: string | null; attempts: number; status: string }
 
@@ -13,7 +14,7 @@ const statusOf = (due: Date): CallbackFull['status'] => {
   return mins < 0 ? 'Overdue' : mins < 60 ? 'Due' : 'Later'
 }
 const toCallback = (r: CallbackRow): CallbackFull => ({
-  id: r.callback_ref, time: r.scheduled_for.toISOString().slice(11, 16), name: r.phone_number, phone: r.phone_number,
+  id: r.callback_ref, time: hm(r.scheduled_for), name: r.phone_number, phone: r.phone_number,
   language: LANG[r.language] ?? r.language, status: statusOf(r.scheduled_for), reason: r.reason, attempts: r.attempts, scheduledFor: r.scheduled_for.toISOString(),
 })
 const COLS = 'callback_ref, phone_number, language, scheduled_for, reason, attempts, status'
@@ -34,11 +35,11 @@ export const callbackRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fas
 
   /** Month calendar data: callbacks on each day of the month. */
   app.get<{ Querystring: { month?: string } }>('/callbacks/calendar', { preHandler: staff }, async (req, reply) => {
-    const m = /^\d{4}-\d{2}$/.exec(req.query.month ?? new Date().toISOString().slice(0, 7))
+    const m = /^\d{4}-\d{2}$/.exec(req.query.month ?? lagosDate().slice(0, 7))
     if (!m) return reply.code(400).send({ error: 'month must be YYYY-MM' })
     const r = await pool.query<{ day: number; status: string; n: string }>(
-      `select extract(day from scheduled_for)::int as day, status, count(*) n from call_centre.callbacks
-       where to_char(scheduled_for, 'YYYY-MM') = $1 group by 1, 2 order by 1`, [m[0]])
+      `select extract(day from scheduled_for at time zone '${TZ}')::int as day, status, count(*) n from call_centre.callbacks
+       where to_char(scheduled_for at time zone '${TZ}', 'YYYY-MM') = $1 group by 1, 2 order by 1`, [m[0]])
     return r.rows.map((x) => ({ day: x.day, status: x.status, count: Number(x.n) }))
   })
 
@@ -61,7 +62,7 @@ export const callbackRoutes = ({ env, pool, fetchImpl, provider }: AppDeps): Fas
     const d = body.data
     const r = await pool.query<CallbackRow>(
       d.minutes === 1440
-        ? `update call_centre.callbacks set scheduled_for = date_trunc('day', now()) + interval '1 day 9 hours', last_outcome = $2, note = $3, status = 'pending'
+        ? `update call_centre.callbacks set scheduled_for = (date_trunc('day', now() at time zone '${TZ}') + interval '1 day 9 hours') at time zone '${TZ}', last_outcome = $2, note = $3, status = 'pending'
            where callback_ref = $1 and status in ('pending','assigned') returning ${COLS}`
         : `update call_centre.callbacks set scheduled_for = greatest(scheduled_for, now()) + ($4 || ' minutes')::interval, last_outcome = $2, note = $3, status = 'pending'
            where callback_ref = $1 and status in ('pending','assigned') returning ${COLS}`,

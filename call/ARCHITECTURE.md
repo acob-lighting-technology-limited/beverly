@@ -78,3 +78,20 @@ Full design, flows and roadmap: [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md).
 - **Needs outside inputs (Phase 5):** apply the Beverly migration; carrier secrets; verify Africa's Talking on the sandbox (IVR, dial, SMS, WebRTC token, conferencing); confirm Beverly field names and RLS; supervisor role assignment; `call-recordings` bucket.
 - **Not built:** browser softphone binding to the carrier SDK; supervisor media bridge (listen, whisper, barge are recorded and audited only); CI e2e step; load test and security review.
 - **Run jobs:** `pnpm --filter @beverly-call/api job <purge|ingest|sweep|verify-audit>` on a scheduler (ingest and sweep every minute, purge and verify-audit daily).
+
+## Web design system (layers)
+`apps/web/src/styles/`: `tokens.css` (colour ramps, palettes, light/dark) < `design-tokens.css` (spacing, radius, type, elevation, motion, z-index, focus ring, semantic colour aliases such as `--surface`, `--text`, `--accent`) < `app.css` (components). New styles read the semantic layer, not raw colours or pixel literals. The glass surface is driven by `--gl-*` variables; the solid fallbacks (no backdrop-filter, reduced transparency, more contrast, forced colours, high-contrast setting) only override those variables.
+Web shell: `components/shell/` holds `AppNav.vue` (rail, bottom bar, sub-navigation) and `SessionLock.vue`; shared building blocks are `PageHeader.vue` and `Pill.vue`. `App.vue` provides a skip link and a `<main id="main">` landmark; the router sets `document.title` per screen. Keyboard: Ctrl K search, Alt 1 to 9 jump to a main section, `?` lists shortcuts.
+
+## Alignment with Beverly (audit result)
+
+Where Beverly Call now follows what Beverly already does, instead of its own vocabulary:
+
+- **Data access.** Beverly's customers, meters, staff, roles, role permissions, wallets (with live balances) and purchases are read straight from the shared database through read-only views in the `call_centre_read` schema (migration `20261116120000`, applied). Only an explicit column list is exposed: no PIN hashes, KYC data, raw payloads or session ids, and the raw STS token is reachable only through `reveal_purchase_token(id)`, one purchase at a time, after an audit entry. `BEVERLY_READ_MODE=db` (default) uses the views; `api` calls Beverly's admin API with the agent's token. Beverly's station scoping is kept: admins see everything, everyone else only customers with a meter at one of their stations, and no assigned station means no access.
+- **Roles.** Beverly has many staff roles. A role can work the desk when Beverly gives it both `wallet.customers.view` and `wallet.support.manage` (operations officers, operations managers, call-centre roles). Names with "manager" or "supervisor" lead the desk; `super-admin` is admin. Account, finance, read-only, vendor and developer roles stay out.
+- **Support tickets.** Beverly's `support_tickets` (statuses open, pending, awaiting_customer, resolved, closed; priorities low, normal, high, urgent) are worked inside Beverly Call through Beverly's own admin API with the staff member's token, so its customer notices and logging still run. Every change is also audited here. Escalation priorities (CRITICAL, HIGH, MEDIUM, LOW in the call_centre schema) are shown in Beverly's words (urgent, high, normal, low).
+- **Languages.** The interface offers exactly Beverly's four locales (English, Yorùbá, Hausa, Igbo) with native names and `en-NG`-style formats, stored under Beverly's `beverly.locale` key. Pidgin is a spoken language only (phone menu, agent skills, routing), as in Beverly's own call schema.
+- **Time.** Everything uses Nigerian time (Africa/Lagos): "today", hourly and weekday buckets, calendars and message times, never UTC.
+- **Statuses.** Purchase statuses use Beverly's: delivered is good, failed and reversed are bad, the rest in progress.
+
+Local checks: `pnpm dev:mock` seeds Beverly's tables in memory and reads them through the same views. `pnpm e2e` starts its own servers on ports 5199 and 8799 so it never touches a dev server already running.

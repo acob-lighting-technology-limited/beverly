@@ -4,6 +4,7 @@ import type { AppDeps } from '../app.js'
 import { requireRole } from '../auth/guards.js'
 import { auditAs } from '../audit/audit-request.js'
 import { staffNames } from '../beverly/staff-directory.js'
+import { TZ } from '../time.js'
 import { StorageUnavailable, supabaseRecordingStorage } from '../storage/recording-storage.js'
 
 const SL_SECONDS = 20   // service level: answered within this many seconds
@@ -26,8 +27,8 @@ export const monitorRoutes = ({ env, pool, fetchImpl, storage }: AppDeps): Fasti
         `select count(*) total,
                 count(*) filter (where answered_at is null and ended_at is not null) abandoned,
                 count(*) filter (where answered_at is not null and answered_at - started_at <= ($1 || ' seconds')::interval) sl
-         from call_centre.calls where started_at >= date_trunc('day', now())`, [SL_SECONDS]),
-      pool.query<{ h: number; n: string }>(`select extract(hour from started_at)::int h, count(*) n from call_centre.calls where started_at >= date_trunc('day', now()) group by 1`),
+         from call_centre.calls where started_at >= (date_trunc('day', now() at time zone '${TZ}') at time zone '${TZ}')`, [SL_SECONDS]),
+      pool.query<{ h: number; n: string }>(`select extract(hour from started_at at time zone '${TZ}')::int h, count(*) n from call_centre.calls where started_at >= (date_trunc('day', now() at time zone '${TZ}') at time zone '${TZ}') group by 1`),
       pool.query<{ value: unknown }>(`select value from call_centre.settings where key = 'alert_limits'`),
     ])
     const limits = alertLimitsSchema.safeParse(limitsRow.rows[0]?.value).data ?? DEFAULT_ALERT_LIMITS
@@ -97,9 +98,9 @@ export const monitorRoutes = ({ env, pool, fetchImpl, storage }: AppDeps): Fasti
                 count(*) filter (where disposition = 'Resolved on the call') fcr
          from call_centre.calls where started_at > now() - ($1 || ' days')::interval`, [days]),
       pool.query<{ label: string; n: string }>(
-        `select to_char(date_trunc('${unit}', started_at), '${unit === 'hour' ? 'HH24' : 'Dy DD'}') label, count(*) n
+        `select to_char(date_trunc('${unit}', started_at at time zone '${TZ}'), '${unit === 'hour' ? 'HH24' : 'Dy DD'}') label, count(*) n
          from call_centre.calls where started_at > now() - ($1 || ' days')::interval
-         group by date_trunc('${unit}', started_at) order by date_trunc('${unit}', started_at)`, [days]),
+         group by date_trunc('${unit}', started_at at time zone '${TZ}') order by date_trunc('${unit}', started_at at time zone '${TZ}')`, [days]),
       pool.query<{ category: string; n: string }>(
         `select category, count(*) n from call_centre.tickets where created_at > now() - ($1 || ' days')::interval
          group by category order by n desc limit 5`, [days]),
@@ -121,7 +122,7 @@ export const monitorRoutes = ({ env, pool, fetchImpl, storage }: AppDeps): Fasti
     const names = await staffNames(env, req.session!.beverlyToken, fetchImpl, pool)
     const [heat, kpi, board, langs] = await Promise.all([
       pool.query<{ dow: number; h: number; n: string }>(
-        `select extract(isodow from started_at)::int dow, extract(hour from started_at)::int h, count(*) n from call_centre.calls
+        `select extract(isodow from started_at at time zone '${TZ}')::int dow, extract(hour from started_at at time zone '${TZ}')::int h, count(*) n from call_centre.calls
          where started_at > now() - interval '28 days' group by 1, 2`),
       pool.query<{ total: string; abandoned: string; sl: string; cost: string | null }>(
         `select count(*) total, count(*) filter (where answered_at is null and ended_at is not null) abandoned,
@@ -169,9 +170,9 @@ export const monitorRoutes = ({ env, pool, fetchImpl, storage }: AppDeps): Fasti
     const m = M[key.data]
     const r = await pool.query<{ label: string; v: string }>(
       `select to_char(b.bucket, '${P.fmt}') label, coalesce(a.v, 0) v
-       from generate_series(date_trunc('${P.unit}', now()) - ($1 || ' ${P.unit}s')::interval, date_trunc('${P.unit}', now()), '1 ${P.unit}'::interval) b(bucket)
-       left join (select date_trunc('${P.unit}', ${m.ts}) bucket, ${m.expr} v from ${m.table}
-                  where ${m.ts} >= date_trunc('${P.unit}', now()) - ($1 || ' ${P.unit}s')::interval group by 1) a on a.bucket = b.bucket
+       from generate_series(date_trunc('${P.unit}', now() at time zone '${TZ}') - ($1 || ' ${P.unit}s')::interval, date_trunc('${P.unit}', now() at time zone '${TZ}'), '1 ${P.unit}'::interval) b(bucket)
+       left join (select date_trunc('${P.unit}', ${m.ts} at time zone '${TZ}') bucket, ${m.expr} v from ${m.table}
+                  where ${m.ts} >= (date_trunc('${P.unit}', now() at time zone '${TZ}') - ($1 || ' ${P.unit}s')::interval) at time zone '${TZ}' group by 1) a on a.bucket = b.bucket
        order by b.bucket`, [P.n - 1])
     const series = r.rows.map((x) => ({ label: x.label, value: Number(x.v) }))
     const vals = series.map((s) => s.value)

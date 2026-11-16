@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { escalationPriorityLabel, humanStatus, purchaseTone } from '@/lib/status'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { CASE_SLA_MINUTES, type ActiveCall, type CallNote, type CaseCategory, type CustomerDetail } from '@beverly-call/shared'
@@ -127,7 +128,7 @@ function openCustomer(): void { if (props.call?.customer) { ui.close(); void rou
             <div class="btns"><button class="y" :disabled="!ready || !!token" @click="reveal">Reveal token</button></div></div>
           <div class="c"><div class="hd"><Icon name="wallet" /><b>{{ call.customer.balance === null ? 'Bill account' : `NGN ${call.customer.balance.toLocaleString('en-US')}` }}</b><span class="pill ye">Token hidden</span></div>
             <p v-if="err" role="alert" style="color: var(--badt)">{{ err }}</p>
-            <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="p.status === 'delivered' ? 'ok' : 'ye'">{{ p.status }}</span></div></div>
+            <div v-for="p in detail?.purchases ?? []" :key="p.id" class="row"><span>{{ shortDate(p.at) }} · NGN {{ p.amount.toLocaleString('en-US') }}<small style="display: block; color: var(--mut)">{{ p.tokenMasked }}</small></span><span class="pill" :class="purchaseTone(p.status)">{{ humanStatus(p.status) }}</span></div></div>
         </template>
       </div>
 
@@ -141,7 +142,7 @@ function openCustomer(): void { if (props.call?.customer) { ui.close(); void rou
       <div v-else class="c dk">
         <div class="hd"><Icon name="flag" /><b>Escalate to wallet staff</b></div>
         <select v-model="category" aria-label="Category"><option v-for="c in CATS" :key="c.id" :value="c.id">{{ c.label }}</option></select>
-        <label class="fl">Priority<select v-model="priority"><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option></select></label>
+        <label class="fl">Priority<select v-model="priority"><option v-for="p in (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const)" :key="p" :value="p">{{ escalationPriorityLabel(p) }}</option></select></label>
         <label class="fl">Amount involved (NGN)<input v-model.number="amount" type="number" min="0" /></label>
         <textarea v-model="caseNote" rows="2" aria-label="Notes" placeholder="What happened?" maxlength="1000" style="margin-top: 8px"></textarea>
         <p style="color: #ccc; margin: 6px 0 0">Deadline for this kind of case: {{ sla >= 60 ? `${sla / 60} hours` : `${sla} minutes` }}. The customer is texted when it is fixed.</p>

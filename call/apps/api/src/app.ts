@@ -22,6 +22,7 @@ import type { PushSender } from './notify/notify.js'
 import { presenceRoutes } from './routes/presence-routes.js'
 import { supervisionRoutes } from './routes/supervision-routes.js'
 import { inboxRoutes } from './routes/inbox-routes.js'
+import { supportRoutes } from './routes/support-routes.js'
 
 export const COOKIE = 'bc_session'
 
@@ -80,6 +81,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await app.register(monitorRoutes(deps), { prefix: '/api' })
   await app.register(supervisionRoutes(deps), { prefix: '/api' })
   await app.register(inboxRoutes(deps), { prefix: '/api' })
+  await app.register(supportRoutes(deps), { prefix: '/api' })
   await app.register(customerRoutes(deps), { prefix: '/api' })
   await app.register(adminRoutes(deps), { prefix: '/api' })
   await app.register(webhookRoutes(deps), { prefix: '/api' })

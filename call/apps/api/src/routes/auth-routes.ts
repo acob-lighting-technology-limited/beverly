@@ -13,12 +13,12 @@ export const authRoutes = ({ env, pool, fetchImpl }: AppDeps): FastifyPluginAsyn
     const body = loginRequestSchema.safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Invalid request' })
     try {
-      const { user, token } = await signInStaff(env, body.data.email, body.data.password, fetchImpl)
+      const { user, token } = await signInStaff(env, body.data.email, body.data.password, fetchImpl, pool)
       const jwt = await signSession(user, token, env.SESSION_SECRET, env.SESSION_TTL_MINUTES)
       await appendAudit(pool, { actorId: user.id, actorRole: user.role, action: 'auth.login', entity: 'session', entityId: user.id, ipAddress: req.ip })
       return reply.setCookie(COOKIE, jwt, { ...cookieOpts, maxAge: env.SESSION_TTL_MINUTES * 60 }).code(204).send()
     } catch (e) {
-      if (e instanceof AuthError) return reply.code(e.status).send({ error: e.message })
+      if (e instanceof AuthError) { req.log.warn({ status: e.status, reason: e.reason }, 'login refused'); return reply.code(e.status).send({ error: e.message }) }
       req.log.error(e, 'login failed')
       return reply.code(502).send({ error: 'Sign-in is unavailable' })
     }

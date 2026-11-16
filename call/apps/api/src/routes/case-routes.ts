@@ -8,6 +8,7 @@ import { staffNames } from '../beverly/staff-directory.js'
 import { africasTalking } from '../telephony/provider.js'
 import { resolvedSms, sendLoggedSms } from '../notify/sms.js'
 import { notify, webPushSender } from '../notify/notify.js'
+import { hm } from '../time.js'
 
 interface TicketRow {
   id: string; ticket_ref: string; category: string; agent_crm_id: string | null; sla_due_at: Date; status: string
@@ -20,7 +21,7 @@ const COLS = 'id, ticket_ref, category, agent_crm_id, sla_due_at, status, custom
 const stateOf = (status: string, due: Date): CaseState =>
   status === 'RESOLVED' || status === 'CLOSED' ? 'Done' : due.getTime() < Date.now() ? 'Overdue' : status === 'INVESTIGATING' ? 'Working' : 'New'
 
-const toComment = (c: CommentRow): CaseComment => ({ by: c.author_name, text: c.body, at: c.created_at.toISOString().slice(11, 16) })
+const toComment = (c: CommentRow): CaseComment => ({ by: c.author_name, text: c.body, at: hm(c.created_at) })
 
 const toCase = (r: TicketRow, comments: CommentRow[], names: Map<string, string>): SupportCase => ({
   id: r.ticket_ref, issue: r.category.replaceAll('_', ' '),

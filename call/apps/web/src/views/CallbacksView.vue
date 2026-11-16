@@ -2,12 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { LANGUAGE_NAMES, type CallbackFull, type LanguageCode } from '@beverly-call/shared'
 import Icon from '@/components/Icon.vue'
+import PageHeader from '@/components/PageHeader.vue'
 import KpiTile from '@/components/KpiTile.vue'
 import Modal from '@/components/Modal.vue'
 import StateBanner from '@/components/StateBanner.vue'
 import { api } from '@/lib/api'
 import { useResource } from '@/lib/use-resource'
-import { pad2, shortDate } from '@/lib/format'
+import { lagosToday, pad2, shortDate } from '@/lib/format'
+import { intl } from '@/lib/locale'
 import { maskPhone } from '@/lib/mask'
 import { useSettings } from '@/stores/settings'
 import { useToast } from '@/stores/toast'
@@ -19,7 +21,7 @@ const list = useResource(() => api<CallbackFull[]>('/callbacks'))
 const show = (p: string) => (settings.p.mask ? maskPhone(p) : p)
 
 /* ---- calendar for the current month ---- */
-const month = ref(new Date().toISOString().slice(0, 7))
+const month = ref(lagosToday().slice(0, 7))
 const cal = ref<{ day: number; status: string; count: number }[]>([])
 async function loadCal(): Promise<void> { try { cal.value = await api(`/callbacks/calendar?month=${month.value}`) } catch { cal.value = [] } }
 onMounted(loadCal)
@@ -31,7 +33,7 @@ const days = computed(() => {
   for (const c of cal.value) by.set(c.day, (by.get(c.day) ?? 0) + c.count)
   return { first, cells: Array.from({ length: total }, (_, i) => ({ n: i + 1, count: by.get(i + 1) ?? 0 })) }
 })
-const today = new Date().toISOString().slice(0, 7) === month.value ? new Date().getUTCDate() : -1
+const today = lagosToday().slice(0, 7) === month.value ? Number(lagosToday().slice(8, 10)) : -1
 function shift(d: number): void {
   const [y, m] = month.value.split('-').map(Number) as [number, number]
   month.value = new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7); void loadCal()
@@ -80,9 +82,9 @@ async function create(): Promise<void> {
 
 <template>
   <section>
-    <div class="head"><div class="ht"><h1>Callbacks</h1><button class="y" aria-label="New callback" title="New callback" @click="nw = true"><Icon name="plus" /></button></div>
+    <PageHeader title="Callbacks"><template #actions><button class="y" aria-label="New callback" title="New callback" @click="nw = true"><Icon name="plus" /></button></template>
       <div v-hover-scroll class="kp"><KpiTile icon="clock" :value="pad2(due)" label="Due now" /><KpiTile icon="alert" :value="pad2(late)" label="Overdue" dark /><KpiTile icon="phone" :value="pad2((list.data.value ?? []).length)" label="In queue" /></div>
-    </div>
+    </PageHeader>
     <StateBanner :loading="list.loading.value && !list.data.value" :error="list.error.value" what="callbacks" />
     <div v-if="list.data.value" class="bento">
       <div class="c s7 w2">
@@ -97,7 +99,7 @@ async function create(): Promise<void> {
         </div>
       </div>
       <div class="c fr s5 w2 stick">
-        <div class="hd"><Icon name="clock" /><b>{{ new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }) }}</b>
+        <div class="hd"><Icon name="clock" /><b>{{ new Date(month + '-01').toLocaleDateString(intl(), { month: 'long', year: 'numeric' }) }}</b>
           <span class="mv"><button aria-label="Previous month" @click="shift(-1)"><Icon name="lft" /></button><button aria-label="Next month" @click="shift(1)"><Icon name="rgt" /></button></span></div>
         <div class="cal"><span v-for="d in 'MTWTFSS'.split('')" :key="d + Math.random()" class="h">{{ d }}</span>
           <span v-for="n in days.first" :key="`e${n}`"></span>
