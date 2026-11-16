@@ -38,6 +38,8 @@ export interface AppDeps {
   provider?: CommunicationsProvider
   /** null disables push; undefined builds the real sender from env. */
   push?: PushSender | null
+  /** Test seam: called once per registered route, so tests can prove every route is covered by the access matrix. */
+  onRoute?: (method: string, url: string) => void
 }
 
 /** Builds the Fastify app. Pure function of its dependencies so tests can inject a fake pool and Beverly. */
@@ -50,6 +52,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     if (!body) return done(null, undefined)
     try { done(null, JSON.parse(body as string)) } catch { const e = new Error('Invalid JSON') as Error & { statusCode: number }; e.statusCode = 400; done(e, undefined) }
   })
+  if (deps.onRoute) app.addHook('onRoute', (r) => { for (const m of [r.method].flat()) if (m !== 'HEAD' && m !== 'OPTIONS') deps.onRoute!(m, r.url) })
   await app.register(helmet)
   await app.register(cookie)
   await app.register(formbody)
