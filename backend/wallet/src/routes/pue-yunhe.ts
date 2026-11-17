@@ -11,13 +11,14 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { logAction } from '../services/audit.js';
+import { PUE_OPERATOR_ROLES } from '../services/pue-access.js';
 import {
     yunheCommand, yunheQuery, YunheGatewayError,
     YUNHE_QUERY_FUNCS,
 } from '../services/yunhe-gateway.js';
 
 /** Roles allowed to act on physical batteries. Reads need only PUE portal access. */
-export const YUNHE_COMMAND_ROLES: ReadonlySet<string> = new Set(['super-admin', 'operations-manager', 'operations-officer']);
+export const YUNHE_COMMAND_ROLES: ReadonlySet<string> = PUE_OPERATOR_ROLES;
 
 const querySchema = z.object({
     func: z.enum(YUNHE_QUERY_FUNCS),
