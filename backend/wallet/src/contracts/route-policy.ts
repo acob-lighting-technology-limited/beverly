@@ -55,6 +55,8 @@ export const mutationRoutePolicies: readonly RoutePolicy[] = [
     post('/api/v1/admin/support/faq-categories'), put('/api/v1/admin/support/faq-categories/:id'), del('/api/v1/admin/support/faq-categories/:id'), post('/api/v1/admin/support/faqs'), put('/api/v1/admin/support/faqs/:id'), del('/api/v1/admin/support/faqs/:id'), patch('/api/v1/admin/support/tickets/:id'), post('/api/v1/admin/support/tickets/:id/messages'), post('/api/v1/admin/support/chat/:id/messages'), post('/api/v1/admin/support/chat/:id/assign'), post('/api/v1/admin/support/chat/:id/end'),
     post('/api/v1/admin/announcements'), post('/api/v1/admin/announcements/preview'), post('/api/v1/admin/refunds', { money: true }), post('/api/v1/admin/refunds/:id/approve', { money: true }), post('/api/v1/admin/refunds/:id/reject', { money: true }), post('/api/v1/admin/reconciliation/run', { money: true }), post('/api/v1/admin/feature-flags'), patch('/api/v1/admin/feature-flags/:key'), post('/api/v1/admin/consumption/refresh'), post('/api/v1/admin/consumption/reconcile-audit'), post('/api/v1/admin/grid/outages/:id/acknowledge'), patch('/api/v1/admin/privacy/deletions/:id'),
     post('/api/v1/admin/dev/*', { developerOnly: true }), put('/api/v1/admin/dev/*', { developerOnly: true }), patch('/api/v1/admin/dev/*', { developerOnly: true }), del('/api/v1/admin/dev/*', { developerOnly: true }),
+    // Beverly PUE: Yunhe battery gateway. Query is read-only (POST for a body); command acts on hardware.
+    post('/api/v1/pue/yunhe/query'), post('/api/v1/pue/yunhe/command'),
     // Beverly AI — chat completions, audio transcription (no money writes)
     post('/api/v1/acobot/chat'), post('/api/v1/acobot/transcribe'),
 ];

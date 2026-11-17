@@ -36,12 +36,40 @@ assert.ok(appContent.includes('sidebar--battery-swap'), "App.vue missing sidebar
 assert.ok(shellChromeContent.includes('"Battery Swap"'), "shell-chrome.mjs missing group icon or section label");
 assert.ok(oemCapContent.includes('"battery_swap_operations"'), "oem-capabilities.mjs missing battery_swap_operations key");
 
-// 4. Yunhe Battery Service Contracts
-assert.ok(serviceContent.includes('export const YUNHE_GPS_BASE_URL = "https://hk-battery-services.yunheznkj.com"'), "Base GPS URL missing");
-assert.ok(serviceContent.includes('export const YUNHE_SWAP_BASE_URL = "https://zhjt.yunheznkj.com"'), "Base Swap URL missing");
-assert.ok(serviceContent.includes('loginToYunhe'), "loginToYunhe function missing");
-assert.ok(serviceContent.includes('callBusinessGateway'), "callBusinessGateway function missing");
-assert.ok(serviceContent.includes('callCommandGateway'), "callCommandGateway function missing");
+// 4. Yunhe battery client: server-side credentials, no fabricated data (AGENTS.md section 4)
+const portalServiceContent = fs.readFileSync(path.join(root, "apps/battery-swap/src/services/yunhe-battery-service.js"), "utf8");
+const portalStoreContent = fs.readFileSync(path.join(root, "apps/battery-swap/src/stores/battery-fleet-store.js"), "utf8");
+for (const [label, content] of [["CRM root service", serviceContent], ["portal service", portalServiceContent]]) {
+  for (const name of ["fetchYunheBatteries", "fetchYunheStations", "setBatteryFets", "rebootBatteryDTU", "YunheUnavailableError"]) {
+    assert.ok(content.includes(name), label + " missing " + name);
+  }
+  assert.ok(content.includes('"/api/v1/pue/yunhe"'), label + " must call the Beverly gateway");
+  assert.ok(!/yunheznkj.com/.test(content), label + " must not contact Yunhe directly");
+  assert.ok(!/login_name|DEFAULT_AUTH|loginToYunhe/.test(content), label + " must not hold or send vendor credentials");
+  assert.ok(!/getSyntheticGatewayResponse|operational fallback|fallback session/i.test(content), label + " must not fabricate data or sessions");
+}
+const normalizeEol = (text) => text.split(String.fromCharCode(13)).join("");
+
+// No Yunhe credentials or vendor hosts anywhere in browser source.
+function walk(dir, out = []) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walk(full, out);
+    else if (/.(vue|js|mjs|ts)$/.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+for (const file of [...walk(path.join(root, "apps/battery-swap/src")), ...walk(path.join(root, "src/components/battery-swap")), ...walk(path.join(root, "src/services"))]) {
+  const text = fs.readFileSync(file, "utf8");
+  assert.ok(!/MIYAJI/.test(text), file + " contains a Yunhe login name");
+  assert.ok(!/yunheznkj.com/.test(text), file + " contacts the vendor directly");
+}
+
+// Hardware commands: confirmed by the platform before any state change, and never swallowed.
+assert.ok(!/catch (_) {}/.test(portalStoreContent), "fleet store must not swallow command errors");
+assert.ok(!/Remote FET command warning|Remote DTU reboot warning/.test(portalStoreContent), "fleet store must not downgrade command failures to warnings");
+assert.ok(portalStoreContent.includes("liveStatus"), "fleet store must track whether live data is available");
+assert.ok(!/lastSyncTime: new Date/.test(portalStoreContent), "lastSyncTime must stay null until a real sync");
 
 // 5. Battery Fleet Store State & Actions
 assert.ok(storeContent.includes('useBatteryFleetStore'), "useBatteryFleetStore missing");

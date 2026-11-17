@@ -152,6 +152,11 @@ const schema = z.object({
     MONEY_WRITES_ENABLED: envBoolean.default(false),
     DEV_CONSOLE_ENABLED: envBoolean.default(false),
     DEV_CONSOLE_BREAK_GLASS_TOKEN: z.string().min(32).optional(),
+    // Yunhe battery IoT platform (Beverly PUE). Server-side only: the browser never sees these.
+    // Unset means the PUE gateway answers 503 yunhe_not_configured instead of inventing data.
+    YUNHE_LOGIN_NAME: z.string().min(1).optional(),
+    YUNHE_PASSWORD: z.string().min(1).optional(),
+    YUNHE_GPS_BASE_URL: z.string().url().default('https://hk-battery-services.yunheznkj.com'),
     // Approved database policies own the rate. This value is the outage fallback.
     VENDING_VAT_BASIS_POINTS: z.coerce.number().int().min(0).max(10_000).default(VENDING_VAT_BASIS_POINTS),
 }).superRefine((values, context) => {

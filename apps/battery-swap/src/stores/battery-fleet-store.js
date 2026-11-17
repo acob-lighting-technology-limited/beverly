@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import {
   fetchYunheBatteries,
   fetchYunheStations,
-  toggleBatteryDischarge,
+  setBatteryFets,
   rebootBatteryDTU
 } from "../services/yunhe-battery-service.js";
 
@@ -505,7 +505,10 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       filterStatus: "all",
       filterSoc: "all",
       loading: false,
-      lastSyncTime: new Date().toLocaleTimeString("en-GB", { timeZone: "Africa/Lagos" })
+      // null until a real sync succeeds; liveStatus is "idle" | "ok" | "unavailable".
+      lastSyncTime: null,
+      liveStatus: "idle",
+      liveError: null
     };
   },
 
@@ -609,25 +612,34 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       this.loading = true;
       try {
         const liveBatteries = await fetchYunheBatteries();
-        if (Array.isArray(liveBatteries) && liveBatteries.length > 0) {
-          const b1 = liveBatteries.find((b) => b.sn === "B100112510270002" || b.id === "BT107204512YHZN251111002") || liveBatteries[0];
-          if (b1 && this.bikes[0]) {
-            this.bikes[0].batterySn = b1.sn || this.bikes[0].batterySn;
-            this.bikes[0].telemetry.soc = Number(b1.soc ?? this.bikes[0].telemetry.soc);
-            this.bikes[0].telemetry.voltage = Number(b1.v ?? this.bikes[0].telemetry.voltage);
-            this.bikes[0].telemetry.current = Number(b1.i ?? this.bikes[0].telemetry.current);
-            this.bikes[0].telemetry.speed = Number(b1.speed ?? this.bikes[0].telemetry.speed);
-            this.bikes[0].telemetry.mileage = Number(b1.mileage ?? this.bikes[0].telemetry.mileage);
-            this.bikes[0].telemetry.lat = Number(b1.lat ?? this.bikes[0].telemetry.lat);
-            this.bikes[0].telemetry.lng = Number(b1.lng ?? this.bikes[0].telemetry.lng);
-            this.bikes[0].telemetry.online = Number(b1.online ?? 1);
-            this.bikes[0].telemetry.lastHeartbeat = new Date().toISOString();
-          }
+        // Match each live battery to a local bike by serial number. A live battery
+        // with no match is ignored: it must never be written onto another bike.
+        for (const live of liveBatteries) {
+          const bike = this.bikes.find((b) => b.batterySn === live.sn);
+          if (!bike) continue;
+          const t = bike.telemetry;
+          if (live.soc != null) t.soc = Number(live.soc);
+          if (live.v != null) t.voltage = Number(live.v);
+          if (live.i != null) t.current = Number(live.i);
+          if (live.speed != null) t.speed = Number(live.speed);
+          if (live.mileage != null) t.mileage = Number(live.mileage);
+          if (live.lat != null) t.lat = Number(live.lat);
+          if (live.lng != null) t.lng = Number(live.lng);
+          if (live.online != null) t.online = Number(live.online);
+          if (live.c_fet != null) t.c_fet = Number(live.c_fet);
+          if (live.d_fet != null) t.d_fet = Number(live.d_fet);
+          t.lastHeartbeat = live.last_time || t.lastHeartbeat;
         }
+        this.liveStatus = "ok";
+        this.liveError = null;
         this.lastSyncTime = new Date().toLocaleTimeString("en-GB", { timeZone: "Africa/Lagos" });
         this.saveToStorage();
+        return { ok: true };
       } catch (err) {
-        console.warn("[BatteryFleetStore] Telemetry sync error:", err);
+        // Keep the last known values, but say plainly that they are not live.
+        this.liveStatus = "unavailable";
+        this.liveError = err && err.message ? err.message : "Live battery data is unavailable.";
+        return { ok: false, error: this.liveError };
       } finally {
         this.loading = false;
       }
@@ -1070,19 +1082,12 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
 
       switch (command) {
         case "reboot_dtu":
-          try {
-            await rebootBatteryDTU(bat.batteryNumber);
-          } catch (_) {}
-          bat.updateTime = new Date().toISOString().replace("T", " ").substring(0, 19);
-          bat.onlineStatus = "Online";
-          this.saveToStorage();
-          return { success: true, message: `DTU for battery ${batterySn} rebooted successfully. Heartbeat refreshed.` };
+          // Throws unless Yunhe confirms. Online status is NOT assumed: the next live sync decides it.
+          await rebootBatteryDTU(bat.batteryNumber, `Reboot DTU for ${batterySn} from Beverly PUE`);
+          return { success: true, message: `Reboot confirmed by Yunhe for battery ${batterySn}. Sync to see its new status.` };
 
         case "restart_bms":
-          bat.pcdTemp = 28.0;
-          bat.updateTime = new Date().toISOString().replace("T", " ").substring(0, 19);
-          this.saveToStorage();
-          return { success: true, message: `BMS (MBS) restarted for battery ${batterySn}. Status normalized.` };
+          throw new Error("Restarting the BMS is not supported by the battery platform integration.");
 
         case "unbind_battery":
           if (bike) {
@@ -1096,47 +1101,63 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
           return { success: true, message: `Battery ${batterySn} unbound from vehicle.` };
 
         case "turn_off_cd_fet":
+          // Confirm with Yunhe first; local state changes only after a receipt.
+          await setBatteryFets(bat.batteryNumber, { allowCharge: false, allowDischarge: false, reason: `turn_off_cd_fet for ${batterySn} from Beverly PUE` });
           bat.c_fet = 0;
           bat.d_fet = 0;
           if (bike) {
-            bike.telemetry.d_fet = 0;
-            bike.telemetry.c_fet = 0;
-            bike.telemetry.speed = 0;
+            bike.telemetry.c_fet = bat.c_fet;
+            bike.telemetry.d_fet = bat.d_fet;
+            if (!bat.d_fet) bike.telemetry.speed = 0;
           }
           this.saveToStorage();
-          return { success: true, message: `Charge & Discharge FET disabled for ${batterySn}. Power isolated.` };
+          return { success: true, message: `Charge and discharge switched off on ${batterySn}, confirmed by Yunhe.` };
 
         case "turn_off_c_fet":
+          // Confirm with Yunhe first; local state changes only after a receipt.
+          await setBatteryFets(bat.batteryNumber, { allowCharge: false, allowDischarge: bat.d_fet === 1, reason: `turn_off_c_fet for ${batterySn} from Beverly PUE` });
           bat.c_fet = 0;
-          if (bike) bike.telemetry.c_fet = 0;
-          this.saveToStorage();
-          return { success: true, message: `Charge FET disabled for ${batterySn}.` };
-
-        case "turn_off_d_fet":
-          bat.d_fet = 0;
+          bat.d_fet = bat.d_fet;
           if (bike) {
-            bike.telemetry.d_fet = 0;
-            bike.telemetry.speed = 0;
+            bike.telemetry.c_fet = bat.c_fet;
+            bike.telemetry.d_fet = bat.d_fet;
+            if (!bat.d_fet) bike.telemetry.speed = 0;
           }
           this.saveToStorage();
-          return { success: true, message: `Discharge FET disabled for ${batterySn}. Motor power immobilized.` };
+          return { success: true, message: `Charge switched off on ${batterySn}, confirmed by Yunhe.` };
+
+        case "turn_off_d_fet":
+          // Confirm with Yunhe first; local state changes only after a receipt.
+          await setBatteryFets(bat.batteryNumber, { allowCharge: bat.c_fet === 1, allowDischarge: false, reason: `turn_off_d_fet for ${batterySn} from Beverly PUE` });
+          bat.c_fet = bat.c_fet;
+          bat.d_fet = 0;
+          if (bike) {
+            bike.telemetry.c_fet = bat.c_fet;
+            bike.telemetry.d_fet = bat.d_fet;
+            if (!bat.d_fet) bike.telemetry.speed = 0;
+          }
+          this.saveToStorage();
+          return { success: true, message: `Discharge switched off (motor power cut) on ${batterySn}, confirmed by Yunhe.` };
 
         case "enable_cd_fet":
+          // Confirm with Yunhe first; local state changes only after a receipt.
+          await setBatteryFets(bat.batteryNumber, { allowCharge: true, allowDischarge: true, reason: `enable_cd_fet for ${batterySn} from Beverly PUE` });
           bat.c_fet = 1;
           bat.d_fet = 1;
           if (bike) {
-            bike.telemetry.d_fet = 1;
-            bike.telemetry.c_fet = 1;
+            bike.telemetry.c_fet = bat.c_fet;
+            bike.telemetry.d_fet = bat.d_fet;
+            if (!bat.d_fet) bike.telemetry.speed = 0;
           }
           this.saveToStorage();
-          return { success: true, message: `Charge & Discharge FET enabled for ${batterySn}. Normal driving restored.` };
+          return { success: true, message: `Charge and discharge switched on on ${batterySn}, confirmed by Yunhe.` };
 
         case "get_mos_state":
           return {
             success: true,
             c_fet: bat.c_fet,
             d_fet: bat.d_fet,
-            statusText: `C-MOS: ${bat.c_fet ? 'ON' : 'OFF'} | D-MOS: ${bat.d_fet ? 'ON' : 'OFF'}`
+            statusText: `Last known: C-MOS ${bat.c_fet ? 'ON' : 'OFF'} | D-MOS ${bat.d_fet ? 'ON' : 'OFF'}`
           };
 
         default:
@@ -1203,11 +1224,12 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       const bike = this.bikes.find((b) => b.id === bikeId);
       if (!bike) return;
 
-      try {
-        await toggleBatteryDischarge(bike.batteryId, allowPower);
-      } catch (e) {
-        console.warn("[BatteryFleetStore] Remote FET command warning:", e);
-      }
+      // Throws unless Yunhe confirms; the bike's state below changes only after a receipt.
+      await setBatteryFets(bike.batteryId, {
+        allowCharge: true,
+        allowDischarge: allowPower,
+        reason: allowPower ? "Motor power enabled from Beverly PUE" : "Motor power cut from Beverly PUE"
+      });
 
       bike.telemetry.d_fet = allowPower ? 1 : 0;
       if (!allowPower) {
@@ -1235,18 +1257,9 @@ export const useBatteryFleetStore = defineStore("batteryFleet", {
       const bike = this.bikes.find((b) => b.id === bikeId);
       if (!bike) return;
 
-      try {
-        await rebootBatteryDTU(bike.batteryId);
-      } catch (e) {
-        console.warn("[BatteryFleetStore] Remote DTU reboot warning:", e);
-      }
-
-      bike.telemetry.lastHeartbeat = new Date().toISOString();
-      const bat = this.batteries.find((b) => b.sn === bike.batterySn);
-      if (bat) {
-        bat.updateTime = new Date().toISOString().replace("T", " ").substring(0, 19);
-      }
-      this.saveToStorage();
+      // Throws unless Yunhe confirms. A reboot receipt does not prove a fresh heartbeat,
+      // so the heartbeat time is left alone; the next live sync updates it.
+      await rebootBatteryDTU(bike.batteryId, "Reboot DTU from Beverly PUE");
     },
 
     async rebootDtu(bikeId) {

@@ -256,6 +256,16 @@
         </div>
       </header>
 
+      <!-- Honest data status: never show stale values as if they were live. -->
+      <div
+        v-if="fleetStore.liveStatus === 'unavailable'"
+        class="bsv-live-banner"
+        role="alert"
+        data-testid="live-data-banner"
+      >
+        Live battery data is unavailable ({{ fleetStore.liveError }}). Showing the last saved values. Hardware commands will not run until it is back.
+      </div>
+
       <!-- Viewport Router Host -->
       <main class="bsv-content-host">
         <router-view />
@@ -334,6 +344,16 @@ onMounted(() => {
 
 <style>
 @import './styles/acob-battery-swap-tokens.css';
+
+.bsv-live-banner {
+  margin: 0;
+  padding: 10px 20px;
+  background: var(--acob-gold, #b45309);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
 
 /* Standalone Portal App Frame */
 html, body, #app {

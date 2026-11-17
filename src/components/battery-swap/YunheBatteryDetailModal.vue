@@ -388,7 +388,8 @@ export default {
     async handleRefresh() {
       this.refreshing = true;
       try {
-        await this.fleetStore.syncLiveYunheTelemetry();
+        const result = await this.fleetStore.syncLiveYunheTelemetry();
+        if (!result.ok) throw new Error(result.error);
         this.commandFeedback = "Live Yunhe telemetry synchronized.";
         this.commandSuccess = true;
       } catch (err) {

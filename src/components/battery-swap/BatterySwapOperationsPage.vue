@@ -610,11 +610,19 @@ export default {
       this.fleetStore.selectBike(bikeId);
     },
     async onTogglePower(bikeId, allow) {
-      await this.fleetStore.toggleBikeMotorPower(bikeId, allow);
+      try {
+        await this.fleetStore.toggleBikeMotorPower(bikeId, allow);
+      } catch (err) {
+        alert(`Motor power was NOT changed for bike ${bikeId}: ${err.message}`);
+      }
     },
     async onRebootDTU(bikeId) {
-      await this.fleetStore.rebootBikeDTU(bikeId);
-      alert(`Reboot command sent to battery DTU for bike ${bikeId}. Signal will cycle in 30 seconds.`);
+      try {
+        await this.fleetStore.rebootBikeDTU(bikeId);
+        alert(`Reboot confirmed by Yunhe for bike ${bikeId}. Sync to see its new status.`);
+      } catch (err) {
+        alert(`Reboot was NOT sent for bike ${bikeId}: ${err.message}`);
+      }
     },
     syncTelemetry() {
       this.fleetStore.syncLiveYunheTelemetry();
