@@ -1,0 +1,55 @@
+/* Live map and diagnostics screens (LiveMapPage.vue, DiagnosticsPage.vue). Prefix: live-. Reuses reg- classes for buttons, alerts and dialogs. */
+.live { padding: 24px; max-width: 1280px; margin: 0 auto; color: var(--acob-text); font-family: var(--acob-font-sans); }
+
+.live-stats { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 0 0 16px; padding: 0; list-style: none; color: var(--acob-muted); font-size: 14px; }
+.live-stat-num { color: var(--acob-text); font-size: 20px; font-weight: 800; margin-right: 4px; }
+.live-stat-time { margin-left: auto; font-size: 13px; }
+
+.live-split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+.live-split--diag { grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); }
+.live-map { height: 62vh; min-height: 360px; border: 1px solid var(--acob-card-border); border-radius: 12px; overflow: hidden; }
+
+.live-list { display: flex; flex-direction: column; gap: 8px; max-height: 62vh; overflow-y: auto; }
+.live-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--acob-card-border); border-radius: 12px; background: var(--acob-panel); color: var(--acob-text); font: inherit; cursor: pointer;
+}
+.live-item:hover { background: var(--acob-surface-hover); }
+.live-item:focus-visible { outline: 2px solid var(--acob-brand-bright); outline-offset: 2px; }
+.live-item.is-selected { border-color: var(--acob-brand-bright); }
+.live-item--critical { border-left: 4px solid var(--danger); }
+.live-item--warning { border-left: 4px solid var(--acob-gold); }
+.live-item-name { font-size: 15px; font-weight: 800; }
+.live-item-meta { color: var(--acob-muted); font-size: 13px; }
+
+.live-detail { padding: 20px; border: 1px solid var(--acob-card-border); border-radius: 12px; background: var(--acob-panel); min-width: 0; }
+.live-detail-title { margin: 0 0 4px; font-size: 22px; font-weight: 800; }
+.live-sub { margin: 20px 0 6px; font-size: 15px; font-weight: 800; }
+
+.live-alerts { margin: 12px 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.live-alerts li { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--acob-gold); font-size: 14px; }
+.live-alerts .live-alert--critical { border-color: var(--danger); color: var(--danger); }
+
+.live-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 16px 0 0; }
+.live-metrics div { padding: 10px 12px; border: 1px solid var(--acob-line); border-radius: 10px; }
+.live-metrics dt { color: var(--acob-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.live-metrics dd { margin: 4px 0 0; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+
+.live-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.live-cells li { padding: 8px; border: 1px solid var(--acob-line); border-radius: 8px; font-size: 13px; font-weight: 700; }
+.live-cells li span { display: block; color: var(--acob-muted); font-size: 12px; font-weight: 600; }
+.live-cells li.is-off { border-color: var(--acob-gold); }
+
+.live-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.live-raw { margin-top: 20px; font-size: 14px; }
+.live-raw summary { cursor: pointer; font-weight: 700; }
+.live-sources { columns: 2; margin: 8px 0; padding-left: 18px; font-size: 13px; }
+.live-json { max-height: 260px; overflow: auto; padding: 12px; border: 1px solid var(--acob-line); border-radius: 8px; background: var(--acob-surface); font-size: 12px; }
+
+@media (max-width: 860px) {
+  .live { padding: 16px; }
+  .live-split, .live-split--diag { grid-template-columns: 1fr; }
+  .live-map { height: 50vh; }
+  .live-list { max-height: none; }
+  .live-sources { columns: 1; }
+}

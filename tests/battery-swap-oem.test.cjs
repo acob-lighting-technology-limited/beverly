@@ -38,7 +38,7 @@ assert.ok(oemCapContent.includes('"battery_swap_operations"'), "oem-capabilities
 
 // 4. Yunhe battery client: server-side credentials, no fabricated data (AGENTS.md section 4)
 const portalServiceContent = fs.readFileSync(path.join(root, "apps/battery-swap/src/services/yunhe-battery-service.js"), "utf8");
-const portalStoreContent = fs.readFileSync(path.join(root, "apps/battery-swap/src/stores/battery-fleet-store.js"), "utf8");
+const liveStoreContent = fs.readFileSync(path.join(root, "apps/battery-swap/src/stores/pue-live-store.js"), "utf8");
 for (const [label, content] of [["CRM root service", serviceContent], ["portal service", portalServiceContent]]) {
   for (const name of ["fetchYunheBatteries", "fetchYunheStations", "setBatteryFets", "rebootBatteryDTU", "YunheUnavailableError"]) {
     assert.ok(content.includes(name), label + " missing " + name);
@@ -51,7 +51,10 @@ for (const [label, content] of [["CRM root service", serviceContent], ["portal s
 const normalizeEol = (text) => text.split(String.fromCharCode(13)).join("");
 assert.strictEqual(normalizeEol(serviceContent), normalizeEol(portalServiceContent), "CRM root and portal Yunhe services must stay identical");
 // The portal store no longer holds demo data or browser persistence. (The CRM root copy still does and is due to be retired.)
-assert.ok(!/seedFleetData|localStorage.setItem/.test(portalStoreContent), "portal fleet store must not seed demo data or persist fleet records in the browser");
+// The portal no longer has the old demo store, pages or components. (The CRM root copy still does and is due to be retired.)
+for (const gone of ["stores/battery-fleet-store.js", "components", "composables", "types"]) {
+  assert.ok(!fs.existsSync(path.join(root, "apps/battery-swap/src", gone)), "apps/battery-swap/src/" + gone + " is demo code and must stay removed");
+}
 assert.ok(fs.existsSync(path.join(root, "apps/battery-swap/src/stores/pue-registry-store.js")), "portal must read riders, bikes, batteries and stations from the registry store");
 
 // No Yunhe credentials or vendor hosts anywhere in browser source.
@@ -70,10 +73,8 @@ for (const file of [...walk(path.join(root, "apps/battery-swap/src")), ...walk(p
 }
 
 // Hardware commands: confirmed by the platform before any state change, and never swallowed.
-assert.ok(!/catch (_) {}/.test(portalStoreContent), "fleet store must not swallow command errors");
-assert.ok(!/Remote FET command warning|Remote DTU reboot warning/.test(portalStoreContent), "fleet store must not downgrade command failures to warnings");
-assert.ok(portalStoreContent.includes("liveStatus"), "fleet store must track whether live data is available");
-assert.ok(!/lastSyncTime: new Date/.test(portalStoreContent), "lastSyncTime must stay null until a real sync");
+assert.ok(liveStoreContent.includes('status = "unavailable"') && liveStoreContent.includes("lastSyncAt"), "live store must track whether live data is available and when it last really synced");
+assert.ok(!/localStorage|sessionStorage/.test(liveStoreContent), "live store must not cache readings in the browser");
 
 // 5. Battery Fleet Store State & Actions
 assert.ok(storeContent.includes('useBatteryFleetStore'), "useBatteryFleetStore missing");
