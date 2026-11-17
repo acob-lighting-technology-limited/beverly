@@ -57,6 +57,9 @@ export const mutationRoutePolicies: readonly RoutePolicy[] = [
     post('/api/v1/admin/dev/*', { developerOnly: true }), put('/api/v1/admin/dev/*', { developerOnly: true }), patch('/api/v1/admin/dev/*', { developerOnly: true }), del('/api/v1/admin/dev/*', { developerOnly: true }),
     // Beverly PUE: Yunhe battery gateway. Query is read-only (POST for a body); command acts on hardware.
     post('/api/v1/pue/yunhe/query'), post('/api/v1/pue/yunhe/command'),
+    // Beverly PUE registry (own rider CRM): create/update records, sell and end bike assignments. No money moves here.
+    post('/api/v1/pue/registry/:resource'), patch('/api/v1/pue/registry/:resource/:id'),
+    post('/api/v1/pue/assignments'), post('/api/v1/pue/assignments/:id/end'),
     // Beverly AI — chat completions, audio transcription (no money writes)
     post('/api/v1/acobot/chat'), post('/api/v1/acobot/transcribe'),
 ];
