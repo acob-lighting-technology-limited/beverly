@@ -1,8 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
-import BsvMapPage from '../components/BsvMapPage.vue';
+import LiveMapPage from '../views/LiveMapPage.vue';
+import DiagnosticsPage from '../views/DiagnosticsPage.vue';
 import RegistryPage from '../views/RegistryPage.vue';
 import SalesPage from '../views/SalesPage.vue';
-import BsvDiagnosticsPage from '../components/BsvDiagnosticsPage.vue';
 import LoginView from '../views/LoginView.vue';
 import ForgotPasswordView from '../views/ForgotPasswordView.vue';
 import ResetPasswordView from '../views/ResetPasswordView.vue';
@@ -74,14 +74,14 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/map',
     name: 'map',
-    component: BsvMapPage,
-    meta: { title: 'Live GPS Tracker', icon: 'map', group: 'Operations' }
+    component: LiveMapPage,
+    meta: { title: 'Live map' }
   },
   {
     path: '/diagnostics',
     name: 'diagnostics',
-    component: BsvDiagnosticsPage,
-    meta: { title: 'Battery Diagnostics Lab', icon: 'activity', group: 'Infrastructure' }
+    component: DiagnosticsPage,
+    meta: { title: 'Diagnostics' }
   },
   { path: '/:pathMatch(.*)*', redirect: '/hub' }
 ];

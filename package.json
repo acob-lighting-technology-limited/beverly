@@ -74,7 +74,7 @@
     "runtime:verify": "node --disable-warning=ExperimentalWarning tools/runtime-parity-check.cjs",
     "security:audit": "node --disable-warning=ExperimentalWarning tests/security-audit-tooling.test.cjs && node --disable-warning=ExperimentalWarning tools/security-audit-baseline.cjs",
     "ci:actions": "node --disable-warning=ExperimentalWarning tools/github-actions-check.cjs",
-    "test:pue": "node --disable-warning=ExperimentalWarning tests/battery-swap-oem.test.cjs && node --disable-warning=ExperimentalWarning --test tests/pue-registry-ui.test.mjs"
+    "test:pue": "node --disable-warning=ExperimentalWarning tests/battery-swap-oem.test.cjs && node --disable-warning=ExperimentalWarning --test tests/pue-registry-ui.test.mjs tests/pue-live.test.mjs"
   },
   "dependencies": {
     "@beverly/tokens": "workspace:*",

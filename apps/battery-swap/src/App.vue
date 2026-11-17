@@ -160,12 +160,12 @@
 
       <!-- Honest data status: never show stale values as if they were live. -->
       <div
-        v-if="fleetStore.liveStatus === 'unavailable' && ['/map', '/diagnostics'].includes(currentPath)"
+        v-if="live.status === 'unavailable' && ['/map', '/diagnostics'].includes(currentPath)"
         class="bsv-live-banner"
         role="alert"
         data-testid="live-data-banner"
       >
-        Live battery data is unavailable ({{ fleetStore.liveError }}). Showing the last saved values. Hardware commands will not run until it is back.
+        Live battery data is unavailable ({{ live.error }}). No readings are shown, and hardware commands will not run until it is back.
       </div>
 
       <!-- Viewport Router Host -->
@@ -180,12 +180,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useBatteryFleetStore } from './stores/battery-fleet-store.js';
+import { usePueLiveStore } from './stores/pue-live-store.js';
 import { useBatterySwapAuthStore } from './stores/auth';
 
 const route = useRoute();
 const router = useRouter();
-const fleetStore = useBatteryFleetStore();
+const live = usePueLiveStore();
 const auth = useBatterySwapAuthStore();
 
 // Full-screen routes without the workspace shell: sign-in pages and the PUE Hub.
@@ -215,8 +215,8 @@ const navGroups = [
     { key: 'sales', to: '/sales', label: 'Bike sales', icon: ['M12 1v22', 'M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'] }
   ] },
   { heading: 'LIVE', items: [
-    { key: 'map', to: '/map', label: 'Live GPS tracker', icon: ['M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z', 'M8 2v16', 'M16 6v16'] },
-    { key: 'diagnostics', to: '/diagnostics', label: 'Diagnostics lab', icon: ['M22 12h-4l-3 9L9 3l-3 9H2'] }
+    { key: 'map', to: '/map', label: 'Live map', icon: ['M1 6v16l7-4 8 4 7-4V2l-7 4-8-4z', 'M8 2v16', 'M16 6v16'] },
+    { key: 'diagnostics', to: '/diagnostics', label: 'Diagnostics', icon: ['M22 12h-4l-3 9L9 3l-3 9H2'] }
   ] }
 ];
 
@@ -226,7 +226,7 @@ const theme = ref<'dark' | 'light'>('dark');
 
 const currentPath = computed(() => route.path);
 const currentRouteTitle = computed(() => String(route.meta?.title || 'Battery Swap Stations'));
-const liveBikesCount = computed(() => fleetStore.onlineBikesCount || 0);
+const liveBikesCount = computed(() => live.counts.online);
 
 function toggleTheme() {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
@@ -257,8 +257,7 @@ onMounted(() => {
   document.documentElement.dataset.theme = theme.value;
 
   // Initial live telemetry sync
-  fleetStore.syncLiveYunheTelemetry();
-});
+  });
 </script>
 
 <style>
