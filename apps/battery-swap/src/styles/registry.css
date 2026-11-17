@@ -1,0 +1,76 @@
+/* Shared by the PUE registry screens (RegistryPage.vue, SalesPage.vue). Prefix: reg-. */
+.reg { padding: 24px; max-width: 1100px; margin: 0 auto; color: var(--acob-text); font-family: var(--acob-font-sans); }
+.reg-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.reg-title { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -.02em; }
+.reg-blurb { margin: 4px 0 0; color: var(--acob-muted); font-size: 14px; max-width: 60ch; }
+
+.reg-tools { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.reg-search { flex: 1; max-width: 360px; }
+.reg-count { color: var(--acob-muted); font-size: 13px; }
+
+.reg-input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1px solid var(--acob-line-strong); border-radius: 8px;
+  background: var(--acob-panel); color: var(--acob-text); font: inherit; font-size: 14px;
+}
+.reg-input:focus-visible, .reg-btn:focus-visible { outline: 2px solid var(--acob-brand-bright); outline-offset: 2px; }
+
+.reg-btn {
+  padding: 9px 14px; border: 1px solid var(--acob-line-strong); border-radius: 8px;
+  background: transparent; color: var(--acob-text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.reg-btn:hover:not(:disabled) { background: var(--acob-surface-hover); }
+.reg-btn:disabled { opacity: .55; cursor: not-allowed; }
+.reg-btn--primary { border-color: var(--acob-brand-bright); background: var(--acob-brand-bright); color: var(--acob-bg); }
+.reg-btn--primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--acob-brand-bright); }
+
+.reg-toast { margin: 0 0 12px; padding: 10px 14px; border: 1px solid var(--acob-brand-bright); border-radius: 8px; color: var(--acob-brand-bright); font-size: 14px; }
+.reg-alert {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px;
+  border: 1px solid var(--danger); border-radius: 8px; color: var(--danger); font-size: 14px;
+}
+
+.reg-table-wrap { overflow-x: auto; border: 1px solid var(--acob-card-border); border-radius: 12px; background: var(--acob-panel); }
+.reg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.reg-table th {
+  position: sticky; top: 0; padding: 12px 14px; text-align: left; font-size: 12px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--acob-muted); background: var(--acob-surface); border-bottom: 1px solid var(--acob-line);
+}
+.reg-table td { padding: 12px 14px; border-bottom: 1px solid var(--acob-line); white-space: nowrap; }
+.reg-table tbody tr:last-child td { border-bottom: 0; }
+.reg-actions { text-align: right; }
+
+.reg-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--acob-line-strong); font-size: 12px; font-weight: 700; }
+.reg-badge--active, .reg-badge--in_stock, .reg-badge--in_bay, .reg-badge--with_rider, .reg-badge--sold { color: var(--acob-brand-bright); border-color: var(--acob-brand-bright); }
+.reg-badge--suspended, .reg-badge--maintenance, .reg-badge--repossessed, .reg-badge--lost, .reg-badge--closed { color: var(--danger); border-color: var(--danger); }
+
+.reg-skeleton { display: block; height: 14px; width: 70%; border-radius: 4px; background: var(--acob-chip); animation: reg-pulse 1.2s ease-in-out infinite; }
+@keyframes reg-pulse { 50% { opacity: .45; } }
+
+.reg-empty { padding: 48px 16px; text-align: center; }
+.reg-empty-title { margin: 0 0 4px; font-size: 18px; font-weight: 800; }
+.reg-empty-note { margin: 0 0 16px; color: var(--acob-muted); font-size: 14px; }
+
+.reg-pager { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 16px; font-size: 14px; color: var(--acob-muted); }
+
+.reg-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, .6); }
+.reg-dialog {
+  width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; box-sizing: border-box; padding: 24px;
+  border: 1px solid var(--acob-card-border); border-radius: 16px; background: var(--acob-bg); color: var(--acob-text);
+}
+.reg-dialog-title { margin: 0 0 16px; font-size: 20px; font-weight: 800; }
+.reg-field { margin-bottom: 14px; }
+.reg-label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 700; }
+.reg-req { color: var(--danger); }
+.reg-help { margin: 4px 0 0; color: var(--acob-muted); font-size: 12px; }
+.reg-problems { margin: 0 0 12px; padding: 10px 14px 10px 28px; border: 1px solid var(--danger); border-radius: 8px; color: var(--danger); font-size: 13px; }
+.reg-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+
+.reg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .reg { padding: 16px; }
+  .reg-head { flex-direction: column; }
+  .reg-search { max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) { .reg-skeleton { animation: none; } }
