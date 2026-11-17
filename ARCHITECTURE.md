@@ -112,6 +112,12 @@ Keep write safety strict.
 - `CORS_ORIGINS` controls CORS.
 - `RATE_LIMIT_*` controls rate limiting.
 
+## Beverly PUE Battery Gateway
+
+- `backend/wallet/src/services/yunhe-gateway.ts` and `routes/pue-yunhe.ts` are the only code that talks to the Yunhe battery platform. Credentials are `YUNHE_LOGIN_NAME` / `YUNHE_PASSWORD` (server env). The browser calls `/api/v1/pue/yunhe/query` and `/command` with the staff token and `X-Beverly-Portal: pue`.
+- Failures are errors, never sample data. A battery command (cutoff, DTU reboot) is confirmed only on a Yunhe code 200, needs an operations role, is audited as requested, then confirmed or failed, and is never retried automatically. The UI changes hardware state only after a receipt.
+- Known debt: fleet, rider, lease, swap and payment records still live in browser `localStorage` (`battery-fleet-store.js`) with seeded demo data, and the CRM root keeps duplicate copies of the battery pages, store and service under `src/`. Both need a database-backed, server-written model and the CRM copies retired.
+
 ## Staff Portal Access
 
 - `public.users.portal_access` (text[]) lists the Beverly staff portals an account may sign in to: `crm`, `staff_wallet`, `call`, `pue`. Migration `20261115120000_staff_portal_access.sql` backfills the old role-based gates; rollback in `supabase/rollbacks/`.

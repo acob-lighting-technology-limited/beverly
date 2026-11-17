@@ -437,26 +437,39 @@ export default {
         };
         setTimeout(() => { this.commandToast.show = false; }, 3500);
       } catch (err) {
-        console.error("FET toggle error", err);
+        this.commandToast = { show: true, type: "warn", text: `Motor power was NOT changed for ${this.bike.id}: ${err.message}` };
+        setTimeout(() => { this.commandToast.show = false; }, 5000);
       }
     },
     async disableMotor() {
       if (!this.bike) return;
-      await this.fleetStore.disableMotor(this.bike.id);
+      try {
+        await this.fleetStore.disableMotor(this.bike.id);
+      } catch (err) {
+        this.commandToast = { show: true, type: "warn", text: `Motor was NOT disarmed for ${this.bike.id}: ${err.message}` };
+        setTimeout(() => { this.commandToast.show = false; }, 5000);
+        return;
+      }
       this.commandToast = {
         show: true,
         type: "warn",
-        text: `⛔ Motor DISARMED for ${this.bike.id} (Discharge FET cut off)`
+        text: `Motor disarmed for ${this.bike.id} (discharge cut off, confirmed by Yunhe)`
       };
       setTimeout(() => { this.commandToast.show = false; }, 3500);
     },
     async enableMotor() {
       if (!this.bike) return;
-      await this.fleetStore.enableMotor(this.bike.id);
+      try {
+        await this.fleetStore.enableMotor(this.bike.id);
+      } catch (err) {
+        this.commandToast = { show: true, type: "warn", text: `Motor was NOT armed for ${this.bike.id}: ${err.message}` };
+        setTimeout(() => { this.commandToast.show = false; }, 5000);
+        return;
+      }
       this.commandToast = {
         show: true,
         type: "success",
-        text: `✓ Motor ARMED for ${this.bike.id} (Discharge FET restored)`
+        text: `Motor armed for ${this.bike.id} (discharge restored, confirmed by Yunhe)`
       };
       setTimeout(() => { this.commandToast.show = false; }, 3500);
     },
@@ -468,10 +481,10 @@ export default {
         await this.fleetStore.rebootBikeDTU(this.bike.id);
         this.rebootMsg = {
           ok: true,
-          text: `✓ Remote DTU reboot packet acknowledged by battery ${this.bike.batterySn} at ${new Date().toLocaleTimeString("en-GB")}. GPS link refreshed.`
+          text: `Reboot confirmed by Yunhe for battery ${this.bike.batterySn} at ${new Date().toLocaleTimeString("en-GB")}. Sync to see its new status.`
         };
       } catch (e) {
-        this.rebootMsg = { ok: false, text: "Reboot command failed. Check network or DTU status." };
+        this.rebootMsg = { ok: false, text: `Reboot was NOT confirmed: ${e && e.message ? e.message : "unknown error"}` };
       } finally {
         this.rebootLoading = false;
       }

@@ -267,7 +267,11 @@ export default {
     },
     async handleTogglePower(bikeId, newState) {
       if (this.fleetStore && typeof this.fleetStore.toggleBikeMotorPower === "function") {
-        await this.fleetStore.toggleBikeMotorPower(bikeId, newState);
+        try {
+          await this.fleetStore.toggleBikeMotorPower(bikeId, newState);
+        } catch (err) {
+          alert(`Motor power was NOT changed: ${err.message}`);
+        }
       }
     },
     handleOpenCrm(customerId) {
