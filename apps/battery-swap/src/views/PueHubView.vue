@@ -3,50 +3,41 @@
     <header class="pue-hub-bar">
       <a :href="portalUrls.landing" class="pue-hub-brand" title="Beverly">
         <img :src="brandLockup" alt="Beverly" class="pue-hub-lockup" @error="hideImage" />
-        <span class="pue-hub-tag">PUE</span>
       </a>
-      <div class="pue-hub-user">
-        <span class="pue-hub-avatar" aria-hidden="true">{{ auth.userInitials }}</span>
-        <span class="pue-hub-name">{{ auth.displayName }}</span>
-        <button
-          type="button"
-          class="pue-hub-signout"
-          data-testid="btn-pue-hub-signout"
-          aria-label="Sign out of Beverly PUE"
-          title="Sign out of Beverly PUE"
-          @click="signOut"
-        >
-          Sign out
-        </button>
-      </div>
+      <button
+        type="button"
+        class="pue-hub-signout"
+        data-testid="btn-pue-hub-signout"
+        aria-label="Sign out of Beverly PUE"
+        title="Sign out of Beverly PUE"
+        @click="signOut"
+      >
+        Sign out
+      </button>
     </header>
 
     <main class="pue-hub-main">
-      <p class="pue-hub-overline">Beverly PUE</p>
-      <h1 class="pue-hub-title">Choose a workspace</h1>
-      <p class="pue-hub-sub">Productive Use of Energy operations. Pick where you want to work.</p>
+      <span class="pue-hub-pill">Beverly PUE</span>
+      <h1 class="pue-hub-title">Where to?</h1>
+      <p class="pue-hub-sub">Signed in as {{ auth.displayName }}</p>
 
       <div class="pue-hub-grid">
         <button
           v-for="space in workspaces"
           :key="space.key"
           type="button"
-          :class="['pue-hub-card', !space.available && 'is-unavailable']"
+          :class="['pue-hub-card', space.available ? 'is-ready' : 'is-unavailable']"
           :disabled="!space.available"
           :aria-disabled="!space.available"
+          :aria-label="space.available ? space.title : `${space.title}, not set up yet`"
           :data-testid="`btn-pue-workspace-${space.key}`"
           @click="open(space)"
         >
-          <span class="pue-hub-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path v-for="(d, i) in space.icon" :key="i" :d="d" />
-            </svg>
-          </span>
-          <span class="pue-hub-card-title">{{ space.title }}</span>
-          <span class="pue-hub-card-desc">{{ space.description }}</span>
-          <span :class="['pue-hub-status', space.available ? 'is-ready' : 'is-pending']">
-            {{ space.available ? 'Open workspace' : 'Not set up yet' }}
-          </span>
+          <svg class="pue-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path v-for="(d, i) in space.icon" :key="i" :d="d" />
+          </svg>
+          <span class="pue-hub-card-title">{{ space.shortTitle }}</span>
+          <span class="pue-hub-card-note">{{ space.available ? space.description : 'Not set up yet' }}</span>
         </button>
       </div>
     </main>
@@ -66,6 +57,7 @@ import { useBatterySwapAuthStore } from '../stores/auth';
 interface Workspace {
   key: string;
   title: string;
+  shortTitle: string;
   description: string;
   /** Route to open; null while the workspace does not exist yet. */
   to: string | null;
@@ -88,7 +80,8 @@ const workspaces: Workspace[] = [
   {
     key: 'battery-swap',
     title: 'Battery Swap Stations',
-    description: 'Swap stations and racks, bike and battery fleet, rider leases, live GPS, and battery diagnostics.',
+    shortTitle: 'Battery swap',
+    description: 'Stations, fleet, leases, and GPS',
     to: '/stations',
     available: true,
     icon: ['M6 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z', 'M21 11v2', 'M8 10v4', 'M12 10v4'],
@@ -96,7 +89,8 @@ const workspaces: Workspace[] = [
   {
     key: 'appliances',
     title: 'Electronic Appliances',
-    description: 'PUE electronic appliances. This workspace is not connected to any data yet.',
+    shortTitle: 'Appliances',
+    description: 'Not connected to any data yet',
     to: null,
     available: false,
     icon: ['M4 5h16v11H4z', 'M8 20h8', 'M12 16v4'],
@@ -121,7 +115,6 @@ function hideImage(event: Event) {
 
 <style scoped>
 .pue-hub {
-  /* App host is a flex row; take the full width. */
   flex: 1 1 auto;
   width: 100%;
   min-height: 100vh;
@@ -133,104 +126,72 @@ function hideImage(event: Event) {
   color: var(--acob-text);
   font-family: var(--acob-font-sans);
 }
-.pue-hub-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--acob-line);
-}
-.pue-hub-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; }
+.pue-hub-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; }
+.pue-hub-brand { display: inline-flex; }
 .pue-hub-lockup { height: 28px; width: auto; }
-.pue-hub-tag {
-  padding: 2px 8px;
-  border: 1px solid var(--acob-line-strong);
-  border-radius: 999px;
-  color: var(--acob-brand-bright);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: .08em;
-}
-.pue-hub-user { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.pue-hub-avatar {
-  width: 32px; height: 32px; flex: none;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  background: var(--acob-chip);
-  color: var(--acob-text);
-  font-size: 12px; font-weight: 800;
-}
-.pue-hub-name { color: var(--acob-muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pue-hub-signout {
-  padding: 6px 12px;
+  padding: 8px 14px;
   border: 1px solid var(--acob-line-strong);
   border-radius: 8px;
   background: transparent;
   color: var(--acob-text);
-  font: inherit; font-size: 13px; font-weight: 600;
+  font: inherit; font-size: 14px; font-weight: 600;
   cursor: pointer;
 }
 .pue-hub-signout:hover { background: var(--acob-surface-hover); }
 .pue-hub-signout:focus-visible,
-.pue-hub-card:focus-visible { outline: 2px solid var(--acob-brand-bright); outline-offset: 2px; }
+.pue-hub-card:focus-visible { outline: 2px solid var(--acob-brand-bright); outline-offset: 3px; }
 
 .pue-hub-main {
+  flex: 1;
   width: 100%;
-  max-width: 960px;
+  max-width: 640px;
   margin: 0 auto;
-  padding: 48px 24px 64px;
+  padding: 8vh 24px 64px;
   box-sizing: border-box;
+  text-align: center;
 }
-.pue-hub-overline {
-  margin: 0 0 8px;
+.pue-hub-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid var(--acob-line-strong);
+  border-radius: 999px;
   color: var(--acob-brand-bright);
-  font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
 }
-.pue-hub-title { margin: 0; font-size: 32px; font-weight: 800; letter-spacing: -.02em; }
-.pue-hub-sub { margin: 8px 0 32px; color: var(--acob-muted); font-size: 15px; }
+.pue-hub-title { margin: 16px 0 6px; font-size: 40px; font-weight: 800; letter-spacing: -.03em; }
+.pue-hub-sub { margin: 0 0 36px; color: var(--acob-muted); font-size: 15px; }
 
-.pue-hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.pue-hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .pue-hub-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 24px;
-  text-align: left;
-  border: 1px solid var(--acob-card-border);
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
   border-radius: 16px;
   background: var(--acob-panel);
-  box-shadow: var(--acob-panel-shadow);
   color: var(--acob-text);
   font: inherit;
-  cursor: pointer;
   transition: border-color .15s ease, transform .15s ease;
 }
-.pue-hub-card:hover:not(:disabled) { border-color: var(--acob-brand-bright); transform: translateY(-2px); }
-.pue-hub-card.is-unavailable { cursor: not-allowed; opacity: .8; }
-.pue-hub-icon {
-  width: 44px; height: 44px;
-  display: grid; place-items: center;
-  border-radius: 12px;
-  background: var(--acob-accent-muted);
-  color: var(--acob-brand-bright);
-}
-.pue-hub-icon svg { width: 22px; height: 22px; }
+.pue-hub-card.is-ready { border: 2px solid var(--acob-brand-bright); cursor: pointer; }
+.pue-hub-card.is-ready:hover { transform: translateY(-2px); }
+.pue-hub-card.is-unavailable { border: 1px dashed var(--acob-line-strong); cursor: not-allowed; }
+.pue-hub-icon { width: 32px; height: 32px; color: var(--acob-brand-bright); }
+.is-unavailable .pue-hub-icon { color: var(--acob-muted); }
 .pue-hub-card-title { font-size: 18px; font-weight: 800; }
-.pue-hub-card-desc { color: var(--acob-muted); font-size: 14px; line-height: 1.5; }
-.pue-hub-status { margin-top: auto; padding-top: 6px; font-size: 13px; font-weight: 700; }
-.pue-hub-status.is-ready { color: var(--acob-brand-bright); }
-.pue-hub-status.is-pending { color: var(--acob-muted); }
+.pue-hub-card-note { color: var(--acob-muted); font-size: 13px; line-height: 1.4; }
 
-@media (max-width: 640px) {
+@media (max-width: 560px) {
   .pue-hub-bar { padding: 12px 16px; }
-  .pue-hub-name { display: none; }
-  .pue-hub-main { padding: 32px 16px 48px; }
-  .pue-hub-title { font-size: 26px; }
+  .pue-hub-main { padding: 5vh 16px 48px; }
+  .pue-hub-title { font-size: 32px; }
+  .pue-hub-grid { grid-template-columns: 1fr; }
+  .pue-hub-card { padding: 24px 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pue-hub-card { transition: none; }
-  .pue-hub-card:hover:not(:disabled) { transform: none; }
+  .pue-hub-card.is-ready:hover { transform: none; }
 }
 </style>
