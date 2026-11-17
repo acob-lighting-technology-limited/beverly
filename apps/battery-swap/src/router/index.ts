@@ -1,8 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import BsvMapPage from '../components/BsvMapPage.vue';
-import BsvFleetPage from '../components/BsvFleetPage.vue';
-import BsvCrmPage from '../components/BsvCrmPage.vue';
-import BsvStationsPage from '../components/BsvStationsPage.vue';
+import RegistryPage from '../views/RegistryPage.vue';
+import SalesPage from '../views/SalesPage.vue';
 import BsvDiagnosticsPage from '../components/BsvDiagnosticsPage.vue';
 import LoginView from '../views/LoginView.vue';
 import ForgotPasswordView from '../views/ForgotPasswordView.vue';
@@ -38,28 +37,45 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Reset Password', public: true }
   },
   {
-    path: '/stations',
-    name: 'stations',
-    component: BsvStationsPage,
-    meta: { title: 'Swap Stations & Racks', icon: 'station', group: 'Infrastructure' }
+    path: '/sites',
+    name: 'sites',
+    component: RegistryPage,
+    meta: { title: 'Sites', resource: 'sites' }
   },
+  {
+    path: '/swap-stations',
+    name: 'swap-stations',
+    component: RegistryPage,
+    meta: { title: 'Swap stations', resource: 'swap-stations' }
+  },
+  {
+    path: '/bikes',
+    name: 'bikes',
+    component: RegistryPage,
+    meta: { title: 'Bikes', resource: 'bikes' }
+  },
+  {
+    path: '/batteries',
+    name: 'batteries',
+    component: RegistryPage,
+    meta: { title: 'Batteries', resource: 'batteries' }
+  },
+  {
+    path: '/riders',
+    name: 'riders',
+    component: RegistryPage,
+    meta: { title: 'Riders', resource: 'riders' }
+  },
+  { path: '/sales', name: 'sales', component: SalesPage, meta: { title: 'Bike sales' } },
+  // Old demo pages were replaced by the registry screens above.
+  { path: '/stations', redirect: '/sites' },
+  { path: '/fleet', redirect: '/bikes' },
+  { path: '/crm', redirect: '/riders' },
   {
     path: '/map',
     name: 'map',
     component: BsvMapPage,
     meta: { title: 'Live GPS Tracker', icon: 'map', group: 'Operations' }
-  },
-  {
-    path: '/fleet',
-    name: 'fleet',
-    component: BsvFleetPage,
-    meta: { title: 'Bike & Battery Registry', icon: 'bike', group: 'Operations' }
-  },
-  {
-    path: '/crm',
-    name: 'crm',
-    component: BsvCrmPage,
-    meta: { title: 'Rider Lease CRM', icon: 'users', group: 'Operations' }
   },
   {
     path: '/diagnostics',

@@ -49,6 +49,10 @@ for (const [label, content] of [["CRM root service", serviceContent], ["portal s
   assert.ok(!/getSyntheticGatewayResponse|operational fallback|fallback session/i.test(content), label + " must not fabricate data or sessions");
 }
 const normalizeEol = (text) => text.split(String.fromCharCode(13)).join("");
+assert.strictEqual(normalizeEol(serviceContent), normalizeEol(portalServiceContent), "CRM root and portal Yunhe services must stay identical");
+// The portal store no longer holds demo data or browser persistence. (The CRM root copy still does and is due to be retired.)
+assert.ok(!/seedFleetData|localStorage.setItem/.test(portalStoreContent), "portal fleet store must not seed demo data or persist fleet records in the browser");
+assert.ok(fs.existsSync(path.join(root, "apps/battery-swap/src/stores/pue-registry-store.js")), "portal must read riders, bikes, batteries and stations from the registry store");
 
 // No Yunhe credentials or vendor hosts anywhere in browser source.
 function walk(dir, out = []) {
