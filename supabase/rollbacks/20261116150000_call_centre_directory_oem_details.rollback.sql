@@ -1,0 +1,1 @@
+-- Rollback: re-apply 20261116140000_call_centre_directory_binding.sql to restore the previous view.
