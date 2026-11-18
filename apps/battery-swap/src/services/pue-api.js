@@ -12,11 +12,13 @@ const TOKEN_KEY = "beverly.battery_swap.access_token";
 
 /** Raised for every failed registry call. `code` mirrors the server's error code. */
 export class PueApiError extends Error {
-  constructor(message, code = "request_failed", status = 0) {
+  constructor(message, code = "request_failed", status = 0, details = null) {
     super(message);
     this.name = "PueApiError";
     this.code = code;
     this.status = status;
+    // Extra fields the server sent with the error, e.g. { swapId } when a rider already has an open swap.
+    this.details = details;
   }
 }
 
@@ -28,7 +30,7 @@ function authToken() {
   }
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, options = {}) {
   const token = authToken();
   if (!token) throw new PueApiError("Sign in to Beverly PUE to continue.", "not_signed_in", 401);
   let response;
@@ -39,7 +41,8 @@ async function request(method, path, body) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
         "X-Beverly-Portal": "pue",
-        ...(method === "GET" ? {} : { "Idempotency-Key": crypto.randomUUID() })
+        // A caller that must be able to retry safely passes its own stable key; otherwise each write gets a fresh one.
+        ...(method === "GET" ? {} : { "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID() })
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT_MS)
@@ -49,7 +52,7 @@ async function request(method, path, body) {
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new PueApiError(data.message || `Request failed (${response.status}).`, data.error || "request_failed", response.status);
+    throw new PueApiError(data.message || `Request failed (${response.status}).`, data.error || "request_failed", response.status, data);
   }
   return data;
 }
@@ -84,6 +87,40 @@ export const pueApi = {
   },
   async endSale(id, body) {
     return (await request("POST", `/assignments/${id}/end`, body)).assignment;
+  },
+
+  // ── swaps ──
+  async listSwaps(params) {
+    const data = await request("GET", `/swaps${query(params)}`);
+    return { items: data.items ?? [], total: data.total ?? 0 };
+  },
+  async getSwap(id) {
+    return (await request("GET", `/swaps/${id}`)).swap;
+  },
+  async getSwapSettings() {
+    return (await request("GET", "/settings")).settings;
+  },
+  async updateSwapSettings(body) {
+    return (await request("PATCH", "/settings", body)).settings;
+  },
+  /** Reserve a charged battery. Pass the same idempotencyKey on every retry of one attempt. */
+  async reserveSwap(body, idempotencyKey) {
+    return (await request("POST", "/swaps", body, { idempotencyKey })).swap;
+  },
+  async recordSwapPayment(id, body, idempotencyKey) {
+    return (await request("POST", `/swaps/${id}/payment`, body, { idempotencyKey })).swap;
+  },
+  async startSwapPaystack(id) {
+    return (await request("POST", `/swaps/${id}/paystack`, {})).checkout;
+  },
+  async verifySwapPaystack(id) {
+    return request("POST", `/swaps/${id}/paystack/verify`, {});
+  },
+  async completeSwap(id, body) {
+    return (await request("POST", `/swaps/${id}/complete`, body)).swap;
+  },
+  async cancelSwap(id, body) {
+    return (await request("POST", `/swaps/${id}/cancel`, body)).swap;
   }
 };
 

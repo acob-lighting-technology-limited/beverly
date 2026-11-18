@@ -206,6 +206,9 @@ const portalUrls = {
 // Sidebar entries. Registry screens read the Beverly database; Live GPS and Diagnostics read the battery platform.
 const navGroups = [
   { heading: '', items: [{ key: 'hub', to: '/hub', label: 'PUE Hub', icon: ['M3 3h7v7H3z', 'M14 3h7v7h-7z', 'M3 14h7v7H3z', 'M14 14h7v7h-7z'] }] },
+  { heading: 'OPERATIONS', items: [
+    { key: 'swaps', to: '/swaps', label: 'Swaps', icon: ['M17 1l4 4-4 4', 'M3 11V9a4 4 0 0 1 4-4h14', 'M7 23l-4-4 4-4', 'M21 13v2a4 4 0 0 1-4 4H3'] }
+  ] },
   { heading: 'REGISTRY', items: [
     { key: 'sites', to: '/sites', label: 'Sites', icon: ['M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z', 'M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z'] },
     { key: 'swap-stations', to: '/swap-stations', label: 'Swap stations', icon: ['M2 7h20v14H2z', 'M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16'] },
