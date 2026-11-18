@@ -3,6 +3,7 @@ import LiveMapPage from '../views/LiveMapPage.vue';
 import DiagnosticsPage from '../views/DiagnosticsPage.vue';
 import RegistryPage from '../views/RegistryPage.vue';
 import SalesPage from '../views/SalesPage.vue';
+import SwapsPage from '../views/SwapsPage.vue';
 import LoginView from '../views/LoginView.vue';
 import ForgotPasswordView from '../views/ForgotPasswordView.vue';
 import ResetPasswordView from '../views/ResetPasswordView.vue';
@@ -67,6 +68,7 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Riders', resource: 'riders' }
   },
   { path: '/sales', name: 'sales', component: SalesPage, meta: { title: 'Bike sales' } },
+  { path: '/swaps', name: 'swaps', component: SwapsPage, meta: { title: 'Swaps' } },
   // Old demo pages were replaced by the registry screens above.
   { path: '/stations', redirect: '/sites' },
   { path: '/fleet', redirect: '/bikes' },

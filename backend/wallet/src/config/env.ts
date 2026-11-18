@@ -152,6 +152,9 @@ const schema = z.object({
     MONEY_WRITES_ENABLED: envBoolean.default(false),
     DEV_CONSOLE_ENABLED: envBoolean.default(false),
     DEV_CONSOLE_BREAK_GLASS_TOKEN: z.string().min(32).optional(),
+    // Beverly PUE swaps paid online: where Paystack returns the payer, and an email to use when a rider has none.
+    PUE_PORTAL_URL: z.string().url().default('https://beverly.acoblighting.com/battery-swap/'),
+    PUE_PAYSTACK_FALLBACK_EMAIL: z.string().email().optional(),
     // Yunhe battery IoT platform (Beverly PUE). Server-side only: the browser never sees these.
     // Unset means the PUE gateway answers 503 yunhe_not_configured instead of inventing data.
     YUNHE_LOGIN_NAME: z.string().min(1).optional(),

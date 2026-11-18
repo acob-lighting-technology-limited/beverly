@@ -60,6 +60,10 @@ export const mutationRoutePolicies: readonly RoutePolicy[] = [
     // Beverly PUE registry (own rider CRM): create/update records, sell and end bike assignments. No money moves here.
     post('/api/v1/pue/registry/:resource'), patch('/api/v1/pue/registry/:resource/:id'),
     post('/api/v1/pue/assignments'), post('/api/v1/pue/assignments/:id/end'),
+    // Beverly PUE swaps. Payment, online checkout, verify and cancel (which records a refund) move money.
+    patch('/api/v1/pue/settings'), post('/api/v1/pue/swaps'), post('/api/v1/pue/swaps/:id/complete'),
+    post('/api/v1/pue/swaps/:id/payment', { money: true }), post('/api/v1/pue/swaps/:id/paystack', { money: true }),
+    post('/api/v1/pue/swaps/:id/paystack/verify', { money: true }), post('/api/v1/pue/swaps/:id/cancel', { money: true }),
     // Beverly AI — chat completions, audio transcription (no money writes)
     post('/api/v1/acobot/chat'), post('/api/v1/acobot/transcribe'),
 ];

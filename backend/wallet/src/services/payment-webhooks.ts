@@ -1,4 +1,5 @@
 import { verifyTransaction } from '../adapters/paystack.js';
+import { applyVerifiedPaystack, PUE_SWAP_REFERENCE_PREFIX } from './pue-swap-paystack.js';
 import { adminClient } from '../db/supabase.js';
 import {
     fulfillSuccessfulPaystackTransaction,
@@ -57,6 +58,8 @@ export async function processPaystackChargeSuccess(
     source: PaystackFulfillmentSource,
 ): Promise<PaystackWebhookProcessingResult> {
     const verified = await verifyTransaction(reference);
+    // Beverly PUE swap payments share this gateway and webhook but have their own records.
+    if (reference.startsWith(PUE_SWAP_REFERENCE_PREFIX)) return applyVerifiedPaystack(reference, verified);
     const { data: tx, error: txError } = await adminClient
         .from('payment_transactions')
         .select('*')

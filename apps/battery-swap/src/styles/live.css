@@ -53,3 +53,15 @@
   .live-list { max-height: none; }
   .live-sources { columns: 1; }
 }
+
+/* Swaps screen (SwapsPage.vue). Prefix: swap-. */
+.swap-link { margin-left: 8px; padding: 0; border: 0; background: none; color: var(--acob-brand-bright); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.swap-link:focus-visible { outline: 2px solid var(--acob-brand-bright); outline-offset: 2px; }
+.swap-dialog { max-width: 560px; }
+.swap-code-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px; margin-bottom: 12px; border: 2px solid var(--acob-brand-bright); border-radius: 16px; text-align: center; }
+.swap-code { font-family: var(--acob-font-mono); font-size: 40px; font-weight: 800; letter-spacing: .18em; }
+.swap-ref { margin-top: 14px; }
+.swap-ref-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.swap-ref-row .reg-input { flex: 1 1 140px; width: auto; }
+.swap-receipt { margin: 0; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
+.swap-cancel { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--acob-line); }
