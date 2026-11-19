@@ -18,6 +18,7 @@ import AppShell from '../components/AppShell.vue';
 import WalletExportMenu from '@beverly/tokens/WalletExportMenu.vue';
 import type { WalletExportColumn } from '@beverly/tokens/wallet-export';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+import FundingProofModal from '../components/FundingProofModal.vue';
 import MobileActionMenu from '../components/MobileActionMenu.vue';
 import { api, naira, shortDate, ApiError } from '../lib/api';
 import { stationDisplayLabel } from '@beverly/tokens/station-identity';
@@ -48,6 +49,9 @@ const purchaseScope = ref<'linked' | 'account'>('linked');
 let purchaseRequest = 0;
 const selectedMeter = ref('all');
 const funding = ref<any[]>([]);
+const proofOpen = ref(false);
+const proofRow = ref<any>(null);
+function openProof(row: any) { proofRow.value = row; proofOpen.value = true; }
 const tabLoading = ref(false);
 const walletQuery = ref('');
 const walletDirection = ref<'all' | 'credit' | 'debit'>('all');
@@ -516,7 +520,7 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
           </div>
         <div class="bw-t-wrap">
           <table class="bw-table">
-            <thead><tr><th>When</th><th>Reference</th><th>Channel</th><th style="text-align:right">Amount</th><th>Status</th></tr></thead>
+            <thead><tr><th>When</th><th>Reference</th><th>Channel</th><th style="text-align:right">Amount</th><th>Status</th><th>Receipt</th></tr></thead>
             <tbody>
               <tr v-for="f in filteredFunding" :key="f.id">
                 <td class="bw-mono bw-muted" style="font-size: var(--t-xs)">{{ shortDate(f.created_at) }}</td>
@@ -524,14 +528,18 @@ onMounted(() => { void loadDetail(); void loadMeters(); });
                 <td><span class="bw-badge neutral">{{ normalizedFundingChannel(f) }}</span></td>
                 <td class="bw-money" style="text-align: right">{{ naira(f.amount_minor) }}</td>
                 <td><span :class="['bw-badge', fundingBadge(f.status)]">{{ f.status }}</span></td>
+                <td><button v-if="f.proof_view_url" type="button" class="bw-btn sm" data-testid="view-funding-receipt" @click="openProof(f)">View receipt</button><span v-else-if="f.proof_file_path" class="bw-muted" style="font-size: var(--t-xs)">unavailable</span><span v-else class="bw-muted">—</span></td>
               </tr>
-              <tr v-if="!filteredFunding.length"><td colspan="5" class="bw-muted empty">No funding records match these filters.</td></tr>
+              <tr v-if="!filteredFunding.length"><td colspan="6" class="bw-muted empty">No funding records match these filters.</td></tr>
             </tbody>
           </table>
         </div>
       </div>
       </div>
     </template>
+
+    <!-- Uploaded funding receipt -->
+    <FundingProofModal v-model:open="proofOpen" :url="proofRow?.proof_view_url ?? null" :path="proofRow?.proof_file_path ?? null" :reference="proofRow?.funding_reference ?? proofRow?.gateway_reference ?? null" />
 
     <!-- Status confirm -->
     <ConfirmDialog
