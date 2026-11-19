@@ -40,7 +40,7 @@ export const mutationRoutePolicies: readonly RoutePolicy[] = [
     post('/api/v1/customer/disputes'), post('/api/v1/customer/disputes/:id/messages'), post('/api/v1/customer/support/tickets'), post('/api/v1/customer/support/tickets/:id/messages'), post('/api/v1/customer/support/chat/session'), post('/api/v1/customer/support/chat/:id/messages'), post('/api/v1/customer/support/chat/:id/end'), post('/api/v1/customer/support/chat/:id/escalate'),
     post('/api/v1/customer/receipts/:id/resend-sms'), post('/api/v1/customer/privacy/data-export'), post('/api/v1/customer/privacy/delete-account'), del('/api/v1/customer/privacy/delete-account'), post('/api/v1/customer/notifications/read-all'), patch('/api/v1/customer/notifications/:id/read'), put('/api/v1/customer/notifications/preferences'), post('/api/v1/customer/pwa-installed'), post('/api/v1/customer/usage/remote-read'),
     ...['setup/start', 'setup/verify', 'setup/reset', 'challenge/verify', 'recovery/regenerate', 'disable'].map((path) => post(`/api/v1/admin/mfa/${path}`)),
-    post('/api/v1/admin/auth/password-login'), post('/api/v1/admin/auth/reset-request'), post('/api/v1/admin/auth/reset-verify'), post('/api/v1/admin/auth/reset-confirm'),
+    post('/api/v1/admin/auth/password-login'), post('/api/v1/admin/auth/password-refresh'), post('/api/v1/admin/auth/reset-request'), post('/api/v1/admin/auth/reset-verify'), post('/api/v1/admin/auth/reset-confirm'),
     post('/api/v1/vendor/auth/email/login'), post('/api/v1/vendor/auth/reset-request'), post('/api/v1/vendor/auth/reset-verify'), post('/api/v1/vendor/auth/reset-confirm'),
     patch('/api/v1/vendor/me'), post('/api/v1/vendor/profile-picture/upload-url'), post('/api/v1/vendor/profile-picture/scan'), post('/api/v1/vendor/profile-picture/activate'), del('/api/v1/vendor/profile-picture'), post('/api/v1/vendor/kyc/documents/upload-url'), post('/api/v1/vendor/kyc/documents/:id/activate'), post('/api/v1/vendor/kyc/tier2/submit'), post('/api/v1/vendor/notifications/read-all'), patch('/api/v1/vendor/notifications/:id/read'), post('/api/v1/vendor/pwa-installed'),
     post('/api/v1/vendor/vend-credential'), ...['setup/start', 'setup/verify', 'setup/reset', 'challenge/verify', 'recovery/regenerate', 'disable'].map((path) => post(`/api/v1/vendor/mfa/${path}`)), post('/api/v1/vendor/password-change'),
@@ -64,6 +64,10 @@ export const mutationRoutePolicies: readonly RoutePolicy[] = [
     patch('/api/v1/pue/settings'), post('/api/v1/pue/swaps'), post('/api/v1/pue/swaps/:id/complete'),
     post('/api/v1/pue/swaps/:id/payment', { money: true }), post('/api/v1/pue/swaps/:id/paystack', { money: true }),
     post('/api/v1/pue/swaps/:id/paystack/verify', { money: true }), post('/api/v1/pue/swaps/:id/cancel', { money: true }),
+    // Beverly PUE appliances. Selling takes a deposit and payments are money received; the rest moves no money.
+    post('/api/v1/pue/appliances/:resource'), patch('/api/v1/pue/appliances/:resource/:id'),
+    post('/api/v1/pue/appliance-sales', { money: true }), post('/api/v1/pue/appliance-sales/:id/payment', { money: true }), post('/api/v1/pue/appliance-sales/:id/end'),
+    post('/api/v1/pue/appliance-faults'), patch('/api/v1/pue/appliance-faults/:id'),
     // Beverly AI — chat completions, audio transcription (no money writes)
     post('/api/v1/acobot/chat'), post('/api/v1/acobot/transcribe'),
 ];

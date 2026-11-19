@@ -1,0 +1,87 @@
+/* ════════════════════════════════════════════════════════════════════
+   Two materials, each with one job.
+
+   GLASS is for what floats above the page: the rail, the section tabs,
+   the account chip and menu, dialogs, tooltips and the sign-in card.
+   Translucent fill, strong backdrop blur, a bright rim on the top edge.
+
+   SOLID is for what you read and fill in: panels, boards, tables,
+   cards, inputs and buttons. An opaque surface with a hairline border
+   and a soft shadow, so figures and forms never compete with the field.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── The field behind everything: three slow lights (Beverly yellow only) ── */
+.ambient { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--acob-canvas); }
+.ambient i {
+  position: absolute; display: block; border-radius: 50%; filter: blur(70px); will-change: transform;
+}
+.ambient i:nth-child(1) { width: 52vmax; height: 52vmax; left: -14vmax; top: -18vmax; background: radial-gradient(circle, var(--acob-orb-1), transparent 68%); animation: orb-a 38s ease-in-out infinite alternate; }
+.ambient i:nth-child(2) { width: 46vmax; height: 46vmax; right: -12vmax; top: 8vh; background: radial-gradient(circle, var(--acob-orb-2), transparent 66%); animation: orb-b 46s ease-in-out infinite alternate; }
+.ambient i:nth-child(3) { width: 58vmax; height: 58vmax; left: 18vw; bottom: -30vmax; background: radial-gradient(circle, var(--acob-orb-3), transparent 64%); animation: orb-c 52s ease-in-out infinite alternate; }
+@keyframes orb-a { to { transform: translate3d(14vmax, 10vmax, 0) scale(1.12); } }
+@keyframes orb-b { to { transform: translate3d(-12vmax, 12vmax, 0) scale(0.92); } }
+@keyframes orb-c { to { transform: translate3d(-10vmax, -8vmax, 0) scale(1.1); } }
+/* Black and white, and White and green, are flat grounds: pure white in light, pure black in dark. */
+.battery-swap-app-host[data-palette="mono"] .ambient i,
+.battery-swap-app-host[data-palette="green"] .ambient i { display: none; }
+
+/* ── Glass: floating chrome ───────────────────────────────────────── */
+.glass,
+.glass-pill,
+.reg-dialog {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, var(--lg-fill-strong), var(--lg-fill) 62%);
+  border: 1px solid var(--lg-border);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim-top),
+    inset 0 -1px 0 var(--lg-rim-bottom),
+    var(--lg-shadow);
+  -webkit-backdrop-filter: var(--lg-blur);
+  backdrop-filter: var(--lg-blur);
+}
+.glass { border-radius: var(--acob-radius-lg); }
+.glass-pill { border-radius: 999px; }
+
+/* The sheen: light catching the curved face of the glass. */
+.glass::before,
+.glass-pill::before,
+.reg-dialog::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background:
+    linear-gradient(135deg, var(--lg-sheen-a) 0%, transparent 30%, transparent 70%, var(--lg-sheen-b) 100%),
+    radial-gradient(120% 60% at 50% -20%, var(--lg-sheen-top), transparent 60%);
+}
+
+/* ── Solid: what you read and fill in ─────────────────────────────── */
+.surface,
+.reg-table-wrap,
+.live-detail,
+.live-item {
+  position: relative;
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-shadow);
+}
+.surface { border-radius: var(--acob-radius-lg); }
+
+/* ── Browser surfaces: selection, caret, scrollbars, tabular numerals ─ */
+::selection { background: color-mix(in srgb, var(--acob-accent-solid) 38%, transparent); color: inherit; }
+input, textarea, select { caret-color: var(--acob-accent-solid); accent-color: var(--acob-accent-solid); }
+* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--acob-text) 28%, transparent) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--acob-text) 26%, transparent); border-radius: 99px; border: 3px solid transparent; background-clip: content-box; }
+table, .reg-count, .live-stat-num, .live-metrics dd { font-variant-numeric: tabular-nums; }
+:where(a, button, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--acob-focus); outline-offset: 2px; }
+
+/* Where backdrop blur is not supported, fall back to an opaque fill so text stays readable. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass, .glass-pill, .reg-dialog { background: var(--acob-menu-bg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient i { animation: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .glass-pill, .reg-dialog { background: var(--acob-menu-bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

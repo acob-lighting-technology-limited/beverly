@@ -1,8 +1,7 @@
 <template>
-  <main class="login-stage" :data-theme="theme">
-    <div class="login-aura" />
+  <main class="login-stage">
 
-    <div class="bw-card login-card">
+    <div class="auth-card login-card">
       <div class="login-head">
         <div class="login-logo-lockup">
           <img
@@ -11,21 +10,19 @@
             class="login-brand-img"
           />
         </div>
-        <div class="login-badge-wrap">
-          <span class="bsv-brand-tag">BEVERLY PUE</span>
-        </div>
-        <p class="bw-muted login-sub">
+        <h1 class="login-title">Beverly PUE</h1>
+        <p class="auth-muted login-sub">
           {{ step === 'challenge' ? 'Two-Factor Authentication' : 'Your Smart Power Partner.' }}
         </p>
       </div>
 
       <!-- Step 1: Staff Email + Password -->
-      <form v-if="step === 'password'" class="bw-stack" @submit.prevent="signIn">
+      <form v-if="step === 'password'" class="auth-stack" @submit.prevent="signIn">
         <div>
-          <label class="bw-label">Staff Email</label>
+          <label class="auth-label">Staff Email</label>
           <input
             v-model.trim="email"
-            class="bw-input"
+            class="auth-input"
             type="email"
             autocomplete="username"
             placeholder="staff@acoblighting.com"
@@ -35,11 +32,11 @@
         </div>
 
         <div>
-          <label class="bw-label">Password</label>
+          <label class="auth-label">Password</label>
           <div class="password-field">
             <input
               v-model="password"
-              class="bw-input"
+              class="auth-input"
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
               placeholder="Enter staff password"
@@ -65,12 +62,12 @@
           <router-link to="/forgot-password" class="login-link">Forgot password?</router-link>
         </div>
 
-        <div v-if="error" class="bw-alert danger" role="alert">
+        <div v-if="error" class="auth-alert danger" role="alert">
           {{ error }}
         </div>
 
         <button
-          class="bw-btn primary lg login-submit"
+          class="login-submit"
           type="submit"
           :disabled="loading || !email || !password"
         >
@@ -80,7 +77,7 @@
       </form>
 
       <!-- Step 2: MFA Challenge -->
-      <form v-else class="bw-stack" @submit.prevent="verifyChallenge">
+      <form v-else class="auth-stack" @submit.prevent="verifyChallenge">
         <div class="login-mfa-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="28" height="28">
             <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -94,7 +91,7 @@
 
         <input
           v-model="challengeCode"
-          class="bw-input login-code"
+          class="auth-input login-code"
           :inputmode="useRecovery ? 'text' : 'numeric'"
           autocomplete="one-time-code"
           :maxlength="useRecovery ? 14 : 6"
@@ -103,11 +100,11 @@
           @keyup.enter="verifyChallenge"
         />
 
-        <div v-if="error" class="bw-alert danger" role="alert">
+        <div v-if="error" class="auth-alert danger" role="alert">
           {{ error }}
         </div>
 
-        <button class="bw-btn primary lg login-submit" type="submit" :disabled="loading || !challengeCode">
+        <button class="login-submit" type="submit" :disabled="loading || !challengeCode">
           {{ loading ? 'Verifying…' : 'Verify & Enter Portal' }}
         </button>
 
@@ -121,7 +118,7 @@
 
       <!-- Footer Info -->
       <div class="login-foot">
-        <p class="bw-muted">
+        <p class="auth-muted">
           Secured access for authorized Beverly Swap attendants & fleet operators.
         </p>
       </div>
@@ -132,6 +129,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { theme as sharedTheme } from '../lib/theme.js';
+import { startSessionKeeper } from '../lib/session.js';
 import { PUE_PORTAL_HEADERS, useBatterySwapAuthStore } from '../stores/auth';
 
 const REMEMBERED_EMAIL_KEY = 'beverly.battery_swap.remembered_email';
@@ -143,7 +142,8 @@ const route = useRoute();
 const router = useRouter();
 const auth = useBatterySwapAuthStore();
 
-const theme = ref<'dark' | 'light'>('dark');
+// The shared theme (light by default). The app shell loads the saved choice.
+const theme = sharedTheme;
 const step = ref<'password' | 'challenge'>('password');
 const email = ref('');
 const password = ref('');
@@ -222,7 +222,8 @@ async function signIn() {
       role: data.user?.role || 'operations-officer',
       station_id: data.user?.station_id || null,
       portal_access: Array.isArray(data.user?.portal_access) ? data.user.portal_access : []
-    });
+    }, { refreshToken: data.refresh_token ?? null, expiresAt: typeof data.expires_at === 'number' ? data.expires_at : null });
+    startSessionKeeper();
 
     if (rememberEmail.value) {
       localStorage.setItem(REMEMBERED_EMAIL_KEY, normalizedEmail);
@@ -285,10 +286,6 @@ function backToPassword() {
 
 onMounted(() => {
   try {
-    const savedTheme = localStorage.getItem('beverly.batterySwap.theme');
-    if (savedTheme === 'light' || savedTheme === 'dark') {
-      theme.value = savedTheme;
-    }
     const rememberedEmail = localStorage.getItem(REMEMBERED_EMAIL_KEY);
     if (rememberedEmail) {
       email.value = rememberedEmail;
@@ -297,6 +294,10 @@ onMounted(() => {
   } catch {}
 
   auth.hydrate();
+  if (route.query.expired === '1' || auth.sessionExpired) {
+    error.value = 'Your session expired. Sign in again.';
+    auth.sessionExpired = false;
+  }
   if (auth.isAuthenticated) {
     router.replace(redirectTarget.value);
   }
@@ -305,304 +306,82 @@ onMounted(() => {
 
 <style scoped>
 .login-stage {
-  position: relative;
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
-  background: var(--acob-bg, #03090a);
-  overflow: hidden;
-  font-family: var(--acob-font-sans, inherit);
-}
-
-.login-aura {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(55% 45% at 50% 0%, rgba(34, 197, 94, 0.18) 0%, transparent 70%),
-    radial-gradient(40% 40% at 80% 100%, rgba(184, 134, 46, 0.12) 0%, transparent 65%);
+  position: relative; min-height: 100dvh; display: grid; place-items: center; padding: 1.5rem;
+  font-family: var(--acob-font-sans, inherit); color: var(--acob-text);
 }
 
 .login-card {
-  position: relative;
-  width: 100%;
-  max-width: 440px;
-  background: var(--acob-panel, #0c1912);
-  border: 1px solid var(--acob-line, rgba(255, 255, 255, 0.12));
-  border-radius: 16px;
-  padding: 2.25rem 2rem;
-  box-shadow: var(--acob-panel-shadow, 0 24px 64px rgba(0, 0, 0, 0.8));
-  backdrop-filter: blur(20px);
-  z-index: 2;
+  position: relative; width: 100%; max-width: 440px; padding: 2.5rem 2.25rem 2rem; border-radius: 34px;
+  background: linear-gradient(135deg, var(--lg-fill-strong), var(--lg-fill) 70%);
+  border: 1px solid var(--lg-border);
+  box-shadow: inset 0 1px 0 var(--lg-rim-top), inset 0 -1px 0 var(--lg-rim-bottom), var(--lg-shadow);
+  -webkit-backdrop-filter: var(--lg-blur); backdrop-filter: var(--lg-blur);
+  animation: login-rise .6s cubic-bezier(.16, 1, .3, 1);
 }
+@keyframes login-rise { from { opacity: 0; transform: translateY(18px) scale(.97); } }
 
-.login-head {
-  text-align: center;
-  margin-bottom: 1.75rem;
+.login-head { text-align: center; margin-bottom: 1.75rem; }
+.login-logo-lockup { display: flex; justify-content: center; align-items: center; margin-bottom: 1rem; }
+.login-brand-img { height: 34px; max-width: 190px; object-fit: contain; }
+.login-title { margin: 0; font-size: 30px; font-weight: 750; letter-spacing: -.035em; }
+.login-sub { margin: .4rem 0 0; font-size: 15px; color: var(--acob-muted); }
+
+.auth-stack { display: flex; flex-direction: column; gap: 1.1rem; }
+.auth-label { display: block; font-size: 13px; font-weight: 700; color: var(--acob-text); margin-bottom: .45rem; }
+
+.auth-input {
+  width: 100%; height: 50px; padding: 0 1.1rem; box-sizing: border-box; font: inherit; font-size: 15px; color: var(--acob-text);
+  background: var(--lg-fill-inset); border: 1px solid var(--lg-border); border-radius: 999px;
+  box-shadow: inset 0 2px 5px rgba(var(--gel-shade-rgb), .14), inset 0 -1px 0 var(--lg-rim-top);
+  transition: box-shadow .2s ease;
 }
+.auth-input::placeholder { color: var(--acob-subtle); }
+.auth-input:focus { outline: none; box-shadow: inset 0 2px 5px rgba(var(--gel-shade-rgb), .14), 0 0 0 3px color-mix(in srgb, var(--acob-focus) 40%, transparent); }
 
-.login-logo-lockup {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 0.85rem;
-}
+.password-field { position: relative; }
+.password-field .auth-input { padding-right: 78px; }
+.password-toggle { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: var(--acob-accent); font-weight: 700; font-size: 13px; cursor: pointer; padding: 6px 8px; }
 
-.login-brand-img {
-  height: 32px;
-  max-width: 180px;
-  object-fit: contain;
-}
+.login-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; font-size: 13px; }
+.login-check { display: inline-flex; align-items: center; gap: 8px; color: var(--acob-muted); cursor: pointer; }
+.login-link { color: var(--acob-accent); text-decoration: none; font-weight: 650; font-size: 13px; background: none; border: none; cursor: pointer; padding: 0; }
+.login-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-.login-badge-wrap {
-  margin-bottom: 0.75rem;
-}
-
-.bsv-brand-tag {
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  color: var(--acob-brand-mint, #7dfc9a);
-  padding: 2px 8px;
-  background: rgba(125, 252, 154, 0.12);
-  border: 1px solid rgba(125, 252, 154, 0.25);
-  border-radius: 999px;
-  text-transform: uppercase;
-}
-
-.login-sub {
-  margin: 0.25rem 0 0;
-  font-size: 0.9rem;
-  color: var(--acob-muted, rgba(242, 247, 243, 0.70));
-}
-
-.bw-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 1.15rem;
-}
-
-.bw-label {
-  display: block;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--acob-text, #ffffff);
-  margin-bottom: 0.4rem;
-}
-
-.bw-input {
-  width: 100%;
-  height: 44px;
-  padding: 0 0.85rem;
-  background: var(--acob-surface, rgba(10, 22, 15, 0.94));
-  border: 1px solid var(--acob-line, rgba(255, 255, 255, 0.15));
-  border-radius: 8px;
-  color: var(--acob-text, #ffffff);
-  font-size: 0.9rem;
-  font-family: inherit;
-  box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.bw-input:focus {
-  outline: none;
-  border-color: var(--acob-brand-bright, #22c55e);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
-}
-
-.password-field {
-  position: relative;
-}
-
-.password-field .bw-input {
-  padding-right: 74px;
-}
-
-.password-toggle {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: none;
-  background: transparent;
-  color: var(--acob-brand-mint, #7dfc9a);
-  font-weight: 700;
-  font-size: 0.8rem;
-  cursor: pointer;
-  padding: 4px 6px;
-}
-
-.login-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  font-size: 0.825rem;
-}
-
-.login-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--acob-muted, rgba(242, 247, 243, 0.70));
-  cursor: pointer;
-}
-
-.login-link {
-  color: var(--acob-brand-mint, #7dfc9a);
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.825rem;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-}
-
-.login-link:hover {
-  text-decoration: underline;
-}
-
-.bw-alert.danger {
-  padding: 0.65rem 0.85rem;
-  background: rgba(239, 68, 68, 0.14);
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  color: #fca5a5;
-  font-size: 0.825rem;
-  border-radius: 8px;
+.auth-alert.danger {
+  padding: .75rem 1rem; font-size: 13px; border-radius: 18px; color: var(--acob-text);
+  background: color-mix(in srgb, var(--danger) 14%, var(--lg-fill)); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 .login-submit {
-  width: 100%;
-  height: 46px;
-  background: var(--acob-brand, #008000);
-  border: 1px solid #16a34a;
-  border-radius: 8px;
-  color: #ffffff;
-  font-weight: 800;
-  font-size: 0.95rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 4px 16px rgba(0, 128, 0, 0.4);
-  transition: all 0.15s ease;
+  width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  border: 1px solid var(--lg-border); border-radius: 999px; font: inherit; font-weight: 750; font-size: 15px; color: var(--on-gel);
+  background: var(--gel-mid);
+  box-shadow: none;
+  transition: transform .3s cubic-bezier(.16, 1, .3, 1), filter .2s ease;
 }
+.login-submit:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.06); }
+.login-submit:active:not(:disabled) { transform: scale(.98); }
+.login-submit:disabled { opacity: .6; cursor: not-allowed; }
 
-.login-submit:hover:not(:disabled) {
-  filter: brightness(1.12);
-  transform: translateY(-1px);
-}
+.login-mfa-icon { width: 60px; height: 60px; margin: 0 auto; display: grid; place-items: center; border-radius: 18px; color: var(--acob-accent); background: var(--lg-fill-inset); border: 1px solid var(--lg-border); box-shadow: inset 0 1px 0 var(--lg-rim-top); }
+.login-mfa-copy { text-align: center; color: var(--acob-muted); font-size: 14px; margin: 0; line-height: 1.5; }
+.login-code { text-align: center; font-size: 26px; letter-spacing: .25em; font-family: var(--acob-font-mono, monospace); font-weight: 700; }
+.login-mfa-actions { display: flex; justify-content: space-between; gap: .75rem; }
 
-.login-submit:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
+.login-foot { text-align: center; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--acob-line); font-size: 13px; }
+.login-foot p { margin: 0 0 .5rem; color: var(--acob-muted); }
+.login-ecosystem-links { display: flex; justify-content: center; align-items: center; gap: 8px; }
+.login-foot-link { color: var(--acob-accent); text-decoration: none; font-weight: 650; }
+.login-foot-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.foot-sep { color: var(--acob-subtle); }
 
-.login-mfa-icon {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto;
-  display: grid;
-  place-items: center;
-  border-radius: 16px;
-  background: rgba(34, 197, 94, 0.15);
-  color: var(--acob-brand-mint, #7dfc9a);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-}
+@media (prefers-reduced-motion: reduce) { .login-card { animation: none; } .login-submit { transition: none; } }
 
-.login-mfa-copy {
-  text-align: center;
-  color: var(--acob-muted, rgba(242, 247, 243, 0.70));
-  font-size: 0.85rem;
-  margin: 0;
-  line-height: 1.45;
-}
-
-.login-code {
-  text-align: center;
-  font-size: 1.6rem;
-  letter-spacing: 0.25em;
-  font-family: var(--acob-font-mono, monospace);
-  font-weight: 700;
-}
-
-.login-mfa-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.login-foot {
-  text-align: center;
-  margin-top: 1.75rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--acob-line, rgba(255, 255, 255, 0.1));
-  font-size: 0.75rem;
-}
-
-.login-foot p {
-  margin: 0 0 0.5rem;
-  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
-}
-
-.login-ecosystem-links {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-}
-
-.login-foot-link {
-  color: var(--acob-brand-mint, #7dfc9a);
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.login-foot-link:hover {
-  text-decoration: underline;
-}
-
-.foot-sep {
-  color: var(--acob-muted, rgba(255, 255, 255, 0.3));
-}
-
-/* Light Mode Overrides */
-[data-theme="light"] .login-stage {
-  background: var(--acob-bg, #f4f8f5);
-}
-
-[data-theme="light"] .login-card {
-  background: #ffffff;
-  border-color: #c9d6cd;
-  box-shadow: 0 20px 48px rgba(11, 26, 16, 0.12);
-}
-
-[data-theme="light"] .login-title {
-  color: #0b1a10;
-}
-
-[data-theme="light"] .bw-label {
-  color: #0b1a10;
-}
-
-[data-theme="light"] .bw-input {
-  background: #ffffff;
-  border-color: #c9d6cd;
-  color: #0b1a10;
-}
-
-[data-theme="light"] .bsv-brand-tag {
-  background: rgba(21, 128, 61, 0.08);
-  border-color: rgba(21, 128, 61, 0.25);
-  color: #15803d;
-}
-
-[data-theme="light"] .password-toggle,
-[data-theme="light"] .login-link,
-[data-theme="light"] .login-foot-link {
-  color: #15803d;
-}
+.login-spinner { width: 16px; height: 16px; border: 2px solid rgba(31, 31, 34, .25); border-top-color: var(--on-gel); border-radius: 50%; animation: login-spin .7s linear infinite; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+.login-foot-action { display: flex; justify-content: center; margin-top: .25rem; }
+.field-error { margin: .4rem 0 0 .4rem; color: var(--danger); font-size: 13px; }
+.reset-success-icon { width: 68px; height: 68px; margin: 0 auto 1rem; display: grid; place-items: center; border-radius: 50%; color: var(--on-gel); background: var(--gel-mid); box-shadow: none; }
+.reset-success-title { margin: 0 0 .5rem; text-align: center; font-size: 26px; font-weight: 750; letter-spacing: -.03em; }
+.reset-success-copy { margin: 0 0 1.25rem; text-align: center; color: var(--acob-muted); line-height: 1.5; }
 </style>

@@ -80,6 +80,68 @@ const routes: FastifyPluginAsync = async (fastify) => {
         };
     });
 
+    /*
+     * Keeps a staff session alive. The browser sends the refresh token it got at sign-in; this exchanges it
+     * for a new access token and re-checks that the person still has staff access to the portal, so a
+     * revoked account or removed portal stops working at the next refresh instead of lasting for days.
+     */
+    fastify.post('/password-refresh', { config: { rateLimit: { max: 30, timeWindow: '15 minutes' } } }, async (req, reply) => {
+        const { refresh_token: refreshToken, portal } = z.object({
+            refresh_token: z.string().min(10).max(2000),
+            portal: z.enum(['staff_wallet', 'pue']).default('staff_wallet'),
+        }).parse(req.body);
+        let response: Response;
+        try {
+            response = await fetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', apikey: env.SUPABASE_ANON_KEY },
+                body: JSON.stringify({ refresh_token: refreshToken }),
+            });
+        } catch {
+            // Say "try again", not "signed out": the person's session is still good.
+            return reply.code(503).send({ error: 'auth_upstream_unreachable', message: 'Authentication service is temporarily unavailable.' });
+        }
+        const grant = await response.json().catch(() => ({})) as any;
+        if (!response.ok || !grant.access_token || !grant.user?.id) {
+            if (response.status >= 500) return reply.code(503).send({ error: 'auth_upstream_unreachable', message: 'Authentication service is temporarily unavailable.' });
+            return reply.code(401).send({ error: 'refresh_rejected', message: 'Your session has ended. Sign in again.' });
+        }
+        const userId = String(grant.user.id);
+        let staffLookup = await adminClient.from('users')
+            .select('auth_user_id, user_id, email, user_name, role_key, portal_access')
+            .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`).maybeSingle();
+        if (staffLookup.error && isMissingPortalAccessColumn(staffLookup.error)) {
+            staffLookup = await adminClient.from('users')
+                .select('auth_user_id, user_id, email, user_name, role_key')
+                .or(`auth_user_id.eq.${userId},user_id.eq.${userId}`).maybeSingle() as typeof staffLookup;
+        }
+        const { data: staff, error: staffError } = staffLookup;
+        if (staffError) return reply.code(503).send({ error: 'staff_profile_unavailable', message: 'Staff account verification is temporarily unavailable.' });
+        const role = String((staff as any)?.role_key ?? '');
+        if (!staff || (!STAFF_ROLES.has(role) && !role.startsWith('custom-'))) {
+            await adminClient.auth.admin.signOut(userId, 'global').catch(() => undefined);
+            return reply.code(403).send({ error: 'staff_access_denied', message: 'This account does not have staff access.' });
+        }
+        const portalAccess = effectivePortalAccess(role, (staff as any).portal_access);
+        if (!portalAccess.includes(portal)) {
+            await adminClient.auth.admin.signOut(userId, 'global').catch(() => undefined);
+            return reply.code(403).send({ error: 'portal_access_denied', message: `This account is not allowed to use ${portalLabel(portal)}.` });
+        }
+        return {
+            access_token: grant.access_token,
+            refresh_token: grant.refresh_token ?? refreshToken,
+            expires_at: grant.expires_at ?? null,
+            expires_in: grant.expires_in ?? null,
+            user: {
+                id: userId,
+                email: (staff as any).email ?? grant.user.email ?? null,
+                full_name: (staff as any).user_name ?? grant.user.user_metadata?.full_name ?? null,
+                role,
+                portal_access: portalAccess,
+            },
+        };
+    });
+
     fastify.post('/reset-request', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async (req, reply) => {
         const { email } = z.object({ email: z.string().trim().email().max(320) }).parse(req.body);
         try {

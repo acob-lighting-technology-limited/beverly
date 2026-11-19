@@ -6,6 +6,8 @@
  * (what the API accepts); `row` names the matching snake_case key for editing.
  */
 
+import { minorFromNaira, nairaFromMinor } from "./pue-api.js";
+
 const STATUS3 = [["planned", "Planned"], ["active", "Active"], ["inactive", "Inactive"]];
 
 export const RESOURCES = {
@@ -107,6 +109,43 @@ export const RESOURCES = {
   }
 };
 
+RESOURCES["appliance-types"] = {
+  title: "Appliance catalogue",
+  singular: "appliance type",
+  blurb: "The kinds of appliance Beverly sells, such as a fridge or a grinder, with a standard price.",
+  columns: [
+    { key: "name", label: "Appliance" },
+    { key: "category", label: "Category", map: { fridge: "Fridge", freezer: "Freezer", grinder: "Grinder", other: "Other" } },
+    { key: "default_price_minor", label: "Standard price", money: true },
+    { key: "active", label: "Listed", map: { true: "Yes", false: "No" } }
+  ],
+  fields: [
+    { key: "name", row: "name", label: "Name", type: "text", required: true, help: "For example Chest freezer 200L." },
+    { key: "category", row: "category", label: "Category", type: "select", options: [["fridge", "Fridge"], ["freezer", "Freezer"], ["grinder", "Grinder"], ["other", "Other"]], default: "other" },
+    { key: "defaultPriceMinor", row: "default_price_minor", label: "Standard price (₦)", type: "naira", help: "For example 900,000. Leave empty if the price varies." },
+    { key: "notes", row: "notes", label: "Notes", type: "text" }
+  ]
+};
+
+RESOURCES["appliance-units"] = {
+  title: "Appliance units",
+  singular: "appliance unit",
+  blurb: "Every physical unit by serial number. A unit becomes Sold when it is sold to a customer.",
+  columns: [
+    { key: "serial_number", label: "Serial number" },
+    { key: "type_id", label: "Appliance", lookup: "appliance-types" },
+    { key: "status", label: "Status", badge: true },
+    { key: "site_id", label: "Stocked at", lookup: "sites" }
+  ],
+  fields: [
+    { key: "typeId", row: "type_id", label: "Appliance", type: "select", lookup: "appliance-types", required: true },
+    { key: "serialNumber", row: "serial_number", label: "Serial number", type: "text", required: true },
+    { key: "status", row: "status", label: "Status", type: "select", options: [["in_stock", "In stock"], ["faulty", "Faulty"], ["retired", "Retired"]], default: "in_stock", help: "Sold is set by recording a sale." },
+    { key: "siteId", row: "site_id", label: "Stocked at", type: "select", lookup: "sites" },
+    { key: "notes", row: "notes", label: "Notes", type: "text" }
+  ]
+};
+
 export const RESOURCE_KEYS = Object.keys(RESOURCES);
 
 /** Label for a lookup column or select: the name of the referenced record. */
@@ -118,6 +157,8 @@ export function recordLabel(resource, record) {
     case "bikes": return record.serial_number;
     case "batteries": return record.battery_number;
     case "riders": return `${record.full_name} (${record.phone})`;
+    case "appliance-types": return record.name;
+    case "appliance-units": return `${record.serial_number}${record.pue_appliance_types?.name ? ` · ${record.pue_appliance_types.name}` : ""}`;
     default: return record.id;
   }
 }
@@ -127,7 +168,7 @@ export function initialForm(config, row) {
   const form = {};
   for (const field of config.fields) {
     const current = row ? row[field.row] : undefined;
-    form[field.key] = current ?? (field.default ?? "");
+    form[field.key] = field.type === "naira" && current !== null && current !== undefined ? String(Number(current) / 100) : current ?? (field.default ?? "");
   }
   return form;
 }
@@ -142,7 +183,7 @@ export function formToBody(config, form, { editing }) {
       if (!field.required && editing) body[field.key] = null;
       continue;
     }
-    body[field.key] = field.type === "number" ? Number(raw) : typeof raw === "string" ? raw.trim() : raw;
+    body[field.key] = field.type === "number" ? Number(raw) : field.type === "naira" ? minorFromNaira(raw) : typeof raw === "string" ? raw.trim() : raw;
   }
   return body;
 }
@@ -154,6 +195,7 @@ export function validateForm(config, form) {
     const raw = form[field.key];
     const empty = raw === "" || raw === null || raw === undefined;
     if (field.required && (empty || (typeof raw === "string" && !raw.trim()))) problems.push(`${field.label} is required.`);
+    if (!empty && field.type === "naira" && minorFromNaira(raw) === null) problems.push(`${field.label} must be an amount in naira.`);
     if (!empty && field.type === "number" && (!Number.isInteger(Number(raw)) || Number(raw) < 0)) problems.push(`${field.label} must be a whole number.`);
   }
   return problems;

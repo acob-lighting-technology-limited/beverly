@@ -19,6 +19,8 @@ import telemetryProbe from './oem-telemetry-probe.js';
 import pueYunheRoutes from './pue-yunhe.js';
 import pueRegistryRoutes from './pue-registry.js';
 import pueSwapRoutes from './pue-swaps.js';
+import pueApplianceRoutes from './pue-appliances.js';
+import pueAnalyticsRoutes from './pue-analytics.js';
 
 const routes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(healthRoutes);
@@ -40,6 +42,8 @@ const routes: FastifyPluginAsync = async (fastify) => {
     await fastify.register(pueYunheRoutes, { prefix: '/api/v1/pue' });
     await fastify.register(pueRegistryRoutes, { prefix: '/api/v1/pue' });
     await fastify.register(pueSwapRoutes, { prefix: '/api/v1/pue' });
+    await fastify.register(pueApplianceRoutes, { prefix: '/api/v1/pue' });
+    await fastify.register(pueAnalyticsRoutes, { prefix: '/api/v1/pue' });
 };
 
 export default routes;

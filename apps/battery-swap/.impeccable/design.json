@@ -1,0 +1,292 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-19T14:13:02.117Z",
+  "title": "Design System: Beverly PUE",
+  "extensions": {
+    "colorMeta": {
+      "beverly-yellow": {
+        "role": "primary",
+        "displayName": "Beverly Yellow",
+        "canonical": "#fcd95c",
+        "tonalRamp": [
+          "#4a3a00",
+          "#7a5f00",
+          "#a98300",
+          "#d9ac2a",
+          "#fcd95c",
+          "#ffe88a",
+          "#fff1b8",
+          "#fff9e0"
+        ]
+      },
+      "field-cream": {
+        "role": "neutral",
+        "displayName": "Cream Field",
+        "canonical": "#fff3c4",
+        "tonalRamp": [
+          "#5a4a14",
+          "#8a7430",
+          "#b89d4f",
+          "#dcc374",
+          "#f1dc96",
+          "#fff3c4",
+          "#fff8dc",
+          "#fffcf0"
+        ]
+      },
+      "field-pearl": {
+        "role": "neutral",
+        "displayName": "Pearl",
+        "canonical": "#f4f4f0",
+        "tonalRamp": [
+          "#2b2b2d",
+          "#4a4a4d",
+          "#6e6e72",
+          "#96969a",
+          "#bfbfc2",
+          "#dcdcde",
+          "#eeeeee",
+          "#f4f4f0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Warm Ink",
+        "canonical": "#1f1f22",
+        "tonalRamp": [
+          "#0f0f11",
+          "#1f1f22",
+          "#35353a",
+          "#4e4e54",
+          "#6b6b72",
+          "#8f8f96",
+          "#b9b9be",
+          "#e4e4e6"
+        ]
+      },
+      "amber-text": {
+        "role": "secondary",
+        "displayName": "Amber Text",
+        "canonical": "#6b5000",
+        "tonalRamp": [
+          "#2a2000",
+          "#4a3800",
+          "#6b5000",
+          "#8a6a00",
+          "#b08a14",
+          "#d4ad3a",
+          "#ecd076",
+          "#f8e9b4"
+        ]
+      },
+      "ok-green": {
+        "role": "tertiary",
+        "displayName": "OK Green",
+        "canonical": "#2fbf71",
+        "tonalRamp": [
+          "#0d3a22",
+          "#14603a",
+          "#1f8a52",
+          "#2fbf71",
+          "#5fd596",
+          "#8fe5b6",
+          "#c0f1d6",
+          "#e6faef"
+        ]
+      },
+      "wallet-green": {
+        "role": "secondary",
+        "displayName": "Wallet Green",
+        "canonical": "#138a2f",
+        "tonalRamp": [
+          "#052b0f",
+          "#0a4a1a",
+          "#0d6e22",
+          "#138a2f",
+          "#35b553",
+          "#6fd488",
+          "#a8e8b8",
+          "#dff2e4"
+        ]
+      },
+      "pearl-white": {
+        "role": "neutral",
+        "displayName": "Pearl White",
+        "canonical": "#fafafa",
+        "tonalRamp": [
+          "#1f1f22",
+          "#4a4a4d",
+          "#76767a",
+          "#a1a1a5",
+          "#c8c8cb",
+          "#e2e2e4",
+          "#f1f1f2",
+          "#fafafa"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles and the hub title; tight tracking, heavy weight."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Tables, forms and notes at 14px."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table headers only, 12px uppercase."
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel",
+        "value": "0 28px 60px -26px rgba(110,78,0,.34), 0 3px 10px rgba(110,78,0,.07)",
+        "purpose": "Every glass surface."
+      },
+      {
+        "name": "rim",
+        "value": "inset 0 1px 0 rgba(255,255,255,.95), inset 1px 0 0 rgba(255,255,255,.35), inset -1px 0 0 rgba(255,255,255,.35), inset 0 -1px 0 rgba(110,78,0,.10)",
+        "purpose": "The bright edge that makes glass read as glass."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "Every transition: menus, dialogs, tab lens, hover lifts."
+      },
+      {
+        "name": "field-drift",
+        "value": "38s to 52s ease-in-out infinite alternate",
+        "purpose": "The three charge-lights behind the glass."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "rail",
+        "value": "640px"
+      },
+      {
+        "name": "wide",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action on a screen: flat yellow pill.",
+      "html": "<button class=\"ds-btn-primary\">Add rider</button>",
+      "css": ".ds-btn-primary { min-height: 44px; padding: 10px 20px; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; background: #fcd95c; color: #1f1f22; font: 650 14px system-ui;  text-shadow: 0 1px 1px rgba(110,78,0,.35); cursor: pointer; transition: transform .25s cubic-bezier(.16,1,.3,1); } .ds-btn-primary:hover { transform: translateY(-1px); } .ds-btn-primary:active { transform: scale(.98); } .ds-btn-primary:focus-visible { outline: 2px solid #1f1f22; outline-offset: 2px; }"
+    },
+    {
+      "name": "Glass Button",
+      "kind": "button",
+      "refersTo": "button-glass",
+      "description": "Secondary actions: a flat outlined pill.",
+      "html": "<button class=\"ds-btn-glass\">Try again</button>",
+      "css": ".ds-btn-glass { min-height: 44px; padding: 10px 20px; border: 1px solid rgba(255,255,255,.78); border-radius: 999px; background: #fffdf6; color: #1f1f22; font: 650 14px system-ui; cursor: pointer; } .ds-btn-glass:hover { background: rgba(255,255,255,.6); } .ds-btn-glass:focus-visible { outline: 2px solid #1f1f22; outline-offset: 2px; }"
+    },
+    {
+      "name": "Glass Input",
+      "kind": "input",
+      "refersTo": "input-glass",
+      "description": "An inset well cut into the glass.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search riders\" />",
+      "css": ".ds-input { width: 240px; min-height: 46px; padding: 12px 18px; border: 1px solid rgba(255,255,255,.78); border-radius: 999px; background: rgba(255,255,255,.40); color: #1f1f22; font: 14px system-ui; box-shadow: inset 0 2px 5px rgba(110,78,0,.14), inset 0 -1px 0 rgba(255,255,255,.95); } .ds-input::placeholder { color: rgba(31,31,34,.66); } .ds-input:focus-visible { outline: none; box-shadow: inset 0 2px 5px rgba(110,78,0,.14), 0 0 0 3px rgba(31,31,34,.35); }"
+    },
+    {
+      "name": "Glass Panel",
+      "kind": "card",
+      "refersTo": "panel-glass",
+      "description": "The surface for tables, detail views and boards.",
+      "html": "<div class=\"ds-panel\"><strong>Still owed</strong><p>Across 3 active sales</p></div>",
+      "css": ".ds-panel { padding: 28px; border-radius: 26px; border: 1px solid rgba(255,255,255,.78); background: linear-gradient(135deg, rgba(255,255,255,.52), rgba(255,255,255,.30) 62%); box-shadow: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(110,78,0,.10), 0 28px 60px -26px rgba(110,78,0,.34); backdrop-filter: blur(30px) saturate(1.8); color: #1f1f22; font: 14px system-ui; } .ds-panel p { margin: 6px 0 0; opacity: .74; }"
+    },
+    {
+      "name": "Rail Bead",
+      "kind": "nav",
+      "refersTo": "rail-bead-active",
+      "description": "A section on the left rail; the active one glows green.",
+      "html": "<a class=\"ds-bead ds-bead-on\" aria-label=\"Registry\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M2 7h20v14H2z\"/><path d=\"M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16\"/></svg></a>",
+      "css": ".ds-bead { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; color: rgba(31,31,34,.74); } .ds-bead:hover { background: rgba(255,255,255,.52); transform: scale(1.1); } .ds-bead-on { color: #1f1f22; background: #fcd95c;  }"
+    },
+    {
+      "name": "Section Tabs",
+      "kind": "nav",
+      "refersTo": "panel-glass",
+      "description": "A glass capsule with a green lens under the active tab.",
+      "html": "<div class=\"ds-tabs\"><span class=\"ds-lens\"></span><a>Sites</a><a class=\"on\">Riders</a><a>Bikes</a></div>",
+      "css": ".ds-tabs { position: relative; display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; border: 1px solid rgba(255,255,255,.78); background: linear-gradient(135deg, rgba(255,255,255,.52), rgba(255,255,255,.30)); box-shadow: inset 0 1px 0 rgba(255,255,255,.95); font: 600 13px system-ui; } .ds-tabs a { position: relative; z-index: 1; padding: 9px 16px; color: #1f1f22; } .ds-tabs a.on { color: #1f1f22; } .ds-lens { position: absolute; top: 4px; bottom: 4px; left: 70px; width: 74px; border-radius: 99px; background: #fcd95c;  }"
+    },
+    {
+      "name": "Status Capsule",
+      "kind": "chip",
+      "refersTo": "panel-glass",
+      "description": "A glass pill with a lit dot for state.",
+      "html": "<span class=\"ds-status\">Active</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.78); background: rgba(255,255,255,.40); box-shadow: inset 0 1px 0 rgba(255,255,255,.95); font: 700 12px system-ui; color: #2e6b1f; } .ds-status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #2fbf71; box-shadow: 0 0 0 3px rgba(47,191,113,.3), 0 0 10px #2fbf71; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Charged Pane",
+    "overview": "Everything is one material: a pane of glass lit from behind by a warm field. Panels, the rail, the section tabs, menus and dialogs are all the same glass, so the interface reads as a single object rather than a stack of cards. The field behind it is alive: three soft lights drift slowly, the way a cell takes charge. Light also lives on the glass itself: a bright rim on the top edge, a sheen across the face.\n\nThe palette is the Beverly Call one: pearl and cream grounds, a single yellow for every action, and dark ink for text.",
+    "keyCharacteristics": [
+      "One accent, Beverly yellow, drawn as a flat fill; everything else is cream, pearl, glass and ink.",
+      "Light is frosted white glass over cream; dark is smoked glass over near-black.",
+      "Pills for every control; large radii for every surface.",
+      "Dark ink on yellow, never white.",
+      "Unknown data shows a dash, never a made-up number."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "Yellow is the only accent. Green and red appear only as state dots and messages.",
+        "section": "colors"
+      },
+      {
+        "name": "The Dark Ink On Yellow Rule",
+        "body": "Text on yellow is #1f1f22. White on yellow fails contrast.",
+        "section": "colors"
+      },
+      {
+        "name": "The Unknown Is A Dash Rule",
+        "body": "A reading the platform did not send is shown as a dash, never as zero.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Every number in a table or readout uses tabular figures so columns stay aligned.",
+        "section": "typography"
+      },
+      {
+        "name": "The Rim Rule",
+        "body": "Every glass edge carries a bright 1px top highlight. Without it the surface is just a blurred box.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Palette Rule",
+        "body": "A palette changes the accent family, the field and the ink tint, and nothing else. Layout, shape, type and glass are identical in all three.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do put every surface on the one glass material, with the rim and the sheen.",
+      "Do keep text on at least 4.5:1 contrast over the fill, and raise the fill where a surface floats over busy content.",
+      "Do put dark ink on yellow.",
+      "Do show a dash for unknown data.",
+      "Do keep motion to the tab lens and the field's slow drift, both off under reduced motion."
+    ],
+    "donts": [
+      "Don't add a second accent colour.",
+      "Don't nest glass inside glass; use a line or an inset well instead.",
+      "Don't use overshoot or bounce easing; use exponential ease-out.",
+      "Don't put a label or kicker above a heading.",
+      "Don't use hard corners, hard offset shadows, or gradient text."
+    ]
+  }
+}
