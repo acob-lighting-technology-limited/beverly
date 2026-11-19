@@ -1,8 +1,7 @@
 <template>
-  <main class="login-stage" :data-theme="theme">
-    <div class="login-aura" />
+  <main class="login-stage">
 
-    <div class="bw-card login-card">
+    <div class="auth-card login-card">
       <div class="login-head">
         <div class="login-logo-lockup">
           <img
@@ -11,30 +10,28 @@
             class="login-brand-img"
           />
         </div>
-        <div class="login-badge-wrap">
-          <span class="bsv-brand-tag">BEVERLY PUE</span>
-        </div>
-        <p class="bw-muted login-sub">
+        <h1 class="login-title">Beverly PUE</h1>
+        <p class="auth-muted login-sub">
           {{ success ? 'Recovery Complete' : 'Set New Password' }}
         </p>
       </div>
 
       <!-- Success State -->
-      <div v-if="success" class="bw-stack">
+      <div v-if="success" class="auth-stack">
         <div class="reset-success-icon">✓</div>
         <h3 class="reset-success-title">Password Updated</h3>
         <p class="reset-success-copy">Your staff account credentials have been secured and updated successfully.</p>
-        <router-link to="/login" class="bw-btn primary lg login-submit">Sign In to Swap Portal</router-link>
+        <router-link to="/login" class="login-submit">Sign In to Swap Portal</router-link>
       </div>
 
       <!-- Password Input Form -->
-      <form v-else class="bw-stack" @submit.prevent="submitReset">
+      <form v-else class="auth-stack" @submit.prevent="submitReset">
         <div>
-          <label class="bw-label" for="new-password">New Password</label>
+          <label class="auth-label" for="new-password">New Password</label>
           <input
             id="new-password"
             v-model="password"
-            class="bw-input"
+            class="auth-input"
             type="password"
             autocomplete="new-password"
             placeholder="At least 12 characters"
@@ -47,11 +44,11 @@
         </div>
 
         <div>
-          <label class="bw-label" for="confirm-password">Confirm Password</label>
+          <label class="auth-label" for="confirm-password">Confirm Password</label>
           <input
             id="confirm-password"
             v-model="confirmation"
-            class="bw-input"
+            class="auth-input"
             type="password"
             autocomplete="new-password"
             placeholder="Re-enter password"
@@ -66,12 +63,12 @@
           Passwords do not match.
         </p>
 
-        <div v-if="error" class="bw-alert danger" role="alert">
+        <div v-if="error" class="auth-alert danger" role="alert">
           {{ error }}
         </div>
 
         <button
-          class="bw-btn primary lg login-submit"
+          class="login-submit"
           type="submit"
           :disabled="loading || !valid"
         >
@@ -86,7 +83,7 @@
 
       <!-- Footer Info -->
       <div class="login-foot">
-        <p class="bw-muted">
+        <p class="auth-muted">
           Secured access for authorized Beverly Swap attendants & fleet operators.
         </p>
       </div>
@@ -97,6 +94,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { theme as sharedTheme } from '../lib/theme.js';
 
 const router = useRouter();
 
@@ -104,7 +102,8 @@ const base = import.meta.env.BASE_URL || '/';
 const brandLockupDark = `${base}brand/beverly-lockup-white.png`;
 const brandLockupLight = `${base}brand/beverly-lockup.png`;
 
-const theme = ref<'dark' | 'light'>('dark');
+// The shared theme (light by default). The app shell loads the saved choice.
+const theme = sharedTheme;
 const token = ref('');
 const password = ref('');
 const confirmation = ref('');
@@ -162,233 +161,82 @@ async function submitReset() {
 
 <style scoped>
 .login-stage {
-  min-height: 100vh;
-  width: 100vw;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  background: var(--acob-bg, #03090a);
-  position: relative;
-  overflow: hidden;
-  font-family: var(--acob-font-sans, 'Plus Jakarta Sans', system-ui, sans-serif);
-}
-
-.login-aura {
-  position: absolute;
-  width: 600px;
-  height: 600px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(34, 197, 94, 0.12) 0%, transparent 70%);
-  top: -150px;
-  left: 50%;
-  transform: translateX(-50%);
-  pointer-events: none;
-  filter: blur(40px);
+  position: relative; min-height: 100dvh; display: grid; place-items: center; padding: 1.5rem;
+  font-family: var(--acob-font-sans, inherit); color: var(--acob-text);
 }
 
 .login-card {
-  width: 100%;
-  max-width: 440px;
-  background: var(--acob-surface, rgba(10, 22, 15, 0.96));
-  border: 1px solid var(--acob-card-border, rgba(125, 252, 154, 0.22));
-  border-radius: var(--acob-radius-xl, 16px);
-  padding: 2.25rem 2rem;
-  box-shadow: var(--acob-panel-shadow, 0 20px 48px -10px rgba(0, 0, 0, 0.85));
-  position: relative;
-  z-index: 1;
+  position: relative; width: 100%; max-width: 440px; padding: 2.5rem 2.25rem 2rem; border-radius: 34px;
+  background: linear-gradient(135deg, var(--lg-fill-strong), var(--lg-fill) 70%);
+  border: 1px solid var(--lg-border);
+  box-shadow: inset 0 1px 0 var(--lg-rim-top), inset 0 -1px 0 var(--lg-rim-bottom), var(--lg-shadow);
+  -webkit-backdrop-filter: var(--lg-blur); backdrop-filter: var(--lg-blur);
+  animation: login-rise .6s cubic-bezier(.16, 1, .3, 1);
 }
+@keyframes login-rise { from { opacity: 0; transform: translateY(18px) scale(.97); } }
 
-.login-head {
-  text-align: center;
-  margin-bottom: 1.75rem;
+.login-head { text-align: center; margin-bottom: 1.75rem; }
+.login-logo-lockup { display: flex; justify-content: center; align-items: center; margin-bottom: 1rem; }
+.login-brand-img { height: 34px; max-width: 190px; object-fit: contain; }
+.login-title { margin: 0; font-size: 30px; font-weight: 750; letter-spacing: -.035em; }
+.login-sub { margin: .4rem 0 0; font-size: 15px; color: var(--acob-muted); }
+
+.auth-stack { display: flex; flex-direction: column; gap: 1.1rem; }
+.auth-label { display: block; font-size: 13px; font-weight: 700; color: var(--acob-text); margin-bottom: .45rem; }
+
+.auth-input {
+  width: 100%; height: 50px; padding: 0 1.1rem; box-sizing: border-box; font: inherit; font-size: 15px; color: var(--acob-text);
+  background: var(--lg-fill-inset); border: 1px solid var(--lg-border); border-radius: 999px;
+  box-shadow: inset 0 2px 5px rgba(var(--gel-shade-rgb), .14), inset 0 -1px 0 var(--lg-rim-top);
+  transition: box-shadow .2s ease;
 }
+.auth-input::placeholder { color: var(--acob-subtle); }
+.auth-input:focus { outline: none; box-shadow: inset 0 2px 5px rgba(var(--gel-shade-rgb), .14), 0 0 0 3px color-mix(in srgb, var(--acob-focus) 40%, transparent); }
 
-.login-logo-lockup {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 0.75rem;
-}
+.password-field { position: relative; }
+.password-field .auth-input { padding-right: 78px; }
+.password-toggle { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); border: none; background: transparent; color: var(--acob-accent); font-weight: 700; font-size: 13px; cursor: pointer; padding: 6px 8px; }
 
-.login-brand-img {
-  height: 38px;
-  max-width: 100%;
-  object-fit: contain;
-}
+.login-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; font-size: 13px; }
+.login-check { display: inline-flex; align-items: center; gap: 8px; color: var(--acob-muted); cursor: pointer; }
+.login-link { color: var(--acob-accent); text-decoration: none; font-weight: 650; font-size: 13px; background: none; border: none; cursor: pointer; padding: 0; }
+.login-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-.login-badge-wrap {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 0.5rem;
-}
-
-.bsv-brand-tag {
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.10em;
-  color: var(--acob-brand-mint, #7dfc9a);
-  text-transform: uppercase;
-  padding: 0.2rem 0.6rem;
-  background: rgba(125, 252, 154, 0.10);
-  border: 1px solid rgba(125, 252, 154, 0.25);
-  border-radius: 9999px;
-}
-
-.login-sub {
-  margin: 0;
-  font-size: 0.88rem;
-  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
-}
-
-.bw-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 1.15rem;
-}
-
-.bw-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--acob-text, #f2f7f3);
-  margin-bottom: 0.4rem;
-}
-
-.bw-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 0.75rem 0.85rem;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--acob-line, rgba(255, 255, 255, 0.14));
-  border-radius: var(--acob-radius-md, 8px);
-  color: var(--acob-text, #f2f7f3);
-  font-size: 0.9rem;
-  font-family: inherit;
-  transition: all 0.15s ease;
-}
-
-.bw-input:focus {
-  outline: none;
-  border-color: var(--acob-brand-mint, #7dfc9a);
-  box-shadow: 0 0 0 3px rgba(125, 252, 154, 0.18);
-}
-
-.field-error {
-  margin: -0.5rem 0 0;
-  font-size: 0.75rem;
-  color: #f87171;
-}
-
-.bw-alert.danger {
-  padding: 0.65rem 0.85rem;
-  border-radius: var(--acob-radius-sm, 6px);
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #fca5a5;
-  font-size: 0.82rem;
-  font-weight: 500;
+.auth-alert.danger {
+  padding: .75rem 1rem; font-size: 13px; border-radius: 18px; color: var(--acob-text);
+  background: color-mix(in srgb, var(--danger) 14%, var(--lg-fill)); border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 .login-submit {
-  width: 100%;
-  padding: 0.8rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  background: var(--acob-brand, #008000);
-  border: 1px solid var(--acob-brand-bright, #22c55e);
-  color: #fff;
-  border-radius: var(--acob-radius-md, 8px);
-  font-weight: 700;
-  font-size: 0.92rem;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.15s;
+  width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  border: 1px solid var(--lg-border); border-radius: 999px; font: inherit; font-weight: 750; font-size: 15px; color: var(--on-gel);
+  background: var(--gel-mid);
+  box-shadow: none;
+  transition: transform .3s cubic-bezier(.16, 1, .3, 1), filter .2s ease;
 }
+.login-submit:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.06); }
+.login-submit:active:not(:disabled) { transform: scale(.98); }
+.login-submit:disabled { opacity: .6; cursor: not-allowed; }
 
-.login-submit:hover:not(:disabled) {
-  background: var(--acob-brand-bright, #22c55e);
-  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
-}
+.login-mfa-icon { width: 60px; height: 60px; margin: 0 auto; display: grid; place-items: center; border-radius: 18px; color: var(--acob-accent); background: var(--lg-fill-inset); border: 1px solid var(--lg-border); box-shadow: inset 0 1px 0 var(--lg-rim-top); }
+.login-mfa-copy { text-align: center; color: var(--acob-muted); font-size: 14px; margin: 0; line-height: 1.5; }
+.login-code { text-align: center; font-size: 26px; letter-spacing: .25em; font-family: var(--acob-font-mono, monospace); font-weight: 700; }
+.login-mfa-actions { display: flex; justify-content: space-between; gap: .75rem; }
 
-.login-submit:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.login-foot { text-align: center; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--acob-line); font-size: 13px; }
+.login-foot p { margin: 0 0 .5rem; color: var(--acob-muted); }
+.login-ecosystem-links { display: flex; justify-content: center; align-items: center; gap: 8px; }
+.login-foot-link { color: var(--acob-accent); text-decoration: none; font-weight: 650; }
+.login-foot-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.foot-sep { color: var(--acob-subtle); }
 
-.login-spinner {
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
+@media (prefers-reduced-motion: reduce) { .login-card { animation: none; } .login-submit { transition: none; } }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.reset-success-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(34, 197, 94, 0.18);
-  border: 2px solid var(--acob-brand-mint, #7dfc9a);
-  color: var(--acob-brand-mint, #7dfc9a);
-  font-size: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto;
-}
-
-.reset-success-title {
-  margin: 0;
-  text-align: center;
-  font-size: 1.15rem;
-  color: var(--acob-text, #f2f7f3);
-  font-weight: 700;
-}
-
-.reset-success-copy {
-  margin: 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: var(--acob-muted, rgba(242, 247, 243, 0.65));
-}
-
-.login-foot-action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 0.5rem;
-}
-
-.login-link {
-  color: var(--acob-brand-mint, #7dfc9a);
-  font-size: 0.82rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.login-link:hover {
-  text-decoration: underline;
-}
-
-.login-foot {
-  margin-top: 1.75rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--acob-line, rgba(255, 255, 255, 0.1));
-  text-align: center;
-}
-
-.bw-muted {
-  margin: 0;
-  font-size: 0.74rem;
-  color: var(--acob-subtle, rgba(242, 247, 243, 0.45));
-}
+.login-spinner { width: 16px; height: 16px; border: 2px solid rgba(31, 31, 34, .25); border-top-color: var(--on-gel); border-radius: 50%; animation: login-spin .7s linear infinite; }
+@keyframes login-spin { to { transform: rotate(360deg); } }
+.login-foot-action { display: flex; justify-content: center; margin-top: .25rem; }
+.field-error { margin: .4rem 0 0 .4rem; color: var(--danger); font-size: 13px; }
+.reset-success-icon { width: 68px; height: 68px; margin: 0 auto 1rem; display: grid; place-items: center; border-radius: 50%; color: var(--on-gel); background: var(--gel-mid); box-shadow: none; }
+.reset-success-title { margin: 0 0 .5rem; text-align: center; font-size: 26px; font-weight: 750; letter-spacing: -.03em; }
+.reset-success-copy { margin: 0 0 1.25rem; text-align: center; color: var(--acob-muted); line-height: 1.5; }
 </style>

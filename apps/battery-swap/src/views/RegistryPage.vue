@@ -122,7 +122,8 @@
             :id="`field-${field.key}`"
             v-model="form[field.key]"
             class="reg-input"
-            :type="field.type === 'number' ? 'number' : field.type"
+            :type="field.type === 'number' ? 'number' : field.type === 'naira' ? 'text' : field.type"
+            :inputmode="field.type === 'naira' ? 'decimal' : undefined"
             :min="field.type === 'number' ? 0 : undefined"
             :required="field.required"
             :data-testid="`field-${field.key}`"
@@ -156,6 +157,7 @@ import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { usePueRegistryStore } from "../stores/pue-registry-store.js";
 import { useBatterySwapAuthStore } from "../stores/auth";
+import { nairaFromMinor } from "../services/pue-api.js";
 import { RESOURCES, formToBody, initialForm, validateForm } from "../services/registry-config.js";
 
 const route = useRoute();
@@ -206,6 +208,7 @@ function cell(column, row) {
   const value = row[column.key];
   if (column.lookup) return store.labelFor(column.lookup, value);
   if (column.map) return column.map[value] ?? "—";
+  if (column.money) return nairaFromMinor(value);
   return value === null || value === undefined || value === "" ? "—" : value;
 }
 function rowName(row) {

@@ -2,42 +2,50 @@
   <div class="pue-hub" data-testid="pue-hub">
     <header class="pue-hub-bar">
       <a :href="portalUrls.landing" class="pue-hub-brand" title="Beverly">
-        <img :src="brandLockup" alt="Beverly" class="pue-hub-lockup" @error="hideImage" />
+        <img :src="theme === 'dark' ? brandLockupDark : brandLockupLight" alt="Beverly" class="pue-hub-lockup" @error="hideImage" />
       </a>
-      <button
-        type="button"
-        class="pue-hub-signout"
-        data-testid="btn-pue-hub-signout"
-        aria-label="Sign out of Beverly PUE"
-        title="Sign out of Beverly PUE"
-        @click="signOut"
-      >
-        Sign out
-      </button>
+      <AccountMenu />
     </header>
 
     <main class="pue-hub-main">
-      <span class="pue-hub-pill">Beverly PUE</span>
       <h1 class="pue-hub-title">Where to?</h1>
-      <p class="pue-hub-sub">Signed in as {{ auth.displayName }}</p>
+      <p class="pue-hub-sub">Pick a workspace. Your Beverly sign-in works in both.</p>
 
       <div class="pue-hub-grid">
         <button
           v-for="space in workspaces"
           :key="space.key"
           type="button"
-          :class="['pue-hub-card', space.available ? 'is-ready' : 'is-unavailable']"
+          :class="['pue-hub-card', 'surface', space.available ? 'is-ready' : 'is-unavailable']"
           :disabled="!space.available"
           :aria-disabled="!space.available"
           :aria-label="space.available ? space.title : `${space.title}, not set up yet`"
           :data-testid="`btn-pue-workspace-${space.key}`"
           @click="open(space)"
         >
-          <svg class="pue-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path v-for="(d, i) in space.icon" :key="i" :d="d" />
-          </svg>
-          <span class="pue-hub-card-title">{{ space.shortTitle }}</span>
-          <span class="pue-hub-card-note">{{ space.available ? space.description : 'Not set up yet' }}</span>
+          <span class="pue-art" aria-hidden="true">
+            <!-- A battery taking charge: cells light one after another -->
+            <svg v-if="space.key === 'battery-swap'" viewBox="0 0 160 96" fill="none">
+              <rect x="6" y="14" width="136" height="68" rx="20" class="art-line" />
+              <rect x="146" y="38" width="8" height="20" rx="4" class="art-line" />
+              <rect v-for="n in 5" :key="n" :x="18 + (n - 1) * 24" y="26" width="18" height="44" rx="9" class="art-cell" :style="{ '--n': n }" />
+            </svg>
+            <!-- A fridge: door, handle and a pilot light -->
+            <svg v-else viewBox="0 0 160 96" fill="none">
+              <rect x="44" y="4" width="72" height="88" rx="18" class="art-line" />
+              <line x1="44" y1="38" x2="116" y2="38" class="art-line" />
+              <line x1="58" y1="20" x2="58" y2="28" class="art-line art-handle" />
+              <line x1="58" y1="50" x2="58" y2="66" class="art-line art-handle" />
+              <circle cx="100" cy="21" r="4.5" class="art-pilot" />
+            </svg>
+          </span>
+          <span class="pue-hub-text">
+            <span class="pue-hub-card-title">{{ space.shortTitle }}</span>
+            <span class="pue-hub-card-note">{{ space.available ? space.description : 'Not set up yet' }}</span>
+          </span>
+          <span class="pue-hub-go" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
+          </span>
         </button>
       </div>
     </main>
@@ -46,13 +54,12 @@
 
 <script setup lang="ts">
 /**
- * PUE Hub — first screen after signing in to Beverly PUE.
- * Battery Swap Stations opens the existing swap workspace (/stations).
- * Electronic Appliances has no module or data source yet, so it is shown as
- * not set up instead of linking to an empty or invented page.
+ * PUE Hub: first screen after signing in to Beverly PUE.
+ * Battery Swap Stations opens the swap workspace; Electronic Appliances opens the appliances workspace.
  */
 import { useRouter } from 'vue-router';
-import { useBatterySwapAuthStore } from '../stores/auth';
+import AccountMenu from '../shell/AccountMenu.vue';
+import { theme } from '../lib/theme.js';
 
 interface Workspace {
   key: string;
@@ -62,16 +69,13 @@ interface Workspace {
   /** Route to open; null while the workspace does not exist yet. */
   to: string | null;
   available: boolean;
-  icon: string[];
 }
 
 const router = useRouter();
-const auth = useBatterySwapAuthStore();
 
 const base = import.meta.env.BASE_URL || '/';
-/* App.vue owns the theme and mirrors it on <html data-theme>. */
-const isLight = typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light';
-const brandLockup = `${base}brand/${isLight ? 'beverly-lockup.png' : 'beverly-lockup-white.png'}`;
+const brandLockupDark = `${base}brand/beverly-lockup-white.png`;
+const brandLockupLight = `${base}brand/beverly-lockup.png`;
 const portalUrls = {
   landing: import.meta.env.DEV ? 'http://localhost:5176/' : '/wallet/',
 };
@@ -81,30 +85,23 @@ const workspaces: Workspace[] = [
     key: 'battery-swap',
     title: 'Battery Swap Stations',
     shortTitle: 'Battery swap',
-    description: 'Sites, bikes, batteries, riders, and sales',
-    to: '/sites',
+    description: 'Swaps, sites, bikes, batteries, riders and the live map',
+    to: '/dashboard',
     available: true,
-    icon: ['M6 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z', 'M21 11v2', 'M8 10v4', 'M12 10v4'],
   },
   {
     key: 'appliances',
     title: 'Electronic Appliances',
     shortTitle: 'Appliances',
-    description: 'Not connected to any data yet',
-    to: null,
-    available: false,
-    icon: ['M4 5h16v11H4z', 'M8 20h8', 'M12 16v4'],
+    description: 'Catalogue, units, sales to customers, and faults',
+    to: '/appliances',
+    available: true,
   },
 ];
 
 function open(space: Workspace) {
   if (!space.available || !space.to) return;
   void router.push(space.to);
-}
-
-function signOut() {
-  auth.logout();
-  void router.push('/login');
 }
 
 function hideImage(event: Event) {
@@ -114,84 +111,56 @@ function hideImage(event: Event) {
 </script>
 
 <style scoped>
-.pue-hub {
-  flex: 1 1 auto;
-  width: 100%;
-  min-height: 100vh;
-  height: 100vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  background: var(--acob-bg);
-  color: var(--acob-text);
-  font-family: var(--acob-font-sans);
-}
-.pue-hub-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; }
+.pue-hub { min-height: 100%; display: flex; flex-direction: column; color: var(--acob-text); font-family: var(--acob-font-sans); }
+.pue-hub-bar { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; }
 .pue-hub-brand { display: inline-flex; }
-.pue-hub-lockup { height: 28px; width: auto; }
-.pue-hub-signout {
-  padding: 8px 14px;
-  border: 1px solid var(--acob-line-strong);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--acob-text);
-  font: inherit; font-size: 14px; font-weight: 600;
-  cursor: pointer;
-}
-.pue-hub-signout:hover { background: var(--acob-surface-hover); }
-.pue-hub-signout:focus-visible,
-.pue-hub-card:focus-visible { outline: 2px solid var(--acob-brand-bright); outline-offset: 3px; }
+.pue-hub-lockup { height: 30px; width: auto; }
 
-.pue-hub-main {
-  flex: 1;
-  width: 100%;
-  max-width: 640px;
-  margin: 0 auto;
-  padding: 8vh 24px 64px;
-  box-sizing: border-box;
-  text-align: center;
-}
-.pue-hub-pill {
-  display: inline-block;
-  padding: 4px 12px;
-  border: 1px solid var(--acob-line-strong);
-  border-radius: 999px;
-  color: var(--acob-brand-bright);
-  font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-}
-.pue-hub-title { margin: 16px 0 6px; font-size: 40px; font-weight: 800; letter-spacing: -.03em; }
-.pue-hub-sub { margin: 0 0 36px; color: var(--acob-muted); font-size: 15px; }
+.pue-hub-main { flex: 1; width: 100%; max-width: 1040px; margin: 0 auto; padding: 5vh 24px 64px; box-sizing: border-box; }
+.pue-hub-title { margin: 0; font-size: clamp(44px, 7vw, 76px); line-height: 1; font-weight: 750; letter-spacing: -.045em; text-wrap: balance; }
+.pue-hub-sub { margin: 14px 0 40px; color: var(--acob-muted); font-size: 15px; max-width: 46ch; }
 
-.pue-hub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pue-hub-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .pue-hub-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 32px 16px;
-  border-radius: 16px;
-  background: var(--acob-panel);
-  color: var(--acob-text);
-  font: inherit;
-  transition: border-color .15s ease, transform .15s ease;
+  display: grid; grid-template-rows: auto 1fr; gap: 28px; align-content: start; padding: 32px 32px 30px; min-height: 340px;
+  border-radius: 34px; color: var(--acob-text); font: inherit; text-align: left; cursor: pointer;
+  transition: transform .5s cubic-bezier(.16, 1, .3, 1), box-shadow .3s ease;
 }
-.pue-hub-card.is-ready { border: 2px solid var(--acob-brand-bright); cursor: pointer; }
-.pue-hub-card.is-ready:hover { transform: translateY(-2px); }
-.pue-hub-card.is-unavailable { border: 1px dashed var(--acob-line-strong); cursor: not-allowed; }
-.pue-hub-icon { width: 32px; height: 32px; color: var(--acob-brand-bright); }
-.is-unavailable .pue-hub-icon { color: var(--acob-muted); }
-.pue-hub-card-title { font-size: 18px; font-weight: 800; }
-.pue-hub-card-note { color: var(--acob-muted); font-size: 13px; line-height: 1.4; }
+.pue-hub-card.is-ready:hover { transform: translateY(-6px); }
+.pue-hub-card.is-ready:active { transform: translateY(-2px) scale(.99); }
+.pue-hub-card.is-unavailable { cursor: not-allowed; opacity: .7; }
+.pue-hub-card:focus-visible { outline: 3px solid var(--acob-focus); outline-offset: 4px; }
 
-@media (max-width: 560px) {
+.pue-art { display: grid; place-items: center start; height: 120px; }
+.pue-art svg { width: 190px; height: 114px; overflow: visible; }
+.art-line { stroke: var(--acob-text); stroke-opacity: .72; stroke-width: 2.5; fill: color-mix(in srgb, var(--surface-rim) 22%, transparent); stroke-linecap: round; }
+.art-handle { fill: none; stroke-width: 4; stroke: var(--acob-accent-solid); stroke-opacity: 1; }
+.art-cell { fill: var(--acob-accent-solid); opacity: .18; animation: charge 3.6s ease-in-out infinite; animation-delay: calc(var(--n) * .35s); }
+.art-pilot { fill: var(--acob-accent-solid); filter: drop-shadow(0 0 7px var(--acob-accent-solid)); animation: pilot 2.6s ease-in-out infinite; }
+@keyframes charge { 0%, 12% { opacity: .16; } 30%, 78% { opacity: 1; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--acob-accent-solid) 80%, transparent)); } 100% { opacity: .16; } }
+@keyframes pilot { 50% { opacity: .35; } }
+
+.pue-hub-text { display: grid; gap: 8px; align-content: end; }
+.pue-hub-card-title { font-size: clamp(28px, 3.4vw, 38px); font-weight: 750; letter-spacing: -.035em; line-height: 1.05; }
+.pue-hub-card-note { color: var(--acob-muted); font-size: 15px; line-height: 1.45; max-width: 34ch; }
+
+.pue-hub-go {
+  position: absolute; right: 26px; bottom: 26px; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%;
+  color: var(--on-gel); background: var(--gel-mid);
+  box-shadow: none;
+  transition: transform .45s cubic-bezier(.16, 1, .3, 1);
+}
+.pue-hub-go svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.pue-hub-card.is-ready:hover .pue-hub-go { transform: translateX(4px) scale(1.08); }
+
+@media (max-width: 760px) {
   .pue-hub-bar { padding: 12px 16px; }
-  .pue-hub-main { padding: 5vh 16px 48px; }
-  .pue-hub-title { font-size: 32px; }
-  .pue-hub-grid { grid-template-columns: 1fr; }
-  .pue-hub-card { padding: 24px 16px; }
+  .pue-hub-main { padding: 3vh 16px 40px; }
+  .pue-hub-grid { grid-template-columns: 1fr; gap: 16px; }
+  .pue-hub-card { min-height: 260px; border-radius: 34px; padding: 26px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pue-hub-card { transition: none; }
-  .pue-hub-card.is-ready:hover { transform: none; }
+  .art-cell, .art-pilot { animation: none; opacity: 1; }
+  .pue-hub-card, .pue-hub-go { transition: none; }
 }
 </style>

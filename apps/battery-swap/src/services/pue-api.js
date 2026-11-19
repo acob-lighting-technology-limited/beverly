@@ -9,6 +9,10 @@
 const BASE = "/api/v1/pue";
 const TIMEOUT_MS = 20000;
 const TOKEN_KEY = "beverly.battery_swap.access_token";
+import { SESSION_EXPIRED_EVENT, refreshSession } from "../lib/session.js";
+
+// The session-expired event and the renewal logic live in lib/session.js; re-exported for App.vue.
+export { SESSION_EXPIRED_EVENT };
 
 /** Raised for every failed registry call. `code` mirrors the server's error code. */
 export class PueApiError extends Error {
@@ -30,27 +34,52 @@ function authToken() {
   }
 }
 
+async function send(method, path, body, options, token) {
+  return fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "X-Beverly-Portal": "pue",
+      // A caller that must be able to retry safely passes its own stable key; otherwise each write gets a fresh one.
+      ...(method === "GET" ? {} : { "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID() })
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS)
+  });
+}
+
 async function request(method, path, body, options = {}) {
-  const token = authToken();
+  let token = authToken();
   if (!token) throw new PueApiError("Sign in to Beverly PUE to continue.", "not_signed_in", 401);
   let response;
   try {
-    response = await fetch(`${BASE}${path}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        "X-Beverly-Portal": "pue",
-        // A caller that must be able to retry safely passes its own stable key; otherwise each write gets a fresh one.
-        ...(method === "GET" ? {} : { "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID() })
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS)
-    });
-  } catch {
+    response = await send(method, path, body, options, token);
+    if (response.status === 401) {
+      // The access token may simply have run out. Renew it once and retry before giving up on the session.
+      // The retry reuses the same idempotency key, so a write can never be applied twice.
+      const outcome = await refreshSession();
+      if (outcome === "ok") {
+        token = authToken();
+        response = await send(method, path, body, { ...options, idempotencyKey: options.idempotencyKey ?? crypto.randomUUID() }, token);
+      } else if (outcome === "transient") {
+        throw new PueApiError("Could not renew your session just now. Check your connection and try again.", "session_refresh_failed", 503);
+      }
+    }
+  } catch (error) {
+    if (error instanceof PueApiError) throw error;
     throw new PueApiError("Could not reach Beverly. Check your connection and try again.", "network");
   }
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    // The session really is over. Tell the app shell, which signs out and returns to the login page.
+    globalThis.dispatchEvent?.(new CustomEvent(SESSION_EXPIRED_EVENT));
+    throw new PueApiError("Your session expired. Sign in again.", "session_expired", 401, data);
+  }
+  if (!response.ok && !data.message && response.status >= 500) {
+    // A bare server error with no body usually means the API is not running (for example the local wallet backend on port 4000).
+    throw new PueApiError("Beverly's server did not answer. If you are running this locally, start the wallet backend (port 4000).", "server_unreachable", response.status);
+  }
   if (!response.ok) {
     throw new PueApiError(data.message || `Request failed (${response.status}).`, data.error || "request_failed", response.status, data);
   }
@@ -66,17 +95,63 @@ function query(params = {}) {
   return text ? `?${text}` : "";
 }
 
+/** Registry resources live under /registry; appliance-types and appliance-units live under /appliances. */
+function resourcePath(resource) {
+  return resource.startsWith("appliance-") ? `/appliances/${resource.slice("appliance-".length)}` : `/registry/${resource}`;
+}
+
 export const pueApi = {
-  /** resource: sites | swap-stations | bikes | batteries | riders. Resolves { items, total }. */
+  /** resource: sites | swap-stations | bikes | batteries | riders | appliance-types | appliance-units. Resolves { items, total }. */
   async list(resource, params) {
-    const data = await request("GET", `/registry/${resource}${query(params)}`);
+    const data = await request("GET", `${resourcePath(resource)}${query(params)}`);
     return { items: data.items ?? [], total: data.total ?? 0 };
   },
   async create(resource, body) {
-    return (await request("POST", `/registry/${resource}`, body)).item;
+    return (await request("POST", resourcePath(resource), body)).item;
   },
   async update(resource, id, body) {
-    return (await request("PATCH", `/registry/${resource}/${id}`, body)).item;
+    return (await request("PATCH", `${resourcePath(resource)}/${id}`, body)).item;
+  },
+
+  // ── analytics (read only) ──
+  async getSwapAnalytics(days) {
+    return (await request("GET", `/analytics/swaps${query({ days })}`)).analytics;
+  },
+  async getApplianceAnalytics(days) {
+    return (await request("GET", `/analytics/appliances${query({ days })}`)).analytics;
+  },
+
+  // ── appliances ──
+  /** Beverly CRM customers matching a name, phone, email or meter number. */
+  async searchCustomers(q) {
+    return (await request("GET", `/appliance-customers${query({ q })}`)).items ?? [];
+  },
+  async listApplianceSales(params) {
+    const data = await request("GET", `/appliance-sales${query(params)}`);
+    return { items: data.items ?? [], total: data.total ?? 0 };
+  },
+  async getApplianceSale(id) {
+    return (await request("GET", `/appliance-sales/${id}`)).sale;
+  },
+  async sellAppliance(body) {
+    return (await request("POST", "/appliance-sales", body)).sale;
+  },
+  /** Pass the same idempotencyKey on every retry of one payment. */
+  async recordAppliancePayment(id, body, idempotencyKey) {
+    return (await request("POST", `/appliance-sales/${id}/payment`, body, { idempotencyKey })).sale;
+  },
+  async endApplianceSale(id, body) {
+    return (await request("POST", `/appliance-sales/${id}/end`, body)).sale;
+  },
+  async listApplianceFaults(params) {
+    const data = await request("GET", `/appliance-faults${query(params)}`);
+    return { items: data.items ?? [], total: data.total ?? 0 };
+  },
+  async reportApplianceFault(body) {
+    return (await request("POST", "/appliance-faults", body)).fault;
+  },
+  async updateApplianceFault(id, body) {
+    return (await request("PATCH", `/appliance-faults/${id}`, body)).fault;
   },
   async listSales(params) {
     const data = await request("GET", `/assignments${query(params)}`);

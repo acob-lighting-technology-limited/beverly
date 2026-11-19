@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { clearRefresh, hasRefreshToken, storeRefresh } from '../lib/session.js';
 
 /** Portal keys from users.portal_access (see backend staff-portal-access.ts). */
 export type StaffPortalKey = 'crm' | 'staff_wallet' | 'call' | 'pue';
@@ -21,6 +22,8 @@ interface AuthState {
   hydrated: boolean;
   accessToken: string | null;
   user: BatterySwapUser | null;
+  /** Set when a saved session was dropped because it had expired, so the login page can say why. */
+  sessionExpired: boolean;
 }
 
 /*
@@ -30,6 +33,16 @@ interface AuthState {
  */
 const TOKEN_KEY = 'beverly.battery_swap.access_token';
 const USER_KEY = 'beverly.battery_swap.user';
+
+/** True when a JWT's own expiry time has passed. Only used to avoid sending a dead token; the server still decides. */
+export function tokenExpired(token: string, nowMs: number = Date.now()): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' && payload.exp * 1000 <= nowMs;
+  } catch {
+    return false;
+  }
+}
 
 /** Super admins always reach every portal; everyone else needs 'pue'. */
 function canUsePue(user: BatterySwapUser | null): boolean {
@@ -41,7 +54,8 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
   state: (): AuthState => ({
     hydrated: false,
     accessToken: null,
-    user: null
+    user: null,
+    sessionExpired: false
   }),
 
   getters: {
@@ -70,7 +84,11 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
         if (token && userJson) {
           const user = JSON.parse(userJson) as BatterySwapUser;
           // Sessions saved before portal access existed have no list: sign in again.
-          if (canUsePue(user)) {
+          // An expired access token is fine when a refresh token can renew it; the session keeper does that.
+          if (tokenExpired(token) && !hasRefreshToken()) {
+            this.sessionExpired = true;
+            this.logout();
+          } else if (canUsePue(user)) {
             this.accessToken = token;
             this.user = user;
           } else {
@@ -82,7 +100,7 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
       }
     },
 
-    setSession(token: string, user: BatterySwapUser) {
+    setSession(token: string, user: BatterySwapUser, renewal?: { refreshToken?: string | null; expiresAt?: number | null }) {
       this.accessToken = token;
       this.user = user;
       try {
@@ -91,6 +109,13 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
       } catch (err) {
         console.warn('[BatterySwapAuth] Failed to persist session:', err);
       }
+      if (renewal) storeRefresh({ refreshToken: renewal.refreshToken ?? null, expiresAt: renewal.expiresAt ?? null });
+    },
+
+    /** A renewed token arrived (from the session keeper, or from another tab). */
+    applyRefreshed(token: string, user: Partial<BatterySwapUser> | null) {
+      this.accessToken = token;
+      if (user && this.user) this.user = { ...this.user, ...user } as BatterySwapUser;
     },
 
     logout() {
@@ -102,6 +127,7 @@ export const useBatterySwapAuthStore = defineStore('battery-swap-auth', {
       } catch (err) {
         console.warn('[BatterySwapAuth] Failed to clear session:', err);
       }
+      clearRefresh();
     }
   }
 });
