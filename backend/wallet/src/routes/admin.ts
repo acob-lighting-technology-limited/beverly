@@ -2154,7 +2154,8 @@ const route: FastifyPluginAsync = async (fastify) => {
         ]);
         if (paymentsError) throw paymentsError;
         if (requestsError) throw requestsError;
-        const rows = [...(payments ?? []), ...(requests ?? [])]
+        const requestsWithProof = await attachProofUrls((requests ?? []) as any[]);
+        const rows = [...(payments ?? []), ...requestsWithProof]
             .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
             .slice(0, pageSize);
         const nextCursor = rows.length === pageSize ? rows.at(-1)?.created_at ?? null : null;
@@ -3033,9 +3034,10 @@ const route: FastifyPluginAsync = async (fastify) => {
         const [{ data: payments, error: paymentError }, { data: bankFunding, error: bankError }] = await Promise.all([paymentQuery, bankQuery]);
         if (paymentError) throw paymentError;
         if (bankError) throw bankError;
+        const bankWithProof = await attachProofUrls((bankFunding ?? []) as any[]);
         const rows = [
             ...(payments ?? []).map((row: any) => ({ ...row, record_source: 'gateway_payment', gateway: row.gateway ?? 'paystack' })),
-            ...(bankFunding ?? []).map((row: any) => ({
+            ...bankWithProof.map((row: any) => ({
                 ...row,
                 id: `funding:${row.id}`,
                 record_source: 'bank_transfer',
