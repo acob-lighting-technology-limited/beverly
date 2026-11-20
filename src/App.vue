@@ -200,10 +200,6 @@
                     <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
                     <span>{{ translate('common.switchOem') }}</span>
                   </BaseButton>
-                  <a :href="batterySwapUrl" class="bw-user-menu-item" role="menuitem" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 0.5rem;">
-                    <svg class="bw-user-menu-icon" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="1.8" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                    <span>Battery Swap Portal</span>
-                  </a>
                   <div class="user-theme-submenu">
                     <BaseButton
                       variant="quiet"
@@ -232,6 +228,20 @@
                         @click="setTheme(theme.id)"
                       >
                         <strong>{{ theme.label }}</strong>
+                      </BaseButton>
+                    </div>
+                    <div v-show="userThemePanelOpen" class="user-palette-panel" role="group" aria-label="Colour palette">
+                      <BaseButton
+                        v-for="option in paletteOptions"
+                        :key="option.id"
+                        variant="quiet"
+                        :class="['user-palette-choice', { active: currentPalette === option.id }]"
+                        role="menuitemradio"
+                        :aria-checked="String(currentPalette === option.id)"
+                        :data-testid="`palette-${option.id}`"
+                        @click="setPalette(option.id)"
+                      >
+                        <i class="user-palette-swatch" :style="{ background: option.swatch }" aria-hidden="true"></i>{{ option.label }}
                       </BaseButton>
                     </div>
                   </div>
@@ -418,6 +428,7 @@ export default {
       profilePictureUrl: "",
       expandedGroups: {},
       currentTheme: normalizeThemeChoice(localStorage.getItem('acob-theme') || 'system'),
+      currentPalette: ['yellow', 'mono', 'green'].includes(localStorage.getItem('beverly.crm.palette')) ? localStorage.getItem('beverly.crm.palette') : 'green',
       themeDropdownOpen: false,
       userDropdownOpen: false,
       userThemePanelOpen: false,
@@ -537,6 +548,13 @@ export default {
     },
     firstSearchResult() {
       return this.searchResults.length ? this.searchResults[0].routes[0] : null;
+    },
+    paletteOptions() {
+      return [
+        { id: "yellow", label: "Beverly yellow", swatch: "#fcd95c" },
+        { id: "mono", label: "Black and white", swatch: "#111111" },
+        { id: "green", label: "White and green", swatch: "#1c8a3e" }
+      ];
     },
     themeOptions() {
       return [
@@ -704,6 +722,11 @@ export default {
       this.themeDropdownOpen = false;
       this.userThemePanelOpen = false;
       this.applyTheme();
+    },
+    setPalette(palette) {
+      this.currentPalette = ['yellow', 'mono', 'green'].includes(palette) ? palette : 'green';
+      document.documentElement.setAttribute('data-palette', this.currentPalette);
+      try { localStorage.setItem('beverly.crm.palette', this.currentPalette); } catch { /* storage unavailable — non-fatal */ }
     },
     applyTheme() {
       this.currentTheme = normalizeThemeChoice(this.currentTheme);
@@ -1116,6 +1139,8 @@ export default {
       else if (document.exitFullscreen) { document.exitFullscreen(); }
     },
     resolveExternalUrl(route) {
+      // The PUE portal honours the same configured address the old account-menu link used.
+      if (route.hash === '#/pue') return this.batterySwapUrl;
       const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
       return isLocal ? (route.devExternalUrl || route.externalUrl) : route.externalUrl;
     }

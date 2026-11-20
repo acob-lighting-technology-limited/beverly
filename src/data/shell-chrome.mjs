@@ -129,6 +129,7 @@ export const routeIconOverrides = {
   "#/grid-control/remote-relay": "M18 20V10M12 20V4M6 20v-6M2 20h20M7 10l5-5 5 5",
   "#/analytics/energy-audit": "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M9 2h6v4H9zM12 11l-2 3h4l-2 3",
   "#/mesh/gateways": "M12 2a4 4 0 0 0-4 4c0 1.5.8 2.8 2 3.4V22h4V9.4c1.2-.6 2-1.9 2-3.4a4 4 0 0 0-4-4zm-7 4a7 7 0 0 0 1.5 4.3M17.5 10.3A7 7 0 0 0 19 6",
+  "#/pue": "M7 2h10a1 1 0 0 1 1 1v3H6V3a1 1 0 0 1 1-1zM5 6h14v13a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V6zM12 10l-2 4h4l-2 4",
   "#/battery-swap/operations": "M6 7h11a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM21 11v2M8 10v4M12 10v4M16 10v4",
   "#/battery-swap/map": "M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z",
   "#/battery-swap/fleet": "M5 17h2m10 0h2M7 17a3 3 0 1 0 6 0m6 0a3 3 0 1 0 6 0M3 11l3-6h8l3 6M3 11h18v6H3z",
