@@ -37,7 +37,7 @@
           />
           <kbd>/</kbd>
         </div>
-        <nav class="sidebar-menu" aria-label="Main navigation" @click="closeSidebar">
+        <nav class="sidebar-menu" aria-label="Main navigation">
           <template v-for="group in sidebarGroups" :key="`section-${group.name}`">
             <a
               v-if="!sidebarQuery && group.routes.length === 1"
@@ -876,7 +876,9 @@ export default {
       document.title = `${this.route.title} - Beverly`;
 
       if (this.route && this.route.group && this.route.group !== "Dashboard") {
+        Object.keys(this.expandedGroups).forEach((name) => { this.expandedGroups[name] = false; });
         this.expandedGroups[this.route.group] = true;
+        this.$nextTick(() => this.$el?.querySelector?.('.sidebar-item.indent.active')?.scrollIntoView?.({ block: 'nearest' }));
       }
       // Always keep Battery Swap section open when in that workspace
       if (this.isBatterySwapWorkspace) {
@@ -945,7 +947,10 @@ export default {
     },
     toggleGroup(groupName) {
       if (this.width > 1024 && this.collapsed) this.collapsed = false;
-      this.expandedGroups[groupName] = !this.expandedGroups[groupName];
+      const opening = !this.expandedGroups[groupName];
+      // One open group at a time keeps a 50-link menu short enough to scan.
+      Object.keys(this.expandedGroups).forEach((name) => { this.expandedGroups[name] = false; });
+      this.expandedGroups[groupName] = opening;
     },
     groupIcon(groupName) {
       return groupIcons[groupName] || groupIcons.Management;
