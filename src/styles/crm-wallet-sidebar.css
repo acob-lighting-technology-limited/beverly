@@ -484,3 +484,12 @@
     transition: none;
   }
 }
+
+/* Long page names are cut with an ellipsis instead of being clipped mid-letter; the full name stays in the title tooltip. */
+.app-page:not(.wallet-admin-host):not(.battery-swap-app-host) .sidebar-menu .sidebar-item .sidebar-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

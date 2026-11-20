@@ -924,6 +924,12 @@ tbody tr.selected td.action-column {
   transform: scale(1.15);
 }
 
+.pagination :is(.sort-select, .pagination-select, .base-select) {
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 7.5rem;
+}
+
 .pagination,
 .picker-pagination {
   display: flex;
